@@ -1,0 +1,12 @@
+# Differences between SpiderMonkey and QuickJS that the shared contract suite tolerates.
+#
+# Every entry must name the case and the compared fields, and explain why. Do not replace an
+# entry with a blanket skip: the case still runs on both engines and all other fields still
+# have to match.
+
+# Example:
+# [[difference]]
+# id = "stack.line_column"
+# fields = ["line", "column"]
+# reason = "QuickJS reports different source positions from SpiderMonkey"
+# owner = "servo-quickjs"
