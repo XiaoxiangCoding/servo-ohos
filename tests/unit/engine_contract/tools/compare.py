@@ -4,8 +4,9 @@
 Usage: compare.py SM.jsonl QJS.jsonl [known-differences.toml]
 
 Both inputs are JSON Lines produced by `engine_contract_tests`. Cases are matched by `id`; the
-`engine` field is ignored. A field listed in `known-differences.toml` is removed before
-comparison, so a whitelist narrows the comparison instead of skipping the whole case.
+`engine` field is ignored. SpiderMonkey is the reference: a difference listed in
+`known-differences.toml` is reported as a known QuickJS defect and does not fail the run; an
+unlisted difference does. Entries are never silent skips.
 """
 
 import json
@@ -40,13 +41,12 @@ def load_differences(path):
     return differences
 
 
-def strip_fields(case, fields):
+def matches_difference(left, right, fields):
     if not fields:
-        return case
-    case = dict(case)
-    for field in fields:
-        case.pop(field, None)
-    return case
+        return False
+    remaining_left = {key: value for key, value in left.items() if key not in fields}
+    remaining_right = {key: value for key, value in right.items() if key not in fields}
+    return remaining_left == remaining_right
 
 
 def main(argv):
@@ -59,12 +59,22 @@ def main(argv):
     missing_in_qjs = sorted(set(sm) - set(qjs))
     missing_in_sm = sorted(set(qjs) - set(sm))
     mismatches = []
+    known = []
     for case_id in sorted(set(sm) & set(qjs)):
-        left = strip_fields(sm[case_id], differences.get(case_id))
-        right = strip_fields(qjs[case_id], differences.get(case_id))
-        if left != right:
+        left = sm[case_id]
+        right = qjs[case_id]
+        if left == right:
+            continue
+        fields = differences.get(case_id)
+        if matches_difference(left, right, fields):
+            known.append((case_id, left, right, fields))
+        else:
             mismatches.append((case_id, left, right))
 
+    for case_id, left, right, fields in known:
+        print(f"known QuickJS defect: {case_id} (fields: {', '.join(sorted(fields))})")
+        print(f"  SpiderMonkey: {json.dumps(left, sort_keys=True)}")
+        print(f"  QuickJS:      {json.dumps(right, sort_keys=True)}")
     for case_id in missing_in_qjs:
         print(f"missing in QuickJS: {case_id}")
     for case_id in missing_in_sm:
@@ -78,6 +88,7 @@ def main(argv):
     print(
         f"compared {len(set(sm) & set(qjs))} cases: "
         f"{len(mismatches)} mismatches, "
+        f"{len(known)} known QuickJS defects, "
         f"{len(missing_in_qjs)} missing in QuickJS, "
         f"{len(missing_in_sm)} missing in SpiderMonkey"
     )

@@ -1,12 +1,11 @@
-# Differences between SpiderMonkey and QuickJS that the shared contract suite tolerates.
+# Known QuickJS defects relative to the SpiderMonkey contract.
 #
-# Every entry must name the case and the compared fields, and explain why. Do not replace an
-# entry with a blanket skip: the case still runs on both engines and all other fields still
-# have to match.
+# SpiderMonkey is the reference implementation. Each entry names one case and the compared fields
+# that may differ. The comparison still prints every known defect; an unlisted difference fails
+# the run. Never add an entry merely to silence a failure, and remove it when the shim is fixed.
 
-# Example:
-# [[difference]]
-# id = "stack.line_column"
-# fields = ["line", "column"]
-# reason = "QuickJS reports different source positions from SpiderMonkey"
-# owner = "servo-quickjs"
+[[difference]]
+id = "rooter.trace_on_gc"
+fields = ["value"]
+reason = "QuickJS does not invoke CustomAutoRooter trace callbacks during an explicit collection"
+owner = "servo-quickjs"
