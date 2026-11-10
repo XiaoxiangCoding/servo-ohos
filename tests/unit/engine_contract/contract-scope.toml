@@ -1,0 +1,318 @@
+# The mozjs surface Servo can actually reach.
+#
+# Ownership: Servo owns this file because every provenance below is a Servo source path.
+# servo-quickjs reads it through SERVO_DIR when checking contract coverage.
+#
+# consumer: who reaches the entry through its own source.
+# mode: direct = called by Servo; indirect = reached through a trap/hook Servo installs.
+# provenance: the Servo files that establish reachability.
+# impact: the observable behavior this entry participates in.
+# expect: the shim status this scope requires; only implemented entries are gated today.
+
+[[entry]]
+name = "CompileModule1"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-compilation"
+
+[[entry]]
+name = "CompileJsonModule1"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-compilation"
+
+[[entry]]
+name = "CreateDefaultExportSyntheticModule"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-compilation"
+
+[[entry]]
+name = "LoadRequestedModules"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "LoadRequestedModules1"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "FinishLoadingImportedModule"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "FinishLoadingImportedModuleFailed"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "FinishLoadingImportedModuleFailedWithPendingException"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "FinishLoadingDynamicImportedModule"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "dynamic-import"
+
+[[entry]]
+name = "ModuleLink"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-linking"
+
+[[entry]]
+name = "ModuleEvaluate"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-evaluation"
+
+[[entry]]
+name = "GetModuleNamespace"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-namespace"
+
+[[entry]]
+name = "GetModuleRequestSpecifier"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "GetModuleRequestType"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "SetModuleLoadHook"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "GetModuleLoadHook"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-loading"
+
+[[entry]]
+name = "SetModuleMetadataHook"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "import-meta"
+
+[[entry]]
+name = "SetModulePrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-private"
+
+[[entry]]
+name = "JS_GetModulePrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-private"
+
+[[entry]]
+name = "SetScriptPrivateReferenceHooks"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_module.rs"]
+impact = "module-private"
+
+[[entry]]
+name = "RegisterScriptEnvironmentPreparer"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/runtime/script_runtime.rs"]
+impact = "module-evaluation"
+
+[[entry]]
+name = "RunScriptEnvironmentPreparerClosure"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/runtime/script_runtime.rs"]
+impact = "module-evaluation"
+
+[[entry]]
+name = "ThrowOnModuleEvaluationFailure"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/script_execution.rs"]
+impact = "module-evaluation"
+
+[[entry]]
+name = "IsPromiseObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/scripting/module_loading.rs"]
+impact = "dynamic-import"
+
+[[entry]]
+name = "JS_NewPlainObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/record.rs", "components/script_bindings/constructor.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_DefineProperty3"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/interface.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_DefineProperty4"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/interface.rs", "components/script/scripting/script_module.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_DefineProperty5"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/interface.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_DefinePropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/proxyhandler.rs", "components/script_bindings/observablearray.rs", "components/script/dom/window/windowproxy.rs"]
+impact = "dom-proxy"
+
+[[entry]]
+name = "JS_DefinePropertyById5"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/interface.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_HasProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/utils.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_HasPropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/utils.rs", "components/script_bindings/observablearray.rs", "components/script/dom/window/windowproxy.rs"]
+impact = "dom-proxy"
+
+[[entry]]
+name = "JS_HasOwnProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/utils.rs", "components/script/event_loop/webdriver_handlers.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_HasOwnPropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/dom/window/windowproxy.rs", "components/script/dom/indexeddb/key.rs"]
+impact = "dom-proxy"
+
+[[entry]]
+name = "JS_AlreadyHasOwnPropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/proxyhandler.rs"]
+impact = "dom-proxy"
+
+[[entry]]
+name = "JS_DeletePropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/proxyhandler.rs", "components/script_bindings/observablearray.rs", "components/script/dom/window/windowproxy.rs"]
+impact = "dom-proxy"
+
+[[entry]]
+name = "JS_GetOwnPropertyDescriptorById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/proxyhandler.rs", "components/script_bindings/observablearray.rs", "components/script_bindings/js.rs"]
+impact = "dom-proxy"
+
+[[entry]]
+name = "JS_GetPropertyDescriptorById"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/import.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_GetPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/js.rs", "components/script_bindings/utils.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_SetPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/import.rs", "components/script_bindings/observablearray.rs", "components/script/dom/bindings/constructor.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "Construct"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/buffer_source.rs", "components/script_bindings/dom.rs", "components/script/dom/element/element.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_CallFunctionName"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script/event_loop/webdriver_handlers.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_SetProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/import.rs", "components/script_bindings/utils.rs"]
+impact = "dom-object-model"
+
+[[entry]]
+name = "JS_GetProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = ["components/script_bindings/js.rs", "components/script_bindings/callback.rs", "components/script/dom/bindings/error.rs"]
+impact = "dom-object-model"
