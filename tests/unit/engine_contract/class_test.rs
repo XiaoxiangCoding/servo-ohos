@@ -228,6 +228,8 @@ fn write_barriers(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    reserved_slots_and_tracing(engine);
-    write_barriers(engine);
+    crate::support::isolate_case("class.reserved_slots_trace", || {
+        reserved_slots_and_tracing(engine)
+    });
+    crate::support::isolate_case("class.heap_write_barriers", || write_barriers(engine));
 }

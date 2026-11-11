@@ -18,6 +18,7 @@ use crate::support::{Observation, Value, record};
 unsafe extern "C" fn trace_global(_trc: *mut JSTracer, _global: *mut jsapi::JSObject) {}
 
 pub fn run(engine: &JSEngine) {
+    crate::support::isolate_case("realm.enter_exit_and_private", || {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
     unsafe {
@@ -88,4 +89,5 @@ pub fn run(engine: &JSEngine) {
             "SetRealmPrivate",
         ],
     );
+    });
 }

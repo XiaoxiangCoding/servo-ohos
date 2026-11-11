@@ -711,9 +711,9 @@ fn run_group(
     f: impl FnOnce(&mut JSContext, HandleObject),
 ) {
     let apis = apis_for_case(case);
-    with_global(engine, |cx, global| {
-        f(cx, global);
-        crate::support::record(case, &crate::support::Observation::ok(crate::support::Value::Boolean(true)), apis);
+    crate::support::run_case(case, apis, || {
+        with_global(engine, f);
+        crate::support::Observation::ok(crate::support::Value::Boolean(true))
     });
 }
 

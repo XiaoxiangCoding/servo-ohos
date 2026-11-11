@@ -5,9 +5,10 @@
 use std::ffi::CStr;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::ptr;
-use std::sync::Once;
+use std::sync::{Mutex, Once};
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
@@ -81,6 +82,13 @@ impl Observation {
         }
     }
 
+    pub fn failure(message: &str) -> Self {
+        Observation {
+            fields: vec![("panic", Value::String(message.to_owned()))],
+            exception: None,
+        }
+    }
+
     pub fn to_json(&self) -> serde_json::Value {
         let fields = self
             .fields
@@ -95,16 +103,16 @@ impl Observation {
 }
 
 /// Runs `f` in a fresh runtime and global object, like a document realm.
-pub fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, HandleObject)) {
-    with_realm_options(engine, RealmOptions::default(), f);
+pub fn with_global<R>(engine: &JSEngine, f: impl FnOnce(&mut JSContext, HandleObject) -> R) -> R {
+    with_realm_options(engine, RealmOptions::default(), f)
 }
 
 /// Runs `f` in a fresh runtime with caller-selected realm options.
-pub fn with_realm_options(
+pub fn with_realm_options<R>(
     engine: &JSEngine,
     options: RealmOptions,
-    f: impl FnOnce(&mut JSContext, HandleObject),
-) {
+    f: impl FnOnce(&mut JSContext, HandleObject) -> R,
+) -> R {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
     unsafe {
@@ -116,7 +124,7 @@ pub fn with_realm_options(
             &*options,
         ));
         let mut realm = AutoRealm::new_from_handle(cx, global.handle());
-        f(&mut realm, global.handle());
+        f(&mut realm, global.handle())
     }
 }
 
@@ -290,6 +298,75 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     writeln!(file, "{line}").expect("writing CONTRACT_OUT");
 }
 
+static CASE_FAILURES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "case panicked with a non-string payload".to_owned()
+    }
+}
+
+/// Runs one case in isolation. A panic is recorded as that case's observation and collected for
+/// the final test failure, so every later case still runs on the same engine.
+pub fn run_case(case: &str, apis: &[&str], f: impl FnOnce() -> Observation) {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(observation) => record(case, &observation, apis),
+        Err(payload) => {
+            let message = panic_message(payload);
+            eprintln!("case {case} failed: {message}");
+            record(case, &Observation::failure(&message), apis);
+            CASE_FAILURES
+                .lock()
+                .expect("case failure list")
+                .push(format!("{case}: {message}"));
+        },
+    }
+}
+
+/// Isolates a case that records itself on success. On panic, a failure observation is written
+/// under the same case id with no API list; the failed run is therefore never silently compared
+/// as a match, and later cases still execute.
+pub fn isolate_case(case: &str, f: impl FnOnce()) {
+    if let Err(payload) = catch_unwind(AssertUnwindSafe(f)) {
+        let message = panic_message(payload);
+        eprintln!("case {case} failed: {message}");
+        record(case, &Observation::failure(&message), &[]);
+        CASE_FAILURES
+            .lock()
+            .expect("case failure list")
+            .push(format!("{case}: {message}"));
+    }
+}
+
+/// Fails the enclosing test after every case has had a chance to run.
+pub fn assert_no_case_failures() {
+    let failures = CASE_FAILURES.lock().expect("case failure list");
+    if !failures.is_empty() {
+        panic!(
+            "{} engine contract case(s) failed:\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+}
+
+/// Runs a module after its cases have been isolated. A panic outside a case still stops that
+/// module, but it is reported with the other failures instead of hiding later modules.
+pub fn run_module(name: &str, f: impl FnOnce()) {
+    if let Err(payload) = catch_unwind(AssertUnwindSafe(f)) {
+        let message = panic_message(payload);
+        eprintln!("module {name} failed: {message}");
+        CASE_FAILURES
+            .lock()
+            .expect("case failure list")
+            .push(format!("{name}: {message}"));
+    }
+}
+
 /// Runs a case in a fresh runtime and records its observation together with the entries it
 /// exercises. The `apis` list is the coverage contract: every entry named here must be classified
 /// as implemented in `api-manifest.toml`.
@@ -299,7 +376,7 @@ pub fn record_case(
     apis: &[&str],
     f: impl FnOnce(&mut JSContext, HandleObject) -> Observation,
 ) {
-    with_global(engine, |cx, global| record(case, &f(cx, global), apis));
+    run_case(case, apis, || with_global(engine, |cx, global| f(cx, global)));
 }
 
 /// Like [`record_case`], but constructs the realm with the supplied options.
@@ -310,7 +387,7 @@ pub fn record_case_with_options(
     options: RealmOptions,
     f: impl FnOnce(&mut JSContext, HandleObject) -> Observation,
 ) {
-    with_realm_options(engine, options, |cx, global| {
-        record(case, &f(cx, global), apis)
+    run_case(case, apis, || {
+        with_realm_options(engine, options, |cx, global| f(cx, global))
     });
 }

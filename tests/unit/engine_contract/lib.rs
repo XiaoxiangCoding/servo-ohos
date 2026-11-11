@@ -57,25 +57,26 @@ mod tests {
     #[test]
     fn engine_contract() {
         let engine = js::rust::JSEngine::init().expect("initializing the JS engine");
-        super::buffer_test::run(&engine);
-        super::class_test::run(&engine);
-        super::clone_test::run(&engine);
-        super::contract_test::run(&engine);
-        super::errors_test::run(&engine);
-        super::eval_test::run(&engine);
-        super::eval_ext_test::run(&engine);
-        super::misc_test::run(&engine);
-        super::module_test::run(&engine);
-        super::objects_test::run(&engine);
-        super::objects_extra_test::run(&engine);
-        super::property_test::run(&engine);
-        super::proxy_test::run(&engine);
-        super::promises_test::run(&engine);
-        super::realm_test::run(&engine);
-        super::runtime_test::run(&engine);
-        super::strings_test::run(&engine);
-        super::strings_extra_test::run(&engine);
-        super::stencil_test::run(&engine);
-        super::typed_array_test::run(&engine);
+        super::support::run_module("buffer", || super::buffer_test::run(&engine));
+        super::support::run_module("class", || super::class_test::run(&engine));
+        super::support::run_module("clone", || super::clone_test::run(&engine));
+        super::support::run_module("contract", || super::contract_test::run(&engine));
+        super::support::run_module("errors", || super::errors_test::run(&engine));
+        super::support::run_module("eval", || super::eval_test::run(&engine));
+        super::support::run_module("eval_ext", || super::eval_ext_test::run(&engine));
+        super::support::run_module("misc", || super::misc_test::run(&engine));
+        super::support::run_module("module", || super::module_test::run(&engine));
+        super::support::run_module("objects", || super::objects_test::run(&engine));
+        super::support::run_module("objects_extra", || super::objects_extra_test::run(&engine));
+        super::support::run_module("property", || super::property_test::run(&engine));
+        super::support::run_module("proxy", || super::proxy_test::run(&engine));
+        super::support::run_module("promises", || super::promises_test::run(&engine));
+        super::support::run_module("realm", || super::realm_test::run(&engine));
+        super::support::run_module("runtime", || super::runtime_test::run(&engine));
+        super::support::run_module("strings", || super::strings_test::run(&engine));
+        super::support::run_module("strings_extra", || super::strings_extra_test::run(&engine));
+        super::support::run_module("stencil", || super::stencil_test::run(&engine));
+        super::support::run_module("typed_array", || super::typed_array_test::run(&engine));
+        super::support::assert_no_case_failures();
     }
 }

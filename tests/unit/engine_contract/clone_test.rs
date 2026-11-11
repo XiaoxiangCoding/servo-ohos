@@ -472,9 +472,9 @@ fn invalid_data(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    buffer_lifecycle(engine);
-    callback_roundtrip(engine);
-    convenience_clone(engine);
-    transferables(engine);
-    invalid_data(engine);
+    crate::support::isolate_case("clone.buffer_lifecycle", || buffer_lifecycle(engine));
+    crate::support::isolate_case("clone.callback_roundtrip", || callback_roundtrip(engine));
+    crate::support::isolate_case("clone.convenience_entry", || convenience_clone(engine));
+    crate::support::isolate_case("clone.transferables", || transferables(engine));
+    crate::support::isolate_case("clone.invalid_data", || invalid_data(engine));
 }

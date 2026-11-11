@@ -505,24 +505,26 @@ fn dom_errors(cx: &mut JSContext, global: SafeHandleObject) {
 }
 
 pub fn run(engine: &JSEngine) {
-    with_global(engine, reports);
-    with_global(engine, stacks);
-    with_global(engine, |cx, _global| unsafe {
-        js::rust::wrappers2::DumpJSStack(cx, false, false, false);
+    crate::support::isolate_case("errors.core", || {
+        with_global(engine, reports);
+        with_global(engine, stacks);
+        with_global(engine, |cx, _global| unsafe {
+            js::rust::wrappers2::DumpJSStack(cx, false, false, false);
+        });
+        crate::support::record(
+            "errors.core",
+            &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
+            &[
+                "BuildStackString", "CaptureCurrentStack", "DescribeScriptedCaller",
+                "GetSavedFrameColumn", "GetSavedFrameFunctionDisplayName", "GetSavedFrameLine",
+                "GetSavedFrameParent", "GetSavedFrameSource", "GetScriptedCallerGlobal",
+                "HideScriptedCaller", "JS_ErrorFromException", "JS_GetFunctionObject",
+                "JS_GetScriptedCallerPrivate",
+                "JS_NewFunction", "JS_SetPendingException",
+                "DumpJSStack", "JS_StackCapture_AllFrames",
+                "JS_StackCapture_FirstSubsumedFrame", "JS_StackCapture_MaxFrames",
+                "PendingExceptionStackInfo", "UnhideScriptedCaller",
+            ],
+        );
     });
-    crate::support::record(
-        "errors.core",
-        &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
-        &[
-            "BuildStackString", "CaptureCurrentStack", "DescribeScriptedCaller",
-            "GetSavedFrameColumn", "GetSavedFrameFunctionDisplayName", "GetSavedFrameLine",
-            "GetSavedFrameParent", "GetSavedFrameSource", "GetScriptedCallerGlobal",
-            "HideScriptedCaller", "JS_ErrorFromException", "JS_GetFunctionObject",
-            "JS_GetScriptedCallerPrivate",
-            "JS_NewFunction", "JS_SetPendingException",
-            "DumpJSStack", "JS_StackCapture_AllFrames",
-            "JS_StackCapture_FirstSubsumedFrame", "JS_StackCapture_MaxFrames",
-            "PendingExceptionStackInfo", "UnhideScriptedCaller",
-        ],
-    );
 }

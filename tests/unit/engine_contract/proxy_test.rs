@@ -785,12 +785,18 @@ fn dead_wrapper(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    handlers_private_and_slots(engine);
-    wrapper_create_and_unwrap(engine);
-    window_proxy(engine);
-    transplant(engine);
-    principals(engine);
-    realms_and_compartments(engine);
-    dom_proxy(engine);
-    dead_wrapper(engine);
+    crate::support::isolate_case("proxy.handlers_private_and_slots", || {
+        handlers_private_and_slots(engine)
+    });
+    crate::support::isolate_case("proxy.wrapper_create_and_unwrap", || {
+        wrapper_create_and_unwrap(engine)
+    });
+    crate::support::isolate_case("proxy.window_proxy", || window_proxy(engine));
+    crate::support::isolate_case("proxy.transplant", || transplant(engine));
+    crate::support::isolate_case("proxy.principals", || principals(engine));
+    crate::support::isolate_case("proxy.realms_and_compartments", || {
+        realms_and_compartments(engine)
+    });
+    crate::support::isolate_case("proxy.dom_callbacks", || dom_proxy(engine));
+    crate::support::isolate_case("proxy.dead_wrapper", || dead_wrapper(engine));
 }

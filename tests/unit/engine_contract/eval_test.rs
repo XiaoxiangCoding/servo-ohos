@@ -173,15 +173,17 @@ fn the_name_of_a_compiled_function_is_not_bound_in_its_scope(engine: &JSEngine) 
 
 
 pub fn run(engine: &JSEngine) {
-    compile_function_with_environment_chain(engine);
-    the_name_of_a_compiled_function_is_not_bound_in_its_scope(engine);
-    crate::support::record(
-        "eval.environment_chain",
-        &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
-        &[
-            "AppendToEnvironmentChain", "CompileFunction", "NewEnvironmentChain",
-            "DeleteEnvironmentChain", "JS_GetFunctionObject", "Call",
-            "JS_NewGlobalObject", "JS_NewPlainObject", "JS_SetProperty",
-        ],
-    );
+    crate::support::isolate_case("eval.environment_chain", || {
+        compile_function_with_environment_chain(engine);
+        the_name_of_a_compiled_function_is_not_bound_in_its_scope(engine);
+        crate::support::record(
+            "eval.environment_chain",
+            &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
+            &[
+                "AppendToEnvironmentChain", "CompileFunction", "NewEnvironmentChain",
+                "DeleteEnvironmentChain", "JS_GetFunctionObject", "Call",
+                "JS_NewGlobalObject", "JS_NewPlainObject", "JS_SetProperty",
+            ],
+        );
+    });
 }

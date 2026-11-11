@@ -66,6 +66,11 @@ JSONL files are written. The script always uses absolute paths for `CONTRACT_OUT
 When `CONTRACT_OUT` is unset the tests still assert their expectations, but no JSONL is written.
 The file is truncated at the start of each run and appended per case.
 
+Cases are isolated from each other. A failed assertion records
+`{"fields": {"panic": "<message>"}, "apis": []}` for that case and the run continues with the
+next case. The test still fails after every case has run, and the failure summary lists each
+failed case, so one engine defect cannot hide the cases that follow it.
+
 CI runs `coverage` after the unit tests, with `CONTRACT_OUT` pointing at the JSONL of that run. It
 checks out the `servo-quickjs` revision pinned in `support/quickjs/cargo-config.toml` and passes it
 as `QJS_DIR`, so a mozjs or shim update cannot land with a stale manifest or without cases for the
@@ -73,7 +78,8 @@ newly implemented entry points.
 
 ## Comparing
 
-Each case records its normalized value, the pending exception name, and the `apis` it calls.
+Each case records its normalized value, the pending exception name, and the `apis` it calls. A
+case that panics records a `panic` field instead.
 `compare.py` ignores the `engine` field. `known-differences.toml` remains for the legacy
 SpiderMonkey/QuickJS comparison; the QuickJS upgrade gate is the baseline checker in
 `servo-quickjs/engine-contract/tools/check_baseline.py`.

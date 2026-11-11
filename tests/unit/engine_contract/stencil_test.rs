@@ -153,25 +153,27 @@ fn explicit_stencil(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    offthread_success(engine);
-    offthread_failure(engine);
-    explicit_stencil(engine);
-    record(
-        "stencil.offthread_compile_instantiate",
-        &Observation::ok(Observed::Boolean(true)),
-        &[
-            "CompileGlobalScriptToStencil_C",
-            "ConvertFrontendErrorsToRuntimeErrors",
-            "DeleteOwningCompileOptions",
-            "DestroyFrontendContext",
-            "HadFrontendErrors",
-            "InstantiateGlobalStencil",
-            "NewFrontendContext",
-            "OwningCompileOptions_for_fc",
-            "SetNativeStackQuota",
-            "StencilAddRef",
-            "StencilRelease",
-            "ThreadStackQuotaForSize",
-        ],
-    );
+    crate::support::isolate_case("stencil.offthread_compile_instantiate", || {
+        offthread_success(engine);
+        offthread_failure(engine);
+        explicit_stencil(engine);
+        record(
+            "stencil.offthread_compile_instantiate",
+            &Observation::ok(Observed::Boolean(true)),
+            &[
+                "CompileGlobalScriptToStencil_C",
+                "ConvertFrontendErrorsToRuntimeErrors",
+                "DeleteOwningCompileOptions",
+                "DestroyFrontendContext",
+                "HadFrontendErrors",
+                "InstantiateGlobalStencil",
+                "NewFrontendContext",
+                "OwningCompileOptions_for_fc",
+                "SetNativeStackQuota",
+                "StencilAddRef",
+                "StencilRelease",
+                "ThreadStackQuotaForSize",
+            ],
+        );
+    });
 }
