@@ -5,7 +5,8 @@
 #   tools/run.sh sm       [cargo test args...]
 #   tools/run.sh qjs      [cargo test args...]
 #   tools/run.sh diff
-#   tools/run.sh coverage
+#   tools/run.sh manifest   check api-manifest.toml against the current mozjs bindgen and shim
+#   tools/run.sh coverage   check the coverage of api-manifest.toml in sm.jsonl
 #   tools/run.sh all
 #
 # Environment:
@@ -45,7 +46,21 @@ run_diff() {
         tests/unit/engine_contract/known-differences.toml
 }
 
+run_manifest() {
+    [[ -f "$qjs_dir/mozjs/upstream-bindgen/jsapi.rs" ]] || {
+        echo "missing $qjs_dir/mozjs/upstream-bindgen; set QJS_DIR to a servo-quickjs checkout" >&2
+        return 1
+    }
+    cd "$repo_root"
+    python3 tests/unit/engine_contract/tools/api_inventory.py verify \
+        --manifest tests/unit/engine_contract/api-manifest.toml \
+        --bindgen-dir "$qjs_dir/mozjs/upstream-bindgen" \
+        --engine-src "$qjs_dir/mozjs/src/engine" \
+        --stub-bindings "$qjs_dir/mozjs/stub_bindings.py"
+}
+
 run_coverage() {
+    run_manifest
     [[ -f "$out_dir/sm.jsonl" ]] || {
         echo "missing $out_dir/sm.jsonl; run '$0 sm' first" >&2
         return 1
@@ -64,6 +79,7 @@ case "$command" in
     sm) run_sm "$@" ;;
     qjs) run_qjs "$@" ;;
     diff) run_diff ;;
+    manifest) run_manifest ;;
     coverage) run_coverage ;;
     all)
         run_sm
@@ -72,7 +88,7 @@ case "$command" in
         run_coverage
         ;;
     *)
-        echo "usage: $0 {sm|qjs|diff|coverage|all} [cargo test args...]" >&2
+        echo "usage: $0 {sm|qjs|diff|manifest|coverage|all} [cargo test args...]" >&2
         exit 2
         ;;
 esac

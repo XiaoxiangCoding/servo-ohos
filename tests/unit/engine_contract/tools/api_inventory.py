@@ -9,6 +9,8 @@ Usage:
   api_inventory.py generate --bindgen-dir DIR --engine-src DIR --output FILE \
       [--quickjs-revision REV] [--stub-bindings FILE]
   api_inventory.py check --manifest FILE
+  api_inventory.py verify --manifest FILE --bindgen-dir DIR --engine-src DIR \
+      [--stub-bindings FILE]
 
 ``--engine-src`` normally points at ``servo-quickjs/mozjs/src/engine``. A function whose body is
 empty or only ignores arguments is classified as ``empty`` because the generated forwarding stub
@@ -43,6 +45,11 @@ def sha256(path):
         for block in iter(lambda: file.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def read_text(path):
+    with open(path, encoding="utf-8") as file:
+        return file.read()
 
 
 def find_matching(text, index, opening, closing):
@@ -89,7 +96,7 @@ def is_empty_body(body):
 def engine_functions(engine_src, stub):
     functions = {}
     for path in sorted(glob.glob(os.path.join(engine_src, "**", "*.rs"), recursive=True)):
-        text = open(path, encoding="utf-8").read()
+        text = read_text(path)
         for match in re.finditer(r"pub\(crate\) unsafe fn (\w+)\(", text):
             name = match.group(1)
             params_end = find_matching(text, match.end() - 1, "(", ")")
@@ -119,7 +126,7 @@ def bindgen_entries(bindgen_dir, stub):
     entries = []
     for source in ("jsapi", "gluebindings"):
         path = os.path.join(bindgen_dir, source + ".rs")
-        text = open(path, encoding="utf-8").read()
+        text = read_text(path)
         text = re.sub(
             r"#\[allow\(clippy::unnecessary_operation, clippy::identity_op\)\]\s*const _: \(\) = \{.*?\n\s*\};\n",
             "",
@@ -198,10 +205,7 @@ def write_manifest(path, entries, metadata):
         file.write("\n".join(lines))
 
 
-def generate(args):
-    stub = load_stub_module(args.stub_bindings)
-    bindgen_dir = args.bindgen_dir
-    engine_src = args.engine_src
+def generate_entries(bindgen_dir, engine_src, stub):
     definitions = bindgen_entries(bindgen_dir, stub)
     functions = engine_functions(engine_src, stub)
 
@@ -237,7 +241,7 @@ def generate(args):
     # Variadic declarations are not converted into stubs by stub_bindings.py, but they are part
     # of the C surface. Count them from the source for the record only.
     for source in ("jsapi", "gluebindings"):
-        text = open(os.path.join(bindgen_dir, source + ".rs"), encoding="utf-8").read()
+        text = read_text(os.path.join(bindgen_dir, source + ".rs"))
         pos = 0
         block = re.compile(r'(?m)^(?P<indent>[ \t]*)(?:unsafe )?extern "C" \{')
         while True:
@@ -251,6 +255,14 @@ def generate(args):
                 if function and re.search(r"(^|,)\s*\.\.\.\s*$", function.group("params")):
                     counts["variadic"] += 1
             pos = end + 1
+
+    return entries, counts
+
+
+def generate(args):
+    stub = load_stub_module(args.stub_bindings)
+    bindgen_dir = args.bindgen_dir
+    entries, counts = generate_entries(bindgen_dir, args.engine_src, stub)
 
     digest = hashlib.sha256()
     for source in ("jsapi", "gluebindings"):
@@ -269,13 +281,27 @@ def generate(args):
     )
 
 
-def check(args):
-    with open(args.manifest, "rb") as file:
+def load_manifest(path):
+    with open(path, "rb") as file:
         document = tomllib.load(file)
     metadata = document.get("manifest")
     entries = document.get("api", [])
     if not metadata or not entries:
-        raise SystemExit("manifest is missing [manifest] or [[api]]")
+        raise SystemExit(f"{path}: manifest is missing [manifest] or [[api]]")
+    return metadata, entries
+
+
+def inventory(entries):
+    """The part of the manifest that coverage depends on: which entries exist and how they are
+    classified. Line numbers and reasons may move without changing coverage."""
+    return {
+        (entry["name"], entry["arity"], entry["source"]): entry["status"]
+        for entry in entries
+    }
+
+
+def check(args):
+    metadata, entries = load_manifest(args.manifest)
     problems = []
     ids = set()
     for entry in entries:
@@ -311,6 +337,53 @@ def check(args):
     return 0
 
 
+def diff_inventory(recorded, generated):
+    removed = sorted(set(recorded) - set(generated))
+    added = sorted(set(generated) - set(recorded))
+    changed = sorted(
+        key for key in set(recorded) & set(generated)
+        if recorded[key] != generated[key]
+    )
+    lines = []
+    for key in added:
+        lines.append(f"  + {key[0]}({key[1]}) [{key[2]}]: {generated[key]}")
+    for key in removed:
+        lines.append(f"  - {key[0]}({key[1]}) [{key[2]}]: {recorded[key]}")
+    for key in changed:
+        lines.append(
+            f"  ~ {key[0]}({key[1]}) [{key[2]}]: {recorded[key]} -> {generated[key]}"
+        )
+    return lines
+
+
+def verify(args):
+    """Fail when the checked-in manifest no longer describes the bindgen and shim inputs."""
+    _, recorded_entries = load_manifest(args.manifest)
+    stub = load_stub_module(args.stub_bindings)
+    recorded = inventory(recorded_entries)
+    generated_entries = generate_entries(
+        args.bindgen_dir, args.engine_src, stub
+    )[0]
+    generated = inventory(generated_entries)
+    if recorded == generated:
+        print(
+            f"manifest ok: {len(recorded)} entries match "
+            f"{args.bindgen_dir} and {args.engine_src}"
+        )
+        return 0
+    print(
+        f"error: {args.manifest} is stale for the current mozjs bindgen or QuickJS shim",
+        file=sys.stderr,
+    )
+    for line in diff_inventory(recorded, generated):
+        print(line, file=sys.stderr)
+    print(
+        "Regenerate the manifest, add or update contract cases, then rerun coverage.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -326,6 +399,13 @@ def main(argv):
     check_parser = subparsers.add_parser("check")
     check_parser.add_argument("--manifest", required=True)
     check_parser.set_defaults(func=check)
+
+    verify_parser = subparsers.add_parser("verify")
+    verify_parser.add_argument("--manifest", required=True)
+    verify_parser.add_argument("--bindgen-dir", required=True)
+    verify_parser.add_argument("--engine-src", required=True)
+    verify_parser.add_argument("--stub-bindings", required=True)
+    verify_parser.set_defaults(func=verify)
 
     args = parser.parse_args(argv)
     return args.func(args)
