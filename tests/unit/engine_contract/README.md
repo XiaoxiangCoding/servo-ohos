@@ -11,14 +11,14 @@ The suite currently runs 76 cases over the mozjs surface Servo reaches:
 
 | Area | Cases | Source |
 | --- | --- | --- |
-| Buffer and typed arrays | 26 | `buffer.rs`, `typed_array.rs` |
-| Objects and properties | 11 | `objects.rs`, `objects_extra.rs`, `property.rs` |
-| Modules and clone | 11 | `module.rs`, `clone.rs` |
-| Strings, eval and stencil | 5 | `strings.rs`, `strings_extra.rs`, `eval.rs`, `eval_ext.rs`, `stencil.rs` |
-| Promises, realm and runtime | 5 | `promises.rs`, `realm.rs`, `runtime.rs` |
-| Class, misc and errors | 5 | `class.rs`, `misc.rs`, `errors.rs` |
-| Elements, calls and rooters | 5 | `contract.rs` |
-| Proxies, realms and principals | 8 | `proxy.rs` |
+| Buffer and typed arrays | 26 | `buffer_test.rs`, `typed_array_test.rs` |
+| Objects and properties | 11 | `objects_test.rs`, `objects_extra_test.rs`, `property_test.rs` |
+| Modules and clone | 11 | `module_test.rs`, `clone_test.rs` |
+| Strings, eval and stencil | 5 | `strings_test.rs`, `strings_extra_test.rs`, `eval_test.rs`, `eval_ext_test.rs`, `stencil_test.rs` |
+| Promises, realm and runtime | 5 | `promises_test.rs`, `realm_test.rs`, `runtime_test.rs` |
+| Class, misc and errors | 5 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
+| Elements, calls and rooters | 5 | `contract_test.rs` |
+| Proxies, realms and principals | 8 | `proxy_test.rs` |
 
 Every case records the `apis` it calls. The coverage gate compares those names with
 `api-manifest.toml`; the current release run covers all 631 `implemented` entries.

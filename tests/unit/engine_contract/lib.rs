@@ -10,72 +10,72 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
 #[cfg(test)]
-mod buffer;
+mod buffer_test;
 #[cfg(test)]
-mod class;
+mod class_test;
 #[cfg(test)]
-mod clone;
+mod clone_test;
 #[cfg(test)]
-mod contract;
+mod contract_test;
 #[cfg(test)]
-mod errors;
+mod errors_test;
 #[cfg(test)]
-mod eval;
+mod eval_test;
 #[cfg(test)]
-mod eval_ext;
+mod eval_ext_test;
 #[cfg(test)]
-mod misc;
+mod misc_test;
 #[cfg(test)]
-mod module;
+mod module_test;
 #[cfg(test)]
-mod objects;
+mod objects_test;
 #[cfg(test)]
-mod objects_extra;
+mod objects_extra_test;
 #[cfg(test)]
-mod property;
+mod property_test;
 #[cfg(test)]
-mod proxy;
+mod proxy_test;
 #[cfg(test)]
-mod promises;
+mod promises_test;
 #[cfg(test)]
-mod realm;
+mod realm_test;
 #[cfg(test)]
-mod runtime;
+mod runtime_test;
 #[cfg(test)]
-mod strings;
+mod strings_test;
 #[cfg(test)]
-mod strings_extra;
+mod strings_extra_test;
 #[cfg(test)]
 mod support;
 #[cfg(test)]
-mod stencil;
+mod stencil_test;
 #[cfg(test)]
-mod typed_array;
+mod typed_array_test;
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn engine_contract() {
         let engine = js::rust::JSEngine::init().expect("initializing the JS engine");
-        super::buffer::run(&engine);
-        super::class::run(&engine);
-        super::clone::run(&engine);
-        super::contract::run(&engine);
-        super::errors::run(&engine);
-        super::eval::run(&engine);
-        super::eval_ext::run(&engine);
-        super::misc::run(&engine);
-        super::module::run(&engine);
-        super::objects::run(&engine);
-        super::objects_extra::run(&engine);
-        super::property::run(&engine);
-        super::proxy::run(&engine);
-        super::promises::run(&engine);
-        super::realm::run(&engine);
-        super::runtime::run(&engine);
-        super::strings::run(&engine);
-        super::strings_extra::run(&engine);
-        super::stencil::run(&engine);
-        super::typed_array::run(&engine);
+        super::buffer_test::run(&engine);
+        super::class_test::run(&engine);
+        super::clone_test::run(&engine);
+        super::contract_test::run(&engine);
+        super::errors_test::run(&engine);
+        super::eval_test::run(&engine);
+        super::eval_ext_test::run(&engine);
+        super::misc_test::run(&engine);
+        super::module_test::run(&engine);
+        super::objects_test::run(&engine);
+        super::objects_extra_test::run(&engine);
+        super::property_test::run(&engine);
+        super::proxy_test::run(&engine);
+        super::promises_test::run(&engine);
+        super::realm_test::run(&engine);
+        super::runtime_test::run(&engine);
+        super::strings_test::run(&engine);
+        super::strings_extra_test::run(&engine);
+        super::stencil_test::run(&engine);
+        super::typed_array_test::run(&engine);
     }
 }
