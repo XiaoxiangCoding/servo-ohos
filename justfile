@@ -37,17 +37,10 @@ genui-min-size:
 
 # Run the shared engine contract tests on SpiderMonkey (the reference) and QuickJS, then compare.
 contract-sm *args:
-    mkdir -p target/contract
-    CONTRACT_ENGINE=spidermonkey CONTRACT_OUT=target/contract/sm.jsonl \
-        cargo test --release -p engine_contract_tests {{args}}
+    tests/unit/engine_contract/tools/run.sh sm {{args}}
 
 contract-qjs *args:
-    mkdir -p target/contract
-    CONTRACT_ENGINE=quickjs CONTRACT_OUT=target/contract/qjs.jsonl \
-        cargo test --release -p engine_contract_tests --features js-quickjs \
-        --config 'patch.crates-io.mozjs.path="../servo-quickjs/mozjs"' {{args}}
+    tests/unit/engine_contract/tools/run.sh qjs {{args}}
 
 contract-diff:
-    python3 tests/unit/engine_contract/tools/compare.py \
-        target/contract/sm.jsonl target/contract/qjs.jsonl \
-        tests/unit/engine_contract/known-differences.toml
+    tests/unit/engine_contract/tools/run.sh diff
