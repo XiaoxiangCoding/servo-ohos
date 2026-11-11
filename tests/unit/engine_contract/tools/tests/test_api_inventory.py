@@ -131,16 +131,17 @@ class ManifestVerifyTest(unittest.TestCase):
         )
 
     def generate(self):
-        api_inventory.generate(
-            types.SimpleNamespace(
-                bindgen_dir=self.bindgen,
-                engine_src=self.engine,
-                stub_bindings=self.stub,
-                output=self.manifest,
-                mozjs_version="0.26.14",
-                quickjs_revision="test",
+        with contextlib.redirect_stdout(io.StringIO()):
+            api_inventory.generate(
+                types.SimpleNamespace(
+                    bindgen_dir=self.bindgen,
+                    engine_src=self.engine,
+                    stub_bindings=self.stub,
+                    output=self.manifest,
+                    mozjs_version="0.26.14",
+                    quickjs_revision="test",
+                )
             )
-        )
 
     def verify(self):
         output = io.StringIO()
@@ -187,7 +188,76 @@ class ManifestVerifyTest(unittest.TestCase):
         self.write_engine(2, body="")
         result, output = self.verify()
         self.assertEqual(result, 1)
-        self.assertIn("~ Existing(1) [jsapi]: implemented -> empty", output)
+        self.assertIn("~ Existing(1) [jsapi]: status implemented -> empty", output)
+
+    def test_verify_ignores_renamed_parameters(self):
+        self.generate()
+        self.write(
+            os.path.join(self.bindgen, "jsapi.rs"),
+            """
+            unsafe extern "C" {
+                pub fn Existing(renamed: i32) -> i32;
+            }
+            """,
+        )
+        result, output = self.verify()
+        self.assertEqual(result, 0, output)
+
+    def test_verify_reports_a_changed_parameter_type(self):
+        self.generate()
+        self.write(
+            os.path.join(self.bindgen, "jsapi.rs"),
+            """
+            unsafe extern "C" {
+                pub fn Existing(x: u64) -> i32;
+            }
+            """,
+        )
+        result, output = self.verify()
+        self.assertEqual(result, 1)
+        self.assertIn("~ Existing(1) [jsapi]: signature", output)
+        self.assertIn("recorded:  (i32) -> i32", output)
+        self.assertIn("generated: (u64) -> i32", output)
+
+    def test_verify_reports_a_changed_return_type(self):
+        self.generate()
+        self.write(
+            os.path.join(self.bindgen, "jsapi.rs"),
+            """
+            unsafe extern "C" {
+                pub fn Existing(x: i32) -> u64;
+            }
+            """,
+        )
+        result, output = self.verify()
+        self.assertEqual(result, 1)
+        self.assertIn("signature", output)
+        self.assertIn("recorded:  (i32) -> i32", output)
+        self.assertIn("generated: (i32) -> u64", output)
+
+    def test_verify_reports_reordered_parameters_with_the_same_types(self):
+        self.generate()
+        self.write(
+            os.path.join(self.bindgen, "jsapi.rs"),
+            """
+            unsafe extern "C" {
+                pub fn Existing(x: i32, y: i32) -> i32;
+            }
+            """,
+        )
+        self.generate()
+        self.write(
+            os.path.join(self.bindgen, "jsapi.rs"),
+            """
+            unsafe extern "C" {
+                pub fn Existing(x: i32, y: u64) -> i32;
+            }
+            """,
+        )
+        result, output = self.verify()
+        self.assertEqual(result, 1)
+        self.assertIn("recorded:  (i32, i32) -> i32", output)
+        self.assertIn("generated: (i32, u64) -> i32", output)
 
 
 if __name__ == "__main__":
