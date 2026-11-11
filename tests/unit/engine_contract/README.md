@@ -25,6 +25,12 @@ Every case records the `apis` it calls. The coverage gate compares those names w
 
 Known-unimplemented entries are outside this suite's scope until their capability is enabled.
 
+`coverage` first regenerates the inventory from the `servo-quickjs` checkout in `QJS_DIR` and
+compares it with `api-manifest.toml`. It fails if a bindgen entry was added, removed, or changed
+status without regenerating the manifest. This makes a mozjs upgrade that adds entry points fail
+before coverage is computed: the manifest must be updated, then every new `implemented` entry needs
+a case. Line-number and file movements in the shim do not fail this check.
+
 ## Reachability scope
 
 `contract-scope.toml` records the mozjs entries Servo production code actually reaches. It is
@@ -75,7 +81,8 @@ python3 -m unittest discover -s tests/unit/engine_contract/tools/tests
 tests/unit/engine_contract/tools/run.sh sm       # SpiderMonkey reference
 tests/unit/engine_contract/tools/run.sh qjs      # local servo-quickjs checkout
 tests/unit/engine_contract/tools/run.sh diff
-tests/unit/engine_contract/tools/run.sh coverage
+tests/unit/engine_contract/tools/run.sh manifest # api-manifest.toml matches the shim and bindgen
+tests/unit/engine_contract/tools/run.sh coverage # manifest check plus API coverage
 ```
 
 Set `QJS_DIR` if `servo-quickjs` is not next to this checkout. Set `OUT_DIR` to change where the
@@ -83,6 +90,11 @@ JSONL files are written. The script always uses absolute paths for `CONTRACT_OUT
 
 When `CONTRACT_OUT` is unset the tests still assert their expectations, but no JSONL is written.
 The file is truncated at the start of each run and appended per case.
+
+CI runs `coverage` after the unit tests, with `CONTRACT_OUT` pointing at the JSONL of that run. It
+checks out the `servo-quickjs` revision pinned in `support/quickjs/cargo-config.toml` and passes it
+as `QJS_DIR`, so a mozjs or shim update cannot land with a stale manifest or without cases for the
+newly implemented entry points.
 
 ## Comparing
 
