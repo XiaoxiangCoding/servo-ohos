@@ -5,314 +5,3670 @@
 #
 # consumer: who reaches the entry through its own source.
 # mode: direct = called by Servo; indirect = reached through a trap/hook Servo installs.
-# provenance: the Servo files that establish reachability.
+# provenance: the Servo `path:line` call sites that establish reachability.
 # impact: the observable behavior this entry participates in.
-# expect: the shim status this scope requires; only implemented entries are gated today.
+# expect: the manifest status the scope requires (implemented, empty, or todo).
+# coverage: covered = a contract case guarantees this entry; pending = reachable but not yet
+# covered. Only `implemented` + `covered` entries are gated by check_scope.py.
+#
+# Regenerate with:
+#   python3 tests/unit/engine_contract/tools/scan_scope.py export \
+#     --servo-dir . --manifest tests/unit/engine_contract/api-manifest.toml \
+#     --covered /path/to/qjs.jsonl --output tests/unit/engine_contract/contract-scope.toml
 
 [[entry]]
-name = "CompileModule1"
+name = "AddAssociatedMemory"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
-impact = "module-compilation"
+provenance = [
+  "components/script_bindings/reflector.rs:191",
+  "components/script_bindings/reflector.rs:240",
+  "components/script_bindings/reflector.rs:259",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "AddPromiseReactions"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:399",
+  "components/script/scripting/module_loading.rs:225",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "AddRawValueRoot"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/permanent_root.rs:36",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "AppendToIdVector"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1661",
+  "components/script/dom/window/windowproxy.rs:1705",
+  "components/script/window_named_properties.rs:166",
+  "components/script_bindings/observablearray.rs:599",
+  "components/script_bindings/proxyhandler.rs:1031",
+  "components/script_bindings/proxyhandler.rs:1046",
+  "components/script_bindings/proxyhandler.rs:1112",
+  "components/script_bindings/proxyhandler.rs:319",
+  "components/script_bindings/proxyhandler.rs:501",
+  "components/script_bindings/proxyhandler.rs:505",
+  "components/script_bindings/utils.rs:791",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ArrayBufferClone"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:434",
+  "components/script_bindings/buffer_source.rs:437",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ArrayBufferCopyData"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:675",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "AtomToLinearString"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:166",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "Call"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/worklet/paintworkletglobalscope.rs:338",
+  "components/script_bindings/proxyhandler.rs:841",
+  "components/script_bindings/proxyhandler.rs:899",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CallJitSetterOp"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:653",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CallObjectTracer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/trace.rs:67",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CallOriginalPromiseReject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:719",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CallScriptTracer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/trace.rs:231",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CallStringTracer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/trace.rs:261",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CallValueTracer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/trace.rs:248",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CheckRegExpSyntax"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2772",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CheckedUnwrapStatic"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:664",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ClearKeptObjects"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:321",
+]
+impact = "promise-job"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "CollectServoSizes"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1130",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "Compile1"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/globalscope/globalscope.rs:2631",
+  "components/script/scripting/script_execution.rs:202",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CompileFunction"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/event/eventtarget.rs:759",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "CompileJsonModule1"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
+provenance = [
+  "components/script/scripting/script_module.rs:292",
+]
 impact = "module-compilation"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "CompileModule1"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:231",
+]
+impact = "module-compilation"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "Construct1"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/node/customelementregistry.rs:1175",
+  "components/script/dom/node/customelementregistry.rs:961",
+  "components/script/dom/worklet/paintworkletglobalscope.rs:219",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "ContextOptionsRef"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:722",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ConvertFrontendErrorsToRuntimeErrors"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_execution.rs:135",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CopyJSStructuredCloneData"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/structuredclone.rs:687",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "CreateDefaultExportSyntheticModule"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
+provenance = [
+  "components/script/scripting/script_module.rs:349",
+  "components/script/scripting/script_module.rs:370",
+]
 impact = "module-compilation"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "LoadRequestedModules"
+name = "CreateForwardingProxyHandler"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-loading"
+provenance = [
+  "components/script_bindings/observablearray.rs:93",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "LoadRequestedModules1"
+name = "CreateJobQueue"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-loading"
+provenance = [
+  "components/script/runtime/job_queue.rs:67",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "FinishLoadingImportedModule"
+name = "CreateProxyHandler"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-loading"
+provenance = [
+  "components/script/window_named_properties.rs:75",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "FinishLoadingImportedModuleFailed"
+name = "CreateRustJSPrincipals"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-loading"
+provenance = [
+  "components/script_bindings/principals.rs:29",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "FinishLoadingImportedModuleFailedWithPendingException"
+name = "CreateWrapperProxyHandler"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-loading"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1790",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "CurrentGlobalOrNull"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/globalscope/globalscope.rs:2826",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DateGetMsecSinceEpoch"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:1371",
+  "components/script/dom/indexeddb/key.rs:273",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DefineFunctionWithReserved"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:780",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DeleteJobQueue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:80",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DeleteWrapperProxyHandler"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1826",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DestroyRustJSPrincipals"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/principals.rs:21",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DetachArrayBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:304",
+  "components/script_bindings/buffer_source.rs:308",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "DisableJitBackend"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/engine/init.rs:168",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "DispatchableRun"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1408",
+]
+impact = "jsapi-other"
+expect = "todo"
+coverage = "pending"
+
+[[entry]]
+name = "DumpJSStack"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/window.rs:4605",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "EnqueueMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:201",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "EnterRealm"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/callback.rs:371",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ExecuteRegExpNoStatics"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2822",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "FinishLoadingDynamicImportedModule"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "dynamic-import"
-
-[[entry]]
-name = "ModuleLink"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-linking"
-
-[[entry]]
-name = "ModuleEvaluate"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-evaluation"
-
-[[entry]]
-name = "GetModuleNamespace"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "module-namespace"
-
-[[entry]]
-name = "GetModuleRequestSpecifier"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
+provenance = [
+  "components/script/scripting/module_loading.rs:247",
+]
 impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "GetModuleRequestType"
+name = "FinishLoadingImportedModule"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
+provenance = [
+  "components/script/scripting/module_loading.rs:254",
+]
 impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "SetModuleLoadHook"
+name = "FinishLoadingImportedModuleFailed"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
+provenance = [
+  "components/script/scripting/module_loading.rs:518",
+  "components/script/scripting/module_loading.rs:537",
+]
 impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "FinishLoadingImportedModuleFailedWithPendingException"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/module_loading.rs:441",
+  "components/script/scripting/module_loading.rs:461",
+  "components/script/scripting/module_loading.rs:507",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "GCTraceKindToAscii"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/trace.rs:234",
+  "components/script/dom/bindings/trace.rs:251",
+  "components/script/dom/bindings/trace.rs:264",
+  "components/script_bindings/trace.rs:70",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetArrayBufferByteLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:351",
+  "components/script_bindings/buffer_source.rs:355",
+  "components/script_bindings/buffer_source.rs:366",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetArrayLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:484",
+  "components/script/dom/indexeddb/key.rs:328",
+  "components/script_bindings/observablearray.rs:249",
+  "components/script_bindings/observablearray.rs:259",
+  "components/script_bindings/observablearray.rs:308",
+  "components/script_bindings/observablearray.rs:430",
+  "components/script_bindings/observablearray.rs:481",
+  "components/script_bindings/observablearray.rs:523",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetBuiltinClass"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:387",
+  "components/script/dom/console.rs:588",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetExecutionGlobalFromJSMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:260",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetFunctionNativeReserved"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:454",
+  "components/script/dom/promise/promise.rs:463",
+  "components/script/scripting/module_loading.rs:83",
+  "components/script/scripting/script_module.rs:816",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetFunctionRealm"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:705",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetJobQueue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:211",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetLengthOfJSStructuredCloneData"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/structuredclone.rs:685",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetLinearStringCharAt"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:171",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetLinearStringLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:167",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "GetModuleLoadHook"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
+provenance = [
+  "components/script/scripting/script_module.rs:662",
+]
 impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "SetModuleMetadataHook"
+name = "GetModuleNamespace"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
-impact = "import-meta"
+provenance = [
+  "components/script/scripting/module_loading.rs:334",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "SetModulePrivate"
+name = "GetModuleRequestSpecifier"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
-impact = "module-private"
+provenance = [
+  "components/script/scripting/script_module.rs:721",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "JS_GetModulePrivate"
+name = "GetModuleRequestType"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
-impact = "module-private"
+provenance = [
+  "components/script/scripting/module_loading.rs:429",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "SetScriptPrivateReferenceHooks"
+name = "GetNonCCWObjectGlobal"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_module.rs"]
-impact = "module-private"
+provenance = [
+  "components/script/dom/globalscope/globalscope.rs:2018",
+  "components/script/runtime/script_runtime.rs:1088",
+  "components/script_bindings/interface.rs:673",
+  "components/script_bindings/utils.rs:535",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "RegisterScriptEnvironmentPreparer"
+name = "GetObjectProto"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/runtime/script_runtime.rs"]
-impact = "module-evaluation"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:367",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "RunScriptEnvironmentPreparerClosure"
+name = "GetObjectRealmOrNull"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/runtime/script_runtime.rs"]
-impact = "module-evaluation"
+provenance = [
+  "components/script/dom/window/window.rs:3562",
+  "components/script_bindings/proxyhandler.rs:1136",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "ThrowOnModuleEvaluationFailure"
+name = "GetPromiseIsHandled"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/script_execution.rs"]
-impact = "module-evaluation"
+provenance = [
+  "components/script/dom/promise/promise.rs:412",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetPromiseState"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:355",
+  "components/script/dom/promise/promise.rs:361",
+  "components/script/dom/promise/promise.rs:367",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetPromiseUserInputEventHandlingState"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:277",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetPropertyKeys"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:150",
+  "components/script_bindings/observablearray.rs:605",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetProxyHandlerExtra"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/conversions.rs:221",
+  "components/script_bindings/observablearray.rs:190",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetProxyHandlerFamily"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:101",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetProxyPrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1195",
+  "components/script_bindings/observablearray.rs:200",
+  "components/script_bindings/proxyhandler.rs:225",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetProxyReservedSlot"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1836",
+  "components/script/dom/window/windowproxy.rs:1855",
+  "components/script_bindings/conversions.rs:260",
+  "components/script_bindings/conversions.rs:577",
+  "components/script_bindings/observablearray.rs:143",
+  "components/script_bindings/observablearray.rs:212",
+  "components/script_bindings/proxyhandler.rs:530",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRealmErrorPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/constructor.rs:180",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRealmGlobalOrNull"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:712",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRealmIteratorPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/constructor.rs:183",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRealmKeyObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:581",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRealmObjectPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/constructor.rs:123",
+  "components/script_bindings/constructor.rs:186",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRealmPrincipals"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:1144",
+  "components/script_bindings/proxyhandler.rs:1146",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetRustJSPrincipalsPrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/principals.rs:20",
+  "components/script_bindings/principals.rs:53",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetSavedFrameColumn"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:1408",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetSavedFrameFunctionDisplayName"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:1363",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetSavedFrameLine"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:1397",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetSavedFrameSource"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:1380",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetScriptedCallerGlobal"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/settings_stack.rs:69",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetStaticPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/window_named_properties.rs:207",
+  "components/script_bindings/proxyhandler.rs:216",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetWeakMapEntry"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:597",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetWellKnownSymbol"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/window_named_properties.rs:165",
+  "components/script/window_named_properties.rs:92",
+  "components/script_bindings/interface.rs:282",
+  "components/script_bindings/proxyhandler.rs:482",
+  "components/script_bindings/proxyhandler.rs:504",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "GetWindowProxyClass"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/event_loop/script_thread.rs:864",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "HadFrontendErrors"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_execution.rs:132",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "HasAnyMicroTasks"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:234",
+  "components/script/runtime/job_queue.rs:244",
+  "components/script/runtime/job_queue.rs:333",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "HasDefinedArrayBufferDetachKey"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:704",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "HideScriptedCaller"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/settings_stack.rs:77",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "InitConsumeStreamCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:695",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "InitializeMemoryReporter"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/engine/init.rs:179",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "InstantiateGlobalStencil"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_execution.rs:120",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsArgumentsObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/event_loop/webdriver_handlers.rs:370",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsArrayBufferObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:285",
+  "components/script/dom/indexeddb/key.rs:286",
+  "components/script/dom/indexeddb/key.rs:307",
+  "components/script_bindings/buffer_source.rs:210",
+  "components/script_bindings/buffer_source.rs:415",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsArrayObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:322",
+  "components/script/dom/indexeddb/key.rs:513",
+  "components/script_bindings/conversions.rs:528",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsCallable"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/node/customelementregistry.rs:356",
+  "components/script/dom/worklet/paintworkletglobalscope.rs:626",
+  "components/script_bindings/callback.rs:315",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsConstructor"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/node/customelementregistry.rs:403",
+  "components/script/dom/worklet/paintworkletglobalscope.rs:606",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsDetachedArrayBufferObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:287",
+  "components/script/dom/indexeddb/key.rs:299",
+  "components/script_bindings/buffer_source.rs:332",
+  "components/script_bindings/buffer_source.rs:336",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsJSMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:249",
+  "components/script/runtime/job_queue.rs:335",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "IsPromiseObject"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/scripting/module_loading.rs"]
-impact = "dynamic-import"
+provenance = [
+  "components/script/dom/promise/promise.rs:176",
+  "components/script/dom/promise/promise.rs:230",
+  "components/script/dom/promise/promise.rs:375",
+  "components/script/scripting/module_loading.rs:243",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "JS_NewPlainObject"
+name = "IsProxyHandlerFamily"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/record.rs", "components/script_bindings/constructor.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "JS_DefineProperty3"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/interface.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "JS_DefineProperty4"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/interface.rs", "components/script/scripting/script_module.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "JS_DefineProperty5"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/interface.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "JS_DefinePropertyById"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/proxyhandler.rs", "components/script_bindings/observablearray.rs", "components/script/dom/window/windowproxy.rs"]
+provenance = [
+  "components/script_bindings/conversions.rs:239",
+]
 impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "JS_DefinePropertyById5"
+name = "IsSharableCompartment"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/interface.rs"]
-impact = "dom-object-model"
+provenance = [
+  "components/script_bindings/interface.rs:209",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
 
 [[entry]]
-name = "JS_HasProperty"
+name = "IsSystemCompartment"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/utils.rs"]
-impact = "dom-object-model"
+provenance = [
+  "components/script_bindings/interface.rs:209",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
 
 [[entry]]
-name = "JS_HasPropertyById"
+name = "IsWeakMapObject"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/utils.rs", "components/script_bindings/observablearray.rs", "components/script/dom/window/windowproxy.rs"]
+provenance = [
+  "components/script_bindings/proxyhandler.rs:553",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "IsWindowProxy"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/conversions.rs:573",
+  "components/script_bindings/proxyhandler.rs:674",
+]
 impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "JS_HasOwnProperty"
+name = "IsWrapper"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/utils.rs", "components/script/event_loop/webdriver_handlers.rs"]
-impact = "dom-object-model"
+provenance = [
+  "components/script/dom/bindings/utils.rs:70",
+  "components/script_bindings/conversions.rs:294",
+  "components/script_bindings/conversions.rs:301",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "JS_HasOwnPropertyById"
+name = "JS_AddExtraGCRootsTracer"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/dom/window/windowproxy.rs", "components/script/dom/indexeddb/key.rs"]
-impact = "dom-proxy"
+provenance = [
+  "components/script/runtime/script_runtime.rs:614",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_AddInterruptCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/serviceworker/serviceworkerglobalscope.rs:469",
+  "components/script/dom/workers/workerglobalscope.rs:699",
+  "components/script/event_loop/script_thread.rs:865",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "JS_AlreadyHasOwnPropertyById"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/proxyhandler.rs"]
-impact = "dom-proxy"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:84",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "JS_DeletePropertyById"
+name = "JS_AtomizeAndPinString"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/proxyhandler.rs", "components/script_bindings/observablearray.rs", "components/script/dom/window/windowproxy.rs"]
-impact = "dom-proxy"
+provenance = [
+  "components/script_bindings/interface.rs:518",
+  "components/script_bindings/proxyhandler.rs:1038",
+  "components/script_bindings/proxyhandler.rs:316",
+  "components/script_bindings/proxyhandler.rs:498",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
-name = "JS_GetOwnPropertyDescriptorById"
+name = "JS_AtomizeStringN"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/proxyhandler.rs", "components/script_bindings/observablearray.rs", "components/script_bindings/js.rs"]
-impact = "dom-proxy"
-
-[[entry]]
-name = "JS_GetPropertyDescriptorById"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/import.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "JS_GetPrototype"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/js.rs", "components/script_bindings/utils.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "JS_SetPrototype"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/import.rs", "components/script_bindings/observablearray.rs", "components/script/dom/bindings/constructor.rs"]
-impact = "dom-object-model"
-
-[[entry]]
-name = "Construct"
-consumer = ["servo"]
-mode = "direct"
-provenance = ["components/script_bindings/buffer_source.rs", "components/script_bindings/dom.rs", "components/script/dom/element/element.rs"]
-impact = "dom-object-model"
+provenance = [
+  "components/script_bindings/utils.rs:789",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "JS_CallFunctionName"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script/event_loop/webdriver_handlers.rs"]
-impact = "dom-object-model"
+provenance = [
+  "components/script/event_loop/webdriver_handlers.rs:468",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "covered"
 
 [[entry]]
-name = "JS_SetProperty"
+name = "JS_ClearPendingException"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/import.rs", "components/script_bindings/utils.rs"]
+provenance = [
+  "components/script/dom/bindings/error.rs:429",
+  "components/script/dom/console.rs:1093",
+  "components/script/dom/console.rs:786",
+  "components/script/dom/console.rs:800",
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2784",
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2804",
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2836",
+  "components/script/dom/promise/promise.rs:320",
+  "components/script/dom/promise/promise.rs:348",
+  "components/script/dom/worklet/paintworkletglobalscope.rs:225",
+  "components/script/dom/worklet/paintworkletglobalscope.rs:352",
+  "components/script/dom/xmlhttprequest/xmlhttprequest.rs:1544",
+  "components/script/fetch/body.rs:857",
+  "components/script/scripting/script_execution.rs:292",
+  "components/script/scripting/script_execution.rs:304",
+  "components/script/scripting/script_module.rs:109",
+  "components/script_bindings/buffer_source.rs:455",
+  "components/script_bindings/buffer_source.rs:746",
+  "components/script_bindings/buffer_source.rs:990",
+  "components/script_bindings/utils.rs:718",
+]
+impact = "exception"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DefineDebuggerObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/debugger/debuggerglobalscope.rs:142",
+]
+impact = "jsapi-other"
+expect = "todo"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DefineFunctions"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:637",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DefineProperties"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:630",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DefineProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:60",
+]
 impact = "dom-object-model"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DefineProperty3"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:359",
+  "components/script_bindings/interface.rs:456",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_DefineProperty4"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:769",
+  "components/script_bindings/interface.rs:520",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_DefineProperty5"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:532",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_DefinePropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1356",
+  "components/script_bindings/observablearray.rs:404",
+  "components/script_bindings/proxyhandler.rs:131",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_DefinePropertyById5"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:288",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_DefineUCProperty2"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/record.rs:196",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DeletePropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1630",
+  "components/script_bindings/observablearray.rs:458",
+  "components/script_bindings/proxyhandler.rs:162",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_DeprecatedStringHasLatin1Chars"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/conversions.rs:148",
+  "components/script_bindings/domstring.rs:449",
+  "components/script_bindings/str.rs:225",
+  "components/script_bindings/utils.rs:886",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DequeueNextMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:240",
+  "components/script/runtime/job_queue.rs:334",
+]
+impact = "promise-job"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_DropPrincipals"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/principals.rs:80",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ErrorFromException"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/error.rs:259",
+]
+impact = "exception"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ExecuteScript"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/globalscope/globalscope.rs:2644",
+  "components/script/scripting/script_execution.rs:274",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_FireOnNewGlobalObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:195",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ForwardGetPropertyTo"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1486",
+  "components/script_bindings/observablearray.rs:500",
+  "components/script_bindings/utils.rs:149",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ForwardSetPropertyTo"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1533",
+  "components/script_bindings/observablearray.rs:665",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_FreezeObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:904",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GC"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/testing/testutils.rs:35",
+  "components/script/dom/window/window.rs:1115",
+  "components/script/dom/worklet/worklet.rs:697",
+  "components/script/event_loop/script_thread.rs:2021",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetArrayBufferViewBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:293",
+  "components/script_bindings/buffer_source.rs:278",
+  "components/script_bindings/buffer_source.rs:300",
+  "components/script_bindings/buffer_source.rs:330",
+  "components/script_bindings/buffer_source.rs:349",
+  "components/script_bindings/buffer_source.rs:431",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetArrayBufferViewByteLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:363",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetArrayBufferViewByteOffset"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:374",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetArrayBufferViewType"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:406",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetElement"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:349",
+  "components/script/dom/console.rs:350",
+  "components/script_bindings/observablearray.rs:272",
+  "components/script_bindings/observablearray.rs:439",
+  "components/script_bindings/observablearray.rs:495",
+  "components/script_bindings/observablearray.rs:540",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetFunctionArity"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:506",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetFunctionDisplayId"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:505",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetFunctionId"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:504",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetFunctionObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/function.rs:58",
+  "components/script/dom/event/eventtarget.rs:781",
+  "components/script/dom/promise/promise.rs:256",
+  "components/script/dom/promise/promise.rs:492",
+  "components/script/scripting/module_loading.rs:203",
+  "components/script/scripting/module_loading.rs:210",
+  "components/script/scripting/script_module.rs:793",
+  "components/script_bindings/interface.rs:356",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetGCParameter"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/worklet/worklet.rs:686",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetGlobalFromScript"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/module_loading.rs:409",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetLatin1StringCharsAndLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/conversions.rs:151",
+  "components/script_bindings/domstring.rs:57",
+  "components/script_bindings/utils.rs:890",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetModulePrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:754",
+  "components/script/scripting/script_module.rs:820",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_GetOwnPropertyDescriptorById"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:163",
+  "components/script_bindings/observablearray.rs:549",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_GetPendingException"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/error.rs:428",
+  "components/script/dom/stream/readablestreamdefaultcontroller.rs:654",
+  "components/script/dom/stream/readablestreamdefaultcontroller.rs:687",
+  "components/script/fetch/body.rs:856",
+  "components/script/scripting/script_module.rs:108",
+  "components/script_bindings/buffer_source.rs:454",
+  "components/script_bindings/buffer_source.rs:745",
+  "components/script_bindings/buffer_source.rs:989",
+  "components/script_bindings/utils.rs:715",
+]
+impact = "exception"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetPromiseResult"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:309",
+  "components/script/runtime/script_runtime.rs:500",
+]
+impact = "promise-job"
+expect = "implemented"
+coverage = "pending"
 
 [[entry]]
 name = "JS_GetProperty"
 consumer = ["servo"]
 mode = "direct"
-provenance = ["components/script_bindings/js.rs", "components/script_bindings/callback.rs", "components/script/dom/bindings/error.rs"]
+provenance = [
+  "components/script_bindings/js.rs:131",
+]
 impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_GetPropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/animations/keyframeeffect.rs:437",
+  "components/script_bindings/js.rs:97",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:138",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_GetReservedSlot"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/conversions.rs:257",
+  "components/script_bindings/observablearray.rs:145",
+  "components/script_bindings/utils.rs:115",
+  "components/script_bindings/wrap.rs:137",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetScriptPrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/module_loading.rs:402",
+  "components/script/scripting/script_execution.rs:453",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetScriptedCallerPrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/event_loop/timers.rs:1127",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetStringLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:504",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetTwoByteStringCharsAndLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/conversions.rs:161",
+  "components/script_bindings/str.rs:280",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_GetTypedArrayLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:385",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_HasOwnProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/event_loop/webdriver_handlers.rs:350",
+  "components/script_bindings/utils.rs:324",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_HasOwnPropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:345",
+  "components/script/dom/window/windowproxy.rs:1422",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_HasProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:247",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_HasPropertyById"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1419",
+  "components/script_bindings/observablearray.rs:579",
+  "components/script_bindings/utils.rs:141",
+  "components/script_bindings/utils.rs:347",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_HoldPrincipals"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/principals.rs:46",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IdToValue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:85",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IndexToId"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:340",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_InitDestroyPrincipalsCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:622",
+]
+impact = "runtime"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_InitReadPrincipalsCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:623",
+]
+impact = "runtime"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IsArrayBufferViewObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:285",
+  "components/script_bindings/buffer_source.rs:213",
+  "components/script_bindings/buffer_source.rs:298",
+  "components/script_bindings/buffer_source.rs:328",
+  "components/script_bindings/buffer_source.rs:347",
+  "components/script_bindings/buffer_source.rs:475",
+]
+impact = "typed-array"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IsDeadWrapper"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:614",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IsExceptionPending"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:78",
+]
+impact = "exception"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IsGlobalObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:759",
+  "components/script_bindings/utils.rs:840",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IsIdentifier"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:158",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IsTypedArrayObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:397",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_IterateCompartments"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:223",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_LinkConstructorAndPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:326",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_MayResolveStandardClass"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:807",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_MaybeGC"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/window.rs:1120",
+]
+impact = "gc-rooting"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewBigInt64ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:944",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewBigUint64ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:950",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewDataView"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:850",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewEnumerateStandardClasses"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:760",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewFloat16ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:956",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewFloat32ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:926",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewFloat64ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:932",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewFunction"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/function.rs:50",
+  "components/script/dom/promise/promise.rs:248",
+  "components/script_bindings/interface.rs:354",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewGlobalObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:173",
+]
+impact = "runtime"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewInt16ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:908",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewInt32ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:914",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewInt8ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:890",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:106",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewObjectWithGivenProto"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:119",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewPlainObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/testing/testbinding.rs:239",
+  "components/script/dom/testing/testbinding.rs:566",
+  "components/script_bindings/constructor.rs:125",
+  "components/script_bindings/record.rs:187",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_NewStringCopyN"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:761",
+  "components/script_bindings/conversions.rs:119",
+  "components/script_bindings/interface.rs:488",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewStringCopyUTF8N"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:355",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewUint16ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:902",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewUint32ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:920",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewUint8ArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:896",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_NewUint8ClampedArrayWithBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:938",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ParseJSON"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/xmlhttprequest/xmlhttprequest.rs:1538",
+  "components/script/fetch/body.rs:849",
+  "components/script_webcrypto/subtlecrypto.rs:4372",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ReadBytes"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/principals.rs:78",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ReadStructuredClone"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/structuredclone.rs:760",
+]
+impact = "structured-clone"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ReadUint32Pair"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/principals.rs:67",
+  "components/script/dom/bindings/structuredclone.rs:175",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ResolveStandardClass"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:841",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetGCCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:627",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetGCParameter"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:787",
+  "components/script/runtime/script_runtime.rs:797",
+  "components/script/runtime/script_runtime.rs:803",
+  "components/script/runtime/script_runtime.rs:809",
+  "components/script/runtime/script_runtime.rs:811",
+  "components/script/runtime/script_runtime.rs:818",
+  "components/script/runtime/script_runtime.rs:821",
+  "components/script/runtime/script_runtime.rs:825",
+  "components/script/runtime/script_runtime.rs:833",
+  "components/script/runtime/script_runtime.rs:840",
+  "components/script/runtime/script_runtime.rs:843",
+  "components/script/runtime/script_runtime.rs:846",
+  "components/script/runtime/script_runtime.rs:849",
+  "components/script/runtime/script_runtime.rs:852",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetGlobalJitCompilerOption"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:723",
+  "components/script/runtime/script_runtime.rs:728",
+  "components/script/runtime/script_runtime.rs:733",
+  "components/script/runtime/script_runtime.rs:758",
+  "components/script/runtime/script_runtime.rs:764",
+  "components/script/runtime/script_runtime.rs:773",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetImmutablePrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/window_named_properties.rs:274",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetOffthreadIonCompilationEnabled"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:763",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetPendingException"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/js.rs:71",
+]
+impact = "exception"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetProperty"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:276",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_SetPrototype"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/constructor.rs:237",
+  "components/script_bindings/observablearray.rs:224",
+]
+impact = "dom-object-model"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "JS_SetReservedSlot"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:186",
+  "components/script_bindings/interface.rs:190",
+  "components/script_bindings/observablearray.rs:160",
+  "components/script_bindings/wrap.rs:124",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetSecurityCallbacks"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:620",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_SetTrustedPrincipals"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:169",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JS_Stringify"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:730",
+]
+impact = "string"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_TransplantObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:998",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_TypeOfValue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/event_loop/webdriver_handlers.rs:357",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ValueToFunction"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:499",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_ValueToSource"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:174",
+  "components/script_bindings/proxyhandler.rs:274",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_WrapObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/constructor.rs:233",
+  "components/script_bindings/callback.rs:340",
+  "components/script_bindings/interface.rs:677",
+  "components/script_bindings/proxyhandler.rs:591",
+  "components/script_bindings/wrap.rs:113",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_WrapValue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:654",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_WriteBytes"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/principals.rs:50",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_WriteStructuredClone"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/structuredclone.rs:665",
+]
+impact = "structured-clone"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JS_WriteUint32PairUnchecked"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/principals.rs:43",
+  "components/script/dom/bindings/structuredclone.rs:223",
+  "components/script/dom/bindings/structuredclone.rs:228",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "JobQueueIsEmpty"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:245",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "JobQueueMayNotBeEmpty"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:200",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "LeaveRealm"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/callback.rs:374",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "LoadRequestedModules1"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/module_loading.rs:218",
+  "components/script/scripting/module_loading.rs:274",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "MapEntries"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:334",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "MapSize"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/console.rs:368",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "MaybeGetHostDefinedDataFromJSMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:265",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "MaybeGetPromiseFromJSMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:275",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ModuleEvaluate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/module_loading.rs:317",
+  "components/script/scripting/script_execution.rs:372",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "ModuleLink"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/module_loading.rs:118",
+  "components/script/scripting/module_loading.rs:302",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "NewArrayBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:985",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewArrayBufferWithContents"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:755",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewArrayObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/worklet/paintworkletglobalscope.rs:325",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewArrayObject1"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:93",
+  "components/script_bindings/observablearray.rs:103",
+  "components/script_bindings/observablearray.rs:220",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewDateObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:1343",
+  "components/script/dom/indexeddb/key.rs:58",
+  "components/script/dom/indexeddb/key.rs:582",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewExternalArrayBuffer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_webgpu/datablock.rs:98",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewFunctionWithReserved"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:489",
+  "components/script/scripting/module_loading.rs:188",
+  "components/script/scripting/module_loading.rs:195",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewPromiseObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:258",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewProxyObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/window_named_properties.rs:262",
+  "components/script_bindings/observablearray.rs:110",
+  "components/script_bindings/wrap.rs:87",
+  "components/script_bindings/wrap.rs:96",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewUCRegExpObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2801",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewWeakMapObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:538",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "NewWindowProxy"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1814",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ObjectIsDate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:1365",
+  "components/script/dom/indexeddb/key.rs:265",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ObjectIsRegExp"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/html/form_controls/htmlinputelement.rs:2815",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RUST_FUNCTION_VALUE_TO_JITINFO"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:442",
+  "components/script_bindings/utils.rs:697",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RUST_INTERNED_STRING_TO_JSID"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:1041",
+  "components/script_bindings/proxyhandler.rs:318",
+  "components/script_bindings/proxyhandler.rs:500",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RUST_JSID_IS_VOID"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:267",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RUST_SYMBOL_TO_JSID"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:286",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RegisterScriptEnvironmentPreparer"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:710",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "RejectPromise"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:347",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RemoveAssociatedMemory"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/reflector.rs:177",
+  "components/script_bindings/reflector.rs:189",
+]
+impact = "gc-rooting"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RemoveRawValueRoot"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/permanent_root.rs:52",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ResolvePromise"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:319",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RunJSMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:291",
+]
+impact = "promise-job"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "RunScriptEnvironmentPreparerClosure"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1391",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "RuntimeHeapState"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/script_runtime.rs:23",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SameValue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/indexeddb/key.rs:231",
+  "components/script/dom/node/customelementregistry.rs:1194",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetAnyPromiseIsHandled"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:417",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetArrayLength"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/observablearray.rs:281",
+  "components/script_bindings/observablearray.rs:449",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetBuildId"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1034",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "SetDOMCallbacks"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:647",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetDOMProxyInformation"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:100",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetDataPropertyDescriptor"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:261",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetFunctionNativeReserved"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:494",
+  "components/script/dom/promise/promise.rs:495",
+  "components/script/scripting/module_loading.rs:204",
+  "components/script/scripting/module_loading.rs:211",
+  "components/script/scripting/module_loading.rs:85",
+  "components/script/scripting/script_module.rs:795",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetGCSliceCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:634",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "SetJobQueue"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:72",
+]
+impact = "promise-job"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetModuleLoadHook"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:666",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "SetModuleMetadataHook"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:667",
+]
+impact = "module-compilation"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "SetModulePrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:252",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "SetPreserveWrapperCallbacks"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:648",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "SetProcessBuildIdOp"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:750",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "SetPromiseRejectionTrackerCallback"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:704",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetPromiseUserInputEventHandlingState"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/promise/promise.rs:265",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetPropertyIgnoringNamedGetter"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:746",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetProxyPrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:248",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetProxyReservedSlot"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1002",
+  "components/script/dom/window/windowproxy.rs:241",
+  "components/script/dom/window/windowproxy.rs:304",
+  "components/script/dom/window/windowproxy.rs:977",
+  "components/script/dom/window/windowproxy.rs:979",
+  "components/script/dom/window/windowproxy.rs:992",
+  "components/script_bindings/observablearray.rs:124",
+  "components/script_bindings/observablearray.rs:158",
+  "components/script_bindings/observablearray.rs:175",
+  "components/script_bindings/observablearray.rs:230",
+  "components/script_bindings/proxyhandler.rs:544",
+  "components/script_bindings/wrap.rs:107",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetRealmPrincipals"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/window.rs:3564",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetScriptPrivate"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_execution.rs:461",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetScriptPrivateReferenceHooks"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_module.rs:668",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "SetUpEventLoopDispatch"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:684",
+]
+impact = "jsapi-other"
+expect = "empty"
+coverage = "pending"
+
+[[entry]]
+name = "SetWeakMapEntry"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/proxyhandler.rs:659",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetWindowProxy"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1009",
+  "components/script/dom/window/windowproxy.rs:248",
+  "components/script/dom/window/windowproxy.rs:311",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "SetWindowProxyClass"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/event_loop/script_thread.rs:864",
+]
+impact = "dom-proxy"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "StealArrayBufferContents"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/buffer_source.rs:735",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "StreamConsumerConsumeChunk"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1226",
+]
+impact = "jsapi-other"
+expect = "todo"
+coverage = "pending"
+
+[[entry]]
+name = "StreamConsumerNoteResponseURLs"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1262",
+]
+impact = "jsapi-other"
+expect = "todo"
+coverage = "pending"
+
+[[entry]]
+name = "StreamConsumerStreamEnd"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1232",
+]
+impact = "jsapi-other"
+expect = "todo"
+coverage = "pending"
+
+[[entry]]
+name = "StreamConsumerStreamError"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/script_runtime.rs:1240",
+]
+impact = "jsapi-other"
+expect = "todo"
+coverage = "pending"
+
+[[entry]]
+name = "StringIsArrayIndex"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/utils.rs:180",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ThrowOnModuleEvaluationFailure"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/scripting/script_execution.rs:384",
+]
+impact = "module-loading"
+expect = "implemented"
+coverage = "covered"
+
+[[entry]]
+name = "ToJSON"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/str.rs:199",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "ToMaybeWrappedJSMicroTask"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/runtime/job_queue.rs:259",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "UncheckedUnwrapObject"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/interface.rs:441",
+  "components/script_bindings/proxyhandler.rs:611",
+]
+impact = "realm"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "UnhideScriptedCaller"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script_bindings/settings_stack.rs:108",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "UnwrapObjectDynamic"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/constructor.rs:80",
+  "components/script_bindings/conversions.rs:296",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "UnwrapObjectStatic"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/constructor.rs:109",
+  "components/script/dom/bindings/utils.rs:56",
+  "components/script/dom/node/customelementregistry.rs:396",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "WriteBytesToJSStructuredCloneData"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/bindings/structuredclone.rs:754",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
+
+[[entry]]
+name = "int_to_jsid"
+consumer = ["servo"]
+mode = "direct"
+provenance = [
+  "components/script/dom/window/windowproxy.rs:1660",
+  "components/script/dom/window/windowproxy.rs:1704",
+  "components/script_bindings/observablearray.rs:598",
+  "components/script_bindings/proxyhandler.rs:1030",
+  "components/script_bindings/proxyhandler.rs:1111",
+]
+impact = "jsapi-other"
+expect = "implemented"
+coverage = "pending"
