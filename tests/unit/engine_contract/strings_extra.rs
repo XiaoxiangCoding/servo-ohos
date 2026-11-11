@@ -187,25 +187,28 @@ mod encode_abi {
         Handle, Latin1CharsZ, MutableHandle as RawMutableHandle, JSString, TwoByteChars,
         TwoByteCharsZ, UTF8Chars, jsid,
     };
+    use js::rust::Handle as SafeHandle;
+    use js::rust::MutableHandle as SafeMutableHandle;
     use js::rust::wrappers2::{
-        JS_EncodeStringToASCII, JS_EncodeStringToLatin1, JS_EncodeStringToUTF8,
+        JS_CharsToId, JS_EncodeStringToASCII, JS_EncodeStringToLatin1, JS_EncodeStringToUTF8,
         LossyTwoByteCharsToNewLatin1CharsZ, LossyUTF8CharsToNewTwoByteCharsZ,
         UTF8CharsToNewTwoByteCharsZ,
     };
 
     pub unsafe fn encode_string_to_ascii(cx: &mut JSContext, string: *mut JSString) -> *mut c_char {
-        JS_EncodeStringToASCII(cx, string).cast()
+        JS_EncodeStringToASCII(cx, string) as *mut c_char
     }
 
     pub unsafe fn encode_string_to_latin1(cx: &mut JSContext, string: *mut JSString) -> *mut c_char {
-        JS_EncodeStringToLatin1(cx, string).cast()
+        JS_EncodeStringToLatin1(cx, string) as *mut c_char
     }
 
     pub unsafe fn encode_string_to_utf8(
         cx: &mut JSContext,
         string: Handle<*mut JSString>,
     ) -> *mut c_char {
-        JS_EncodeStringToUTF8(cx, string).cast()
+        let string = SafeHandle::from_marked_location(string.ptr);
+        JS_EncodeStringToUTF8(cx, string) as *mut c_char
     }
 
     pub unsafe fn chars_to_id(
@@ -213,7 +216,8 @@ mod encode_abi {
         chars: TwoByteChars,
         id: RawMutableHandle<jsid>,
     ) -> bool {
-        JS_CharsToId(cx, chars, id.into())
+        let id = SafeMutableHandle::from_marked_location(id.ptr);
+        JS_CharsToId(cx, chars, id)
     }
 
     pub unsafe fn lossy_two_byte_to_latin1(

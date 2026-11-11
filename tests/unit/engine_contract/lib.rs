@@ -34,6 +34,8 @@ mod objects_extra;
 #[cfg(test)]
 mod property;
 #[cfg(test)]
+mod proxy;
+#[cfg(test)]
 mod promises;
 #[cfg(test)]
 mod realm;
@@ -67,6 +69,7 @@ mod tests {
         super::objects::run(&engine);
         super::objects_extra::run(&engine);
         super::property::run(&engine);
+        super::proxy::run(&engine);
         super::promises::run(&engine);
         super::realm::run(&engine);
         super::runtime::run(&engine);
