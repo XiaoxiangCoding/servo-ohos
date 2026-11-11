@@ -25,6 +25,41 @@ remaining 62 in `engine/proxy.rs` (38 reachable from Servo, 24 not called by Ser
 
 Known-unimplemented entries are outside this suite's scope until their capability is enabled.
 
+## Reachability scope
+
+`contract-scope.toml` records the mozjs entries Servo production code actually reaches. It is
+generated from source, not hand maintained:
+
+```bash
+python3 tests/unit/engine_contract/tools/scan_scope.py export \
+  --servo-dir . \
+  --manifest tests/unit/engine_contract/api-manifest.toml \
+  --covered /path/to/servo-quickjs/target/contract/qjs.jsonl \
+  --output tests/unit/engine_contract/contract-scope.toml
+```
+
+Each entry has `path:line` provenance from a resolved call site. Comments, string literals,
+`#[cfg(test)]` modules, local functions with a matching name, and Servo's own wrappers are not
+reported.
+
+The scope is layered:
+
+- `coverage = "covered"`: a contract case guarantees the entry, and `check_scope.py` fails if it
+  is no longer covered.
+- `coverage = "pending"`: the entry is reachable but has no case yet. The gate reports the count
+  and first provenance location; it does not fail.
+
+Validate a generated scope without regenerating it:
+
+```bash
+python3 tests/unit/engine_contract/tools/scan_scope.py check \
+  --servo-dir . \
+  --manifest tests/unit/engine_contract/api-manifest.toml \
+  --scope tests/unit/engine_contract/contract-scope.toml
+
+python3 -m unittest discover -s tests/unit/engine_contract/tools/tests
+```
+
 ## Engine policy
 
 - This suite is Servo's source of engine contract cases, and every case must pass on
