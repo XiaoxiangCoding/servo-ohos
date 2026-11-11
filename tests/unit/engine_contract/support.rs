@@ -11,7 +11,7 @@ use std::sync::Once;
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
-use js::jsapi::OnNewGlobalHookOption;
+use js::jsapi::{ModuleType, OnNewGlobalHookOption, PromiseState};
 use js::jsval::{JSVal, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
@@ -33,40 +33,64 @@ pub enum Value {
     Number(f64),
     String(String),
     Object,
+    Array(Vec<Value>),
 }
 
 impl Value {
     pub fn to_json(&self) -> serde_json::Value {
         match self {
             Value::Undefined => serde_json::json!({ "type": "undefined" }),
-            Value::Null => serde_json::json!({ "type": "null" }),
-            Value::Boolean(value) => serde_json::json!({ "type": "boolean", "value": value }),
-            Value::Number(value) => serde_json::json!({ "type": "number", "value": value }),
-            Value::String(value) => serde_json::json!({ "type": "string", "value": value }),
+            Value::Null => serde_json::Value::Null,
+            Value::Boolean(value) => serde_json::Value::Bool(*value),
+            Value::Number(value) if value.is_finite() && value.fract() == 0.0 => {
+                serde_json::Number::from(*value as i64).into()
+            },
+            Value::Number(value) => serde_json::json!(value),
+            Value::String(value) => serde_json::Value::String(value.clone()),
             Value::Object => serde_json::json!({ "type": "object" }),
+            Value::Array(values) => values.iter().map(Value::to_json).collect(),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Observation {
-    pub value: Value,
+    pub fields: Vec<(&'static str, Value)>,
     pub exception: Option<String>,
 }
 
 impl Observation {
+    pub fn new(fields: Vec<(&'static str, Value)>) -> Self {
+        Observation {
+            fields,
+            exception: None,
+        }
+    }
+
     pub fn ok(value: Value) -> Self {
         Observation {
-            value,
+            fields: vec![("value", value)],
             exception: None,
         }
     }
 
     pub fn exception(name: &str) -> Self {
         Observation {
-            value: Value::Undefined,
+            fields: Vec::new(),
             exception: Some(name.to_owned()),
         }
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        let fields = self
+            .fields
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), value.to_json()))
+            .collect::<serde_json::Map<_, _>>();
+        serde_json::json!({
+            "fields": fields,
+            "exception": self.exception,
+        })
     }
 }
 
@@ -135,6 +159,33 @@ pub fn observe(cx: &mut JSContext, value: JSVal) -> Value {
     }
 }
 
+/// Evaluates `source` and normalizes its completion value.
+pub fn eval_observe(cx: &mut JSContext, global: HandleObject, source: &str) -> Value {
+    let value = eval(cx, global, source);
+    observe(cx, value)
+}
+
+/// Returns a stable name for a promise state.
+pub fn promise_state_name(state: PromiseState) -> &'static str {
+    match state {
+        PromiseState::Pending => "pending",
+        PromiseState::Fulfilled => "fulfilled",
+        PromiseState::Rejected => "rejected",
+    }
+}
+
+/// Returns a stable name for a module request type.
+pub fn module_type_name(module_type: ModuleType) -> &'static str {
+    match module_type {
+        ModuleType::Unknown => "unknown",
+        ModuleType::JavaScript => "javascript",
+        ModuleType::JSON => "json",
+        ModuleType::CSS => "css",
+        ModuleType::Bytes => "bytes",
+        ModuleType::Text => "text",
+    }
+}
+
 /// Reads `name` from an arbitrary object.
 pub fn get_property(cx: &mut JSContext, object: JSVal, name: &CStr) -> JSVal {
     use js::rust::wrappers2::JS_GetProperty;
@@ -148,6 +199,12 @@ pub fn get_property(cx: &mut JSContext, object: JSVal, name: &CStr) -> JSVal {
         );
         value.get()
     }
+}
+
+/// Reads and normalizes `name` from an arbitrary object.
+pub fn observe_property(cx: &mut JSContext, object: JSVal, name: &CStr) -> Value {
+    let value = get_property(cx, object, name);
+    observe(cx, value)
 }
 
 static JOB_QUEUE_TRAPS: js::glue::JobQueueTraps = js::glue::JobQueueTraps {
@@ -217,11 +274,12 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
         std::fs::write(&path, b"").expect("truncating CONTRACT_OUT");
     });
     let engine = std::env::var("CONTRACT_ENGINE").unwrap_or_else(|_| "unknown".to_owned());
+    let observation = observation.to_json();
     let line = serde_json::json!({
         "id": case,
         "engine": engine,
-        "value": observation.value.to_json(),
-        "exception": observation.exception,
+        "fields": observation["fields"],
+        "exception": observation["exception"],
         "apis": apis,
     });
     let mut file = OpenOptions::new()
