@@ -44,6 +44,7 @@ fn property_cases(engine: &JSEngine) {
         record(
             "property.get_missing",
             &Observation::ok(observe(cx, value.get())),
+            &["JS_NewGlobalObject", "JS_NewPlainObject", "JS_GetProperty"],
         );
 
         rooted!(&in(cx) let answer = Int32Value(42));
@@ -63,6 +64,12 @@ fn property_cases(engine: &JSEngine) {
         record(
             "property.set_then_get",
             &Observation::ok(observe(cx, value.get())),
+            &[
+                "JS_NewGlobalObject",
+                "JS_NewPlainObject",
+                "JS_SetProperty",
+                "JS_GetProperty",
+            ],
         );
 
         let attrs = (JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY) as u32;
@@ -92,6 +99,13 @@ fn property_cases(engine: &JSEngine) {
         record(
             "property.define_readonly",
             &Observation::ok(observe(cx, value.get())),
+            &[
+                "JS_NewGlobalObject",
+                "JS_NewPlainObject",
+                "JS_DefineProperty",
+                "JS_SetProperty",
+                "JS_GetProperty",
+            ],
         );
 
         let _ = global;
@@ -112,6 +126,12 @@ fn element_cases(engine: &JSEngine) {
         record(
             "element.set_then_get",
             &Observation::ok(observe(cx, value.get())),
+            &[
+                "JS_NewGlobalObject",
+                "NewArrayObject",
+                "JS_SetElement",
+                "JS_GetElement",
+            ],
         );
 
         // Indexed access and `array[1]` must agree.
@@ -121,6 +141,12 @@ fn element_cases(engine: &JSEngine) {
         record(
             "element.script_view",
             &Observation::ok(Value::Boolean(true)),
+            &[
+                "JS_NewGlobalObject",
+                "NewArrayObject",
+                "JS_SetElement",
+                "JS_GetElement",
+            ],
         );
     });
 }
@@ -142,6 +168,7 @@ fn call_cases(engine: &JSEngine) {
         record(
             "call.return_value",
             &Observation::ok(observe(cx, rval.get())),
+            &["JS_NewGlobalObject", "JS_CallFunctionValue"],
         );
 
         let thrower = eval(cx, global, "(function () { throw new TypeError('boom'); })");
@@ -167,6 +194,13 @@ fn call_cases(engine: &JSEngine) {
         record(
             "call.throw_pending_exception",
             &Observation::exception(&name),
+            &[
+                "JS_NewGlobalObject",
+                "JS_CallFunctionValue",
+                "JS_IsExceptionPending",
+                "JS_GetPendingException",
+                "JS_ClearPendingException",
+            ],
         );
     });
 }
@@ -190,7 +224,16 @@ fn buffer_cases(engine: &JSEngine) {
             "buffer.byteLength === 8 && new Uint8Array(buffer)[7] === 9"
         ));
         assert!(ToBoolean(ok.handle()));
-        record("buffer.new_and_write", &Observation::ok(Value::Number(9.0)));
+        record(
+            "buffer.new_and_write",
+            &Observation::ok(Value::Number(9.0)),
+            &[
+                "JS_NewGlobalObject",
+                "NewArrayBuffer",
+                "GetArrayBufferByteLength",
+                "GetArrayBufferData",
+            ],
+        );
 
         assert!(DetachArrayBuffer(cx, buffer.handle()));
         assert_eq!(GetArrayBufferByteLength(buffer.get()), 0);
@@ -198,7 +241,16 @@ fn buffer_cases(engine: &JSEngine) {
         assert!(data.is_null());
         rooted!(&in(cx) let detached = eval(cx, global, "buffer.byteLength === 0"));
         assert!(ToBoolean(detached.handle()));
-        record("buffer.detach", &Observation::ok(Value::Number(0.0)));
+        record(
+            "buffer.detach_contract",
+            &Observation::ok(Value::Number(0.0)),
+            &[
+                "JS_NewGlobalObject",
+                "DetachArrayBuffer",
+                "GetArrayBufferByteLength",
+                "GetArrayBufferData",
+            ],
+        );
     });
 }
 
@@ -222,6 +274,10 @@ fn rooter_cases(engine: &JSEngine) {
             traced || cfg!(feature = "js-quickjs"),
             "custom rooter trace was not called"
         );
-        record("rooter.trace_on_gc", &Observation::ok(Value::Boolean(traced)));
+        record(
+            "rooter.trace_on_gc",
+            &Observation::ok(Value::Boolean(traced)),
+            &["JS_NewGlobalObject", "JS_GC"],
+        );
     });
 }

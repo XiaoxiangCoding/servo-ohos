@@ -7,25 +7,32 @@ test source never names an engine and never uses `mozjs::quickjs` or `qjs::`.
 
 ## Scope
 
-The first slice covers 10 cases in 5 capability areas:
+The suite currently runs 68 cases over the mozjs surface Servo reaches:
 
-| Area | Cases |
-| --- | --- |
-| Property | `property.get_missing`, `property.set_then_get`, `property.define_readonly` |
-| Element | `element.set_then_get`, `element.script_view` |
-| Call | `call.return_value`, `call.throw_pending_exception` |
-| Buffer | `buffer.new_and_write`, `buffer.detach` |
-| Rooter | `rooter.trace_on_gc` |
+| Area | Cases | Source |
+| --- | --- | --- |
+| Buffer and typed arrays | 26 | `buffer.rs`, `typed_array.rs` |
+| Objects and properties | 11 | `objects.rs`, `objects_extra.rs`, `property.rs` |
+| Modules and clone | 11 | `module.rs`, `clone.rs` |
+| Strings, eval and stencil | 5 | `strings.rs`, `strings_extra.rs`, `eval.rs`, `eval_ext.rs`, `stencil.rs` |
+| Promises, realm and runtime | 5 | `promises.rs`, `realm.rs`, `runtime.rs` |
+| Class, misc and errors | 5 | `class.rs`, `misc.rs`, `errors.rs` |
+| Elements, calls and rooters | 5 | `contract.rs` |
+
+Every case records the `apis` it calls. The coverage gate compares those names with
+`api-manifest.toml`; the current release run covers 569 of 631 `implemented` entries, with the
+remaining 62 in `engine/proxy.rs` (38 reachable from Servo, 24 not called by Servo).
 
 Known-unimplemented entries are outside this suite's scope until their capability is enabled.
 
 ## Engine policy
 
-- SpiderMonkey is the contract. A case must pass on SpiderMonkey.
-- The QuickJS run must also pass for unwrapped behavior; a shim divergence is a QuickJS defect.
-- `known-differences.toml` records each accepted defect by case and field, with an owner and
-  reason. The comparison still prints every known defect and fails on anything unlisted.
-- Do not change the shim or weaken an assertion to make this suite green.
+- This suite is Servo's source of engine contract cases, and every case must pass on
+  SpiderMonkey. It is the diagnostic reference, not the QuickJS upgrade gate.
+- The QuickJS upgrade gate lives in `servo-quickjs/engine-contract`: `qjs-baseline.jsonl` is the
+  strong gate, and a SpiderMonkey difference is review evidence rather than an automatic failure.
+- Do not weaken an assertion to make a shim green. Accepted QuickJS behavior changes are recorded
+  in the QJS baseline after review.
 
 ## Running
 
@@ -54,7 +61,7 @@ The file is truncated at the start of each run and appended per case.
 
 ## Comparing
 
-Each case records its normalized value, the pending exception name, and nothing else. The
-comparison ignores the `engine` field. A difference listed for that case and field in
-`known-differences.toml` is printed as a known QuickJS defect and does not fail the run; every
-other difference does.
+Each case records its normalized value, the pending exception name, and the `apis` it calls.
+`compare.py` ignores the `engine` field. `known-differences.toml` remains for the legacy
+SpiderMonkey/QuickJS comparison; the QuickJS upgrade gate is the baseline checker in
+`servo-quickjs/engine-contract/tools/check_baseline.py`.
