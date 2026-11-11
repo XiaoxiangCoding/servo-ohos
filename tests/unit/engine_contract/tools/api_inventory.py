@@ -93,6 +93,26 @@ def is_empty_body(body):
     return rest == "" or re.fullmatch(CONSTANT + r"( as .+)?", rest) is not None
 
 
+def split_params(params):
+    """Split a Rust parameter list at top-level commas."""
+    result = []
+    depth = 0
+    current = []
+    for char in params + ",":
+        if char in "([<{":
+            depth += 1
+        elif char in ")]>}":
+            depth -= 1
+        if char == "," and depth == 0:
+            parameter = "".join(current).strip()
+            if parameter:
+                result.append(parameter)
+            current = []
+        else:
+            current.append(char)
+    return result
+
+
 def engine_functions(engine_src, stub):
     functions = {}
     for path in sorted(glob.glob(os.path.join(engine_src, "**", "*.rs"), recursive=True)):
@@ -153,11 +173,20 @@ def bindgen_entries(bindgen_dir, stub):
                 params = function.group("params")
                 if re.search(r"(^|,)\s*\.\.\.\s*$", params):
                     continue
+                parameters = split_params(params)
+                parameter_types = []
+                for parameter in parameters:
+                    _, _, parameter_type = parameter.partition(":")
+                    parameter_types.append(" ".join(parameter_type.split()))
+                return_type = (function.group("ret") or "").strip()
+                return_type = return_type.removeprefix("->").strip() or "()"
+                signature = f"({', '.join(parameter_types)}) -> {return_type}"
                 entries.append(
                     {
                         "name": function.group("name"),
-                        "arity": len(stub.param_names(params)),
+                        "arity": len(parameters),
                         "source": source,
+                        "signature": signature,
                     }
                 )
             pos = end + 1
@@ -194,6 +223,7 @@ def write_manifest(path, entries, metadata):
         lines.append(f"arity = {entry['arity']}")
         lines.append(f"source = {quote(entry['source'])}")
         lines.append(f"status = {quote(entry['status'])}")
+        lines.append(f"signature = {quote(entry['signature'])}")
         if entry.get("file"):
             lines.append(f"file = {quote(entry['file'])}")
         if entry.get("line"):
@@ -288,6 +318,11 @@ def load_manifest(path):
     entries = document.get("api", [])
     if not metadata or not entries:
         raise SystemExit(f"{path}: manifest is missing [manifest] or [[api]]")
+    missing_signatures = [entry for entry in entries if "signature" not in entry]
+    if missing_signatures:
+        raise SystemExit(
+            f"{path}: manifest has no signatures; regenerate it with api_inventory.py generate"
+        )
     return metadata, entries
 
 
@@ -295,7 +330,10 @@ def inventory(entries):
     """The part of the manifest that coverage depends on: which entries exist and how they are
     classified. Line numbers and reasons may move without changing coverage."""
     return {
-        (entry["name"], entry["arity"], entry["source"]): entry["status"]
+        (entry["name"], entry["arity"], entry["source"]): (
+            entry.get("signature", ""),
+            entry["status"],
+        )
         for entry in entries
     }
 
@@ -346,13 +384,19 @@ def diff_inventory(recorded, generated):
     )
     lines = []
     for key in added:
-        lines.append(f"  + {key[0]}({key[1]}) [{key[2]}]: {generated[key]}")
+        lines.append(f"  + {key[0]}({key[1]}) [{key[2]}]: {generated[key][1]}")
     for key in removed:
-        lines.append(f"  - {key[0]}({key[1]}) [{key[2]}]: {recorded[key]}")
+        lines.append(f"  - {key[0]}({key[1]}) [{key[2]}]: {recorded[key][1]}")
     for key in changed:
-        lines.append(
-            f"  ~ {key[0]}({key[1]}) [{key[2]}]: {recorded[key]} -> {generated[key]}"
-        )
+        if recorded[key][1] != generated[key][1]:
+            lines.append(
+                f"  ~ {key[0]}({key[1]}) [{key[2]}]: status "
+                f"{recorded[key][1]} -> {generated[key][1]}"
+            )
+        if recorded[key][0] != generated[key][0]:
+            lines.append(f"  ~ {key[0]}({key[1]}) [{key[2]}]: signature")
+            lines.append(f"      recorded:  {recorded[key][0]}")
+            lines.append(f"      generated: {generated[key][0]}")
     return lines
 
 

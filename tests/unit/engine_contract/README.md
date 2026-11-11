@@ -27,9 +27,11 @@ Known-unimplemented entries are outside this suite's scope until their capabilit
 
 `coverage` first regenerates the inventory from the `servo-quickjs` checkout in `QJS_DIR` and
 compares it with `api-manifest.toml`. It fails if a bindgen entry was added, removed, or changed
-status without regenerating the manifest. This makes a mozjs upgrade that adds entry points fail
-before coverage is computed: the manifest must be updated, then every new `implemented` entry needs
-a case. Line-number and file movements in the shim do not fail this check.
+status or signature without regenerating the manifest. The signature records the parameter and
+return types, so changing a type, adding or removing a parameter, or reordering same-typed
+parameters fails; renaming a parameter does not. This makes a mozjs upgrade that adds entry points
+fail before coverage is computed: the manifest must be updated, then every new `implemented` entry
+needs a case. Line-number and file movements in the shim do not fail this check.
 
 ## Reachability scope
 
