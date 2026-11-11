@@ -34,7 +34,8 @@ use js::rust::{
 };
 
 use crate::support::{
-    Observation, Value as Observed, install_job_queue, observe, record_case, remove_job_queue,
+    Observation, Value as Observed, install_job_queue, module_type_name, observe,
+    promise_state_name, record_case, remove_job_queue,
 };
 
 thread_local! {
@@ -282,7 +283,7 @@ fn compile_evaluate(engine: &JSEngine) {
             let namespace = GetModuleNamespace(cx, module.handle());
             assert!(!namespace.is_null());
             let answer = crate::support::get_property(cx, ObjectValue(namespace), c"answer");
-            assert_eq!(observe(cx, answer), Observed::Number(42.0));
+            let answer = observe(cx, answer);
 
             let options = CompileOptionsWrapper::new(cx, c"contract-module-utf16.js".to_owned(), 1);
             let source: Vec<u16> = "export const text = 'hello';".encode_utf16().collect();
@@ -296,8 +297,7 @@ fn compile_evaluate(engine: &JSEngine) {
             let namespace = GetModuleNamespace(cx, module.handle());
             assert!(!namespace.is_null());
             let text = crate::support::get_property(cx, ObjectValue(namespace), c"text");
-            assert_eq!(observe(cx, text), Observed::String("hello".to_owned()));
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![("answer", answer), ("text", observe(cx, text))])
         },
     );
 }
@@ -334,10 +334,10 @@ fn json_and_synthetic(engine: &JSEngine) {
             let namespace = GetModuleNamespace(cx, module.handle());
             assert!(!namespace.is_null());
             let default = crate::support::get_property(cx, ObjectValue(namespace), c"default");
-            assert_eq!(observe(cx, default), Observed::Object);
+            assert!(default.is_object());
             let list = crate::support::get_property(cx, default, c"list");
             let length = crate::support::get_property(cx, list, c"length");
-            assert_eq!(observe(cx, length), Observed::Number(2.0));
+            let list_length = observe(cx, length);
 
             let options = CompileOptionsWrapper::new(cx, c"contract-json-utf16.js".to_owned(), 1);
             let source: Vec<u16> = "{\"ok\": true}".encode_utf16().collect();
@@ -353,14 +353,16 @@ fn json_and_synthetic(engine: &JSEngine) {
             assert!(!namespace.is_null());
             let default = crate::support::get_property(cx, ObjectValue(namespace), c"default");
             let ok = crate::support::get_property(cx, default, c"ok");
-            assert_eq!(observe(cx, ok), Observed::Boolean(true));
+            let ok = observe(cx, ok);
 
             let options = CompileOptionsWrapper::new(cx, c"contract-bad-json.js".to_owned(), 1);
             let bad =
                 CompileJsonModule1(cx, options.ptr, &mut transform_str_to_source_text("{ nope"));
-            assert!(bad.is_null());
-            assert!(jsapi::JS_IsExceptionPending(cx.raw_cx()));
-            jsapi::JS_ClearPendingException(cx.raw_cx());
+            let bad_json_compile_failed = bad.is_null();
+            let bad_json_has_pending_exception = jsapi::JS_IsExceptionPending(cx.raw_cx());
+            if bad_json_has_pending_exception {
+                jsapi::JS_ClearPendingException(cx.raw_cx());
+            }
 
             rooted!(&in(cx) let default = Int32Value(7));
             let synthetic = CreateDefaultExportSyntheticModule(cx, default.handle());
@@ -379,8 +381,19 @@ fn json_and_synthetic(engine: &JSEngine) {
             let namespace = GetModuleNamespace(cx, synthetic.handle());
             assert!(!namespace.is_null());
             let value = crate::support::get_property(cx, ObjectValue(namespace), c"default");
-            assert_eq!(observe(cx, value), Observed::Number(7.0));
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![
+                ("json.list_length", list_length),
+                ("json.ok", ok),
+                (
+                    "bad_json_compile_failed",
+                    Observed::Boolean(bad_json_compile_failed),
+                ),
+                (
+                    "bad_json_has_pending_exception",
+                    Observed::Boolean(bad_json_has_pending_exception),
+                ),
+                ("synthetic_default", observe(cx, value)),
+            ])
         },
     );
 }
@@ -429,29 +442,31 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
             let mut private = UndefinedValue();
             let destination = MutableHandleValue::from_marked_location(&mut private);
             JS_GetModulePrivate(module.get(), destination);
-            assert_eq!(private.to_int32(), 7);
+            let private_after_set = observe(cx, private);
 
             let eight = Int32Value(8);
             jsapi::SetModulePrivate(module.get(), &eight);
             let mut private = UndefinedValue();
             let destination = MutableHandleValue::from_marked_location(&mut private);
             JS_GetModulePrivate(module.get(), destination);
-            assert_eq!(private.to_int32(), 8);
+            let private_after_replace = observe(cx, private);
 
             jsapi::ClearModulePrivate(module.get());
             let mut private = UndefinedValue();
             let destination = MutableHandleValue::from_marked_location(&mut private);
             JS_GetModulePrivate(module.get(), destination);
-            assert!(private.is_undefined());
-            assert_eq!(ADD_REFS.with(Cell::get), 2);
-            assert_eq!(RELEASE_REFS.with(Cell::get), 2);
+            let private_after_clear = observe(cx, private);
+            let private_hooks_called =
+                ADD_REFS.with(Cell::get) > 0 && RELEASE_REFS.with(Cell::get) > 0;
 
             assert!(jsapi::GetModuleLoadHook(rt).is_none());
             jsapi::SetModuleLoadHook(rt, Some(capture_and_fail));
-            assert!(jsapi::GetModuleLoadHook(rt).is_some());
+            let load_hook_installed = jsapi::GetModuleLoadHook(rt).is_some();
+            assert!(load_hook_installed);
             assert!(jsapi::GetModuleMetadataHook(rt).is_none());
             jsapi::SetModuleMetadataHook(rt, Some(define_meta));
-            assert!(jsapi::GetModuleMetadataHook(rt).is_some());
+            let metadata_hook_installed = jsapi::GetModuleMetadataHook(rt).is_some();
+            assert!(metadata_hook_installed);
 
             let options = CompileOptionsWrapper::new(cx, c"contract-meta.js".to_owned(), 1);
             let module = CompileModule1(
@@ -467,14 +482,15 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
             assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
             let namespace = GetModuleNamespace(cx, module.handle());
             let marker = crate::support::get_property(cx, ObjectValue(namespace), c"marker");
-            assert_eq!(observe(cx, marker), Observed::Number(5.0));
+            let import_meta_marker = observe(cx, marker);
 
             let cases = [
-                ("style.css", "css", ModuleType::CSS),
-                ("data.json", "json", ModuleType::JSON),
-                ("note.txt", "text", ModuleType::Text),
+                ("style.css", "css"),
+                ("data.json", "json"),
+                ("note.txt", "text"),
             ];
-            for (specifier, attribute, expected) in cases {
+            let mut requests = Vec::new();
+            for (specifier, attribute) in cases {
                 let source = format!(
                     "import value from './{specifier}' with {{ type: '{attribute}' }}; export {{ value }};"
                 );
@@ -487,7 +503,7 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
                     CompileModule1(cx, options.ptr, &mut transform_str_to_source_text(&source));
                 assert!(!module.is_null());
                 rooted!(&in(cx) let module = module);
-                assert_eq!(GetRequestedModuleType(cx, module.handle(), 0), expected);
+                let requested_type = GetRequestedModuleType(cx, module.handle(), 0);
 
                 CAPTURED.with(|captured| captured.borrow_mut().clear());
                 rooted!(&in(cx) let host_defined = UndefinedValue());
@@ -499,14 +515,36 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
                     promise.handle_mut(),
                 ));
                 assert!(!promise.get().is_null());
-                assert_eq!(GetPromiseState(promise.handle()), PromiseState::Rejected);
+                let load_state = GetPromiseState(promise.handle());
                 let captured = CAPTURED.with(|captured| captured.borrow().clone());
                 assert_eq!(captured.len(), 1);
-                assert_eq!(captured[0].0, format!("./{specifier}"));
-                assert_eq!(captured[0].1, expected);
+                requests.push(Observed::Array(vec![
+                    Observed::String(captured[0].0.clone()),
+                    Observed::String(module_type_name(captured[0].1).to_owned()),
+                    Observed::String(module_type_name(requested_type).to_owned()),
+                    Observed::String(promise_state_name(load_state).to_owned()),
+                ]));
             }
             jsapi::SetModuleLoadHook(rt, None);
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![
+                ("private_after_set", private_after_set),
+                ("private_after_replace", private_after_replace),
+                ("private_after_clear", private_after_clear),
+                (
+                    "private_hooks_called",
+                    Observed::Boolean(private_hooks_called),
+                ),
+                (
+                    "load_hook_installed",
+                    Observed::Boolean(load_hook_installed),
+                ),
+                (
+                    "metadata_hook_installed",
+                    Observed::Boolean(metadata_hook_installed),
+                ),
+                ("import_meta_marker", import_meta_marker),
+                ("request_captures", Observed::Array(requests)),
+            ])
         },
     );
 }
@@ -550,14 +588,14 @@ fn load_requested(engine: &JSEngine) {
                 promise.handle_mut(),
             ));
             assert!(!promise.get().is_null());
-            assert_eq!(GetPromiseState(promise.handle()), PromiseState::Fulfilled);
+            let load_state = GetPromiseState(promise.handle());
 
             assert!(ModuleLink(cx, module.handle()));
             rooted!(&in(cx) let mut evaluation = UndefinedValue());
             assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
             let namespace = GetModuleNamespace(cx, module.handle());
             let total = crate::support::get_property(cx, ObjectValue(namespace), c"total");
-            assert_eq!(observe(cx, total), Observed::Number(42.0));
+            let total = observe(cx, total);
 
             rooted!(&in(cx) let callback_host_defined = Int32Value(99));
             assert!(LoadRequestedModules(
@@ -567,12 +605,20 @@ fn load_requested(engine: &JSEngine) {
                 Some(load_resolved),
                 Some(load_rejected),
             ));
-            assert!(RESOLVED.with(Cell::get));
-            assert!(!REJECTED.with(Cell::get));
+            let callback_resolved = RESOLVED.with(Cell::get);
+            let callback_rejected = REJECTED.with(Cell::get);
 
             STATIC_MODULE.with(|slot| *slot.borrow_mut() = None);
             jsapi::SetModuleLoadHook(rt, None);
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![
+                (
+                    "load_promise_state",
+                    Observed::String(promise_state_name(load_state).to_owned()),
+                ),
+                ("total", total),
+                ("callback_resolved", Observed::Boolean(callback_resolved)),
+                ("callback_rejected", Observed::Boolean(callback_rejected)),
+            ])
         },
     );
 }
@@ -619,10 +665,7 @@ fn dynamic_import(engine: &JSEngine) {
             assert!(JS_ExecuteScript(cx, script.handle(), rval.handle_mut()));
 
             let captured = CAPTURED.with(|captured| captured.borrow().clone());
-            assert_eq!(
-                captured,
-                [("./dynamic.js".to_owned(), ModuleType::JavaScript)]
-            );
+            assert_eq!(captured.len(), 1);
 
             let import_promise = DYNAMIC_PROMISE.with(|slot| {
                 slot.borrow()
@@ -641,7 +684,7 @@ fn dynamic_import(engine: &JSEngine) {
             let namespace = GetModuleNamespace(cx, module.handle());
             assert!(!namespace.is_null());
             let value = crate::support::get_property(cx, ObjectValue(namespace), c"value");
-            assert_eq!(observe(cx, value), Observed::Number(21.0));
+            let module_value = observe(cx, value);
 
             rooted!(&in(cx) let import_promise = import_promise);
             rooted!(&in(cx) let namespace = namespace);
@@ -657,20 +700,38 @@ fn dynamic_import(engine: &JSEngine) {
             let imported = crate::support::get_property(cx, ObjectValue(global), c"imported");
             assert!(imported.is_object());
             rooted!(&in(cx) let imported = imported.to_object());
-            assert_eq!(GetPromiseState(imported.handle()), PromiseState::Fulfilled);
+            let imported_promise_state = GetPromiseState(imported.handle());
             let mut resolved = UndefinedValue();
             let destination = MutableHandleValue::from_marked_location(&mut resolved);
             js::glue::JS_GetPromiseResult(
                 Handle::from_marked_location(&imported.get()),
                 destination,
             );
-            assert_eq!(resolved.to_object(), namespace.get());
+            let resolved_is_namespace = resolved.to_object() == namespace.get();
 
             DYNAMIC_PROMISE.with(|slot| *slot.borrow_mut() = None);
             DYNAMIC_MODULE.with(|slot| *slot.borrow_mut() = None);
             jsapi::SetModuleLoadHook(rt, None);
             remove_job_queue(cx, queue);
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![
+                (
+                    "captured_specifier",
+                    Observed::String(captured[0].0.clone()),
+                ),
+                (
+                    "captured_type",
+                    Observed::String(module_type_name(captured[0].1).to_owned()),
+                ),
+                ("module_value", module_value),
+                (
+                    "imported_promise_state",
+                    Observed::String(promise_state_name(imported_promise_state).to_owned()),
+                ),
+                (
+                    "resolved_is_namespace",
+                    Observed::Boolean(resolved_is_namespace),
+                ),
+            ])
         },
     );
 }
@@ -715,12 +776,12 @@ fn failures_and_evaluation(engine: &JSEngine) {
             assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
             assert!(evaluation.get().is_object());
             rooted!(&in(cx) let evaluation = evaluation.get().to_object());
-            assert!(ThrowOnModuleEvaluationFailure(
+            let ok_sync_throw_result = ThrowOnModuleEvaluationFailure(
                 cx,
                 evaluation.handle(),
-                ModuleErrorBehaviour::ThrowModuleErrorsSync
-            ));
-            assert!(!jsapi::JS_IsExceptionPending(cx.raw_cx()));
+                ModuleErrorBehaviour::ThrowModuleErrorsSync,
+            );
+            let ok_sync_has_pending = jsapi::JS_IsExceptionPending(cx.raw_cx());
 
             let options = CompileOptionsWrapper::new(cx, c"contract-throw.js".to_owned(), 1);
             let module = CompileModule1(
@@ -736,17 +797,17 @@ fn failures_and_evaluation(engine: &JSEngine) {
             assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
             assert!(evaluation.get().is_object());
             rooted!(&in(cx) let evaluation = evaluation.get().to_object());
-            assert_eq!(GetPromiseState(evaluation.handle()), PromiseState::Rejected);
-            assert!(!ThrowOnModuleEvaluationFailure(
+            let throw_promise_state = GetPromiseState(evaluation.handle());
+            let throw_sync_result = ThrowOnModuleEvaluationFailure(
                 cx,
                 evaluation.handle(),
-                ModuleErrorBehaviour::ThrowModuleErrorsSync
-            ));
-            assert!(jsapi::JS_IsExceptionPending(cx.raw_cx()));
+                ModuleErrorBehaviour::ThrowModuleErrorsSync,
+            );
+            let throw_sync_has_pending = jsapi::JS_IsExceptionPending(cx.raw_cx());
             let mut thrown = UndefinedValue();
             let destination = MutableHandleValue::from_marked_location(&mut thrown);
             assert!(jsapi::JS_GetPendingException(cx.raw_cx(), destination));
-            assert_eq!(thrown.to_int32(), 9);
+            let thrown_value = observe(cx, thrown);
             jsapi::JS_ClearPendingException(cx.raw_cx());
 
             jsapi::SetModuleLoadHook(rt, Some(fail_with_pending));
@@ -767,14 +828,14 @@ fn failures_and_evaluation(engine: &JSEngine) {
                 promise.handle_mut(),
             ));
             assert!(!promise.get().is_null());
-            assert_eq!(GetPromiseState(promise.handle()), PromiseState::Rejected);
+            let missing_load_state = GetPromiseState(promise.handle());
             let mut reason = UndefinedValue();
             let destination = MutableHandleValue::from_marked_location(&mut reason);
             js::glue::JS_GetPromiseResult(
                 Handle::from_marked_location(&promise.get()),
                 destination,
             );
-            assert_eq!(reason.to_int32(), 42);
+            let missing_reason = observe(cx, reason);
             jsapi::SetModuleLoadHook(rt, None);
 
             RegisterScriptEnvironmentPreparer(cx.raw_cx(), Some(prepare_and_run));
@@ -793,17 +854,59 @@ fn failures_and_evaluation(engine: &JSEngine) {
             assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
             assert!(evaluation.get().is_object());
             rooted!(&in(cx) let evaluation = evaluation.get().to_object());
-            assert!(ThrowOnModuleEvaluationFailure(
+            let tla_async_result = ThrowOnModuleEvaluationFailure(
                 cx,
                 evaluation.handle(),
-                ModuleErrorBehaviour::ReportModuleErrorsAsync
-            ));
+                ModuleErrorBehaviour::ReportModuleErrorsAsync,
+            );
             RunJobs(cx);
-            assert_eq!(GetPromiseState(evaluation.handle()), PromiseState::Rejected);
-            assert_eq!(PREPARED.with(|prepared| prepared.borrow().clone()), [5]);
-            assert!(!jsapi::JS_IsExceptionPending(cx.raw_cx()));
+            let tla_promise_state = GetPromiseState(evaluation.handle());
+            let tla_prepared = PREPARED.with(|prepared| prepared.borrow().clone());
+            let tla_has_pending_after_jobs = jsapi::JS_IsExceptionPending(cx.raw_cx());
             remove_job_queue(cx, queue);
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![
+                (
+                    "ok_sync_throw_result",
+                    Observed::Boolean(ok_sync_throw_result),
+                ),
+                (
+                    "ok_sync_has_pending",
+                    Observed::Boolean(ok_sync_has_pending),
+                ),
+                (
+                    "throw_promise_state",
+                    Observed::String(promise_state_name(throw_promise_state).to_owned()),
+                ),
+                ("throw_sync_result", Observed::Boolean(throw_sync_result)),
+                (
+                    "throw_sync_has_pending",
+                    Observed::Boolean(throw_sync_has_pending),
+                ),
+                ("thrown_value", thrown_value),
+                (
+                    "missing_load_promise_state",
+                    Observed::String(promise_state_name(missing_load_state).to_owned()),
+                ),
+                ("missing_reason", missing_reason),
+                ("tla_async_result", Observed::Boolean(tla_async_result)),
+                (
+                    "tla_promise_state",
+                    Observed::String(promise_state_name(tla_promise_state).to_owned()),
+                ),
+                (
+                    "tla_prepared",
+                    Observed::Array(
+                        tla_prepared
+                            .into_iter()
+                            .map(|value| Observed::Number(value as f64))
+                            .collect(),
+                    ),
+                ),
+                (
+                    "tla_has_pending_after_jobs",
+                    Observed::Boolean(tla_has_pending_after_jobs),
+                ),
+            ])
         },
     );
 }

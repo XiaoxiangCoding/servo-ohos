@@ -8,27 +8,29 @@ use std::ptr;
 
 use js::context::JSContext;
 use js::jsapi::{
-    CallArgs, HandleValueArray, JSPROP_ENUMERATE, JSPROP_PERMANENT, JSPROP_READONLY,
-    JSContext as RawJSContext, ObjectOpResult, PropertyDescriptor, Value, jsid,
+    CallArgs, HandleValueArray, JSContext as RawJSContext, JSPROP_ENUMERATE, JSPROP_PERMANENT,
+    JSPROP_READONLY, ObjectOpResult, PropertyDescriptor, Value, jsid,
 };
 use js::jsval::{Int32Value, ObjectValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{
     Construct, JS_AlreadyHasOwnPropertyById, JS_CallFunctionName, JS_DefineElement,
-    JS_DefineFunction, JS_DefineFunctionById, JS_DefineProperty1,
-    JS_DefineProperty2, JS_DefineProperty3, JS_DefineProperty4, JS_DefineProperty5,
-    JS_DefineProperty6, JS_DefineProperty7, JS_DefinePropertyById, JS_DefinePropertyById1,
-    JS_DefinePropertyById3, JS_DefinePropertyById4, JS_DefinePropertyById5,
-    JS_DefinePropertyById6, JS_DefinePropertyById7, JS_DefinePropertyById8, JS_DefineUCProperty,
-    JS_DeleteProperty, JS_DeletePropertyById, JS_GetOwnPropertyDescriptor,
-    JS_GetOwnPropertyDescriptorById, JS_GetPropertyDescriptor, JS_GetPropertyDescriptorById,
-    JS_GetPrototype, JS_GetUCProperty, JS_HasOwnProperty, JS_HasOwnPropertyById, JS_HasProperty,
-    JS_HasPropertyById, JS_NewPlainObject, JS_SetProperty, JS_SetPropertyById, JS_SetPrototype,
-    JS_SetUCProperty, JS_ValueToId, JS_ValueToObject,
+    JS_DefineFunction, JS_DefineFunctionById, JS_DefineProperty1, JS_DefineProperty2,
+    JS_DefineProperty3, JS_DefineProperty4, JS_DefineProperty5, JS_DefineProperty6,
+    JS_DefineProperty7, JS_DefinePropertyById, JS_DefinePropertyById1, JS_DefinePropertyById3,
+    JS_DefinePropertyById4, JS_DefinePropertyById5, JS_DefinePropertyById6, JS_DefinePropertyById7,
+    JS_DefinePropertyById8, JS_DefineUCProperty, JS_DeleteProperty, JS_DeletePropertyById,
+    JS_GetOwnPropertyDescriptor, JS_GetOwnPropertyDescriptorById, JS_GetPropertyDescriptor,
+    JS_GetPropertyDescriptorById, JS_GetPrototype, JS_GetUCProperty, JS_HasOwnProperty,
+    JS_HasOwnPropertyById, JS_HasProperty, JS_HasPropertyById, JS_NewPlainObject, JS_SetProperty,
+    JS_SetPropertyById, JS_SetPrototype, JS_SetUCProperty, JS_ValueToId, JS_ValueToObject,
 };
 use js::rust::{HandleObject, JSEngine};
 
-use crate::support::{Observation, Value as Observed, eval, record_case, set_global};
+use crate::support::{
+    Observation, Value as Observed, eval, eval_observe, observe, observe_property, record_case,
+    set_global,
+};
 
 const ATTRS: u32 = (JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY) as u32;
 
@@ -76,6 +78,8 @@ pub fn run(engine: &JSEngine) {
             "JS_ValueToObject",
             "Construct",
             "JS_CallFunctionName",
+            "JS_SetProperty",
+            "JS_GetProperty",
         ],
         |cx, _global| unsafe {
             let object = JS_NewPlainObject(cx);
@@ -105,7 +109,7 @@ pub fn run(engine: &JSEngine) {
                 setter.handle(),
                 JSPROP_ENUMERATE as u32,
             ));
-            assert_js(cx, _global, "o.object_accessor === 11");
+            let object_accessor = eval_observe(cx, _global, "o.object_accessor");
             rooted!(&in(cx) let seven = Int32Value(7));
             assert!(JS_SetProperty(
                 cx,
@@ -113,7 +117,7 @@ pub fn run(engine: &JSEngine) {
                 c"object_accessor".as_ptr(),
                 seven.handle(),
             ));
-            assert_js(cx, _global, "globalThis.seen === 7");
+            let seen_after_set = eval_observe(cx, _global, "globalThis.seen");
 
             let object_value = eval(cx, _global, "({ answer: 41 })").to_object();
             rooted!(&in(cx) let object_value = object_value);
@@ -190,26 +194,30 @@ pub fn run(engine: &JSEngine) {
             rooted!(&in(cx) let callable = callable);
             let callable_object = callable.to_object();
             rooted!(&in(cx) let callable_object = callable_object);
-            assert!(!JS_DefineFunction(
-                cx,
-                object.handle(),
-                c"native_fun".as_ptr(),
-                Some(native_seven),
-                0,
-                JSPROP_ENUMERATE as u32,
-            )
-            .is_null());
+            assert!(
+                !JS_DefineFunction(
+                    cx,
+                    object.handle(),
+                    c"native_fun".as_ptr(),
+                    Some(native_seven),
+                    0,
+                    JSPROP_ENUMERATE as u32,
+                )
+                .is_null()
+            );
 
             rooted!(&in(cx) let function_id = id_for(cx, _global, "'by_id_fun'"));
-            assert!(!JS_DefineFunctionById(
-                cx,
-                object.handle(),
-                function_id.handle().into(),
-                Some(native_seven),
-                0,
-                JSPROP_ENUMERATE as u32,
-            )
-            .is_null());
+            assert!(
+                !JS_DefineFunctionById(
+                    cx,
+                    object.handle(),
+                    function_id.handle().into(),
+                    Some(native_seven),
+                    0,
+                    JSPROP_ENUMERATE as u32,
+                )
+                .is_null()
+            );
 
             // The descriptor forms exercise both the checked and unchecked variants.
             rooted!(&in(cx) let desc_id = id_for(cx, _global, "'desc_id'"));
@@ -244,7 +252,7 @@ pub fn run(engine: &JSEngine) {
                 Some(native_setter),
                 JSPROP_ENUMERATE as u32,
             ));
-            assert_js(cx, _global, "o.id_accessor === 11");
+            let id_accessor = eval_observe(cx, _global, "o.id_accessor");
             rooted!(&in(cx) let id4 = id_for(cx, _global, "'id_object_accessor'"));
             assert!(JS_DefinePropertyById4(
                 cx,
@@ -350,7 +358,7 @@ pub fn run(engine: &JSEngine) {
                 set_uc.len(),
                 got.handle_mut().into(),
             ));
-            assert_eq!(got.get().to_int32(), 22);
+            let uc_get = observe(cx, got.get());
 
             let mut op_result = ObjectOpResult::default();
             assert!(JS_DeleteProperty(
@@ -380,7 +388,10 @@ pub fn run(engine: &JSEngine) {
                 &mut is_none,
             ));
             assert!(!is_none);
-            assert_eq!(desc.get().value_.to_int32(), -7);
+            let int_descriptor_value = observe(cx, desc.get().value_);
+            let int_descriptor_writable = desc.get().writable_();
+            let int_descriptor_enumerable = desc.get().enumerable_();
+            let int_descriptor_configurable = desc.get().configurable_();
             rooted!(&in(cx) let own_id = id_for(cx, _global, "'uint_value'"));
             let mut is_none = true;
             assert!(JS_GetOwnPropertyDescriptorById(
@@ -391,7 +402,7 @@ pub fn run(engine: &JSEngine) {
                 &mut is_none,
             ));
             assert!(!is_none);
-            assert_eq!(desc.get().value_.to_number(), u32::MAX as f64);
+            let uint_descriptor_value = observe(cx, desc.get().value_);
 
             rooted!(&in(cx) let mut holder_obj: *mut js::jsapi::JSObject = ptr::null_mut());
             let mut is_none = true;
@@ -404,7 +415,8 @@ pub fn run(engine: &JSEngine) {
                 &mut is_none,
             ));
             assert!(!is_none);
-            assert_eq!(holder_obj.get(), object.get());
+            let holder_is_object = holder_obj.get() == object.get();
+            assert!(holder_is_object);
             rooted!(&in(cx) let prop_id = id_for(cx, _global, "'double_value'"));
             let mut is_none = true;
             assert!(JS_GetPropertyDescriptorById(
@@ -416,14 +428,27 @@ pub fn run(engine: &JSEngine) {
                 &mut is_none,
             ));
             assert!(!is_none);
-            assert_eq!(desc.get().value_.to_number(), 1.5);
+            let double_descriptor_value = observe(cx, desc.get().value_);
 
             rooted!(&in(cx) let mut prototype: *mut js::jsapi::JSObject = ptr::null_mut());
-            assert!(JS_GetPrototype(cx, object.handle().into(), prototype.handle_mut().into()));
+            assert!(JS_GetPrototype(
+                cx,
+                object.handle().into(),
+                prototype.handle_mut().into()
+            ));
             assert!(!prototype.get().is_null());
-            assert!(JS_SetPrototype(cx, object.handle().into(), proto.handle().into()));
-            assert!(JS_GetPrototype(cx, object.handle().into(), prototype.handle_mut().into()));
-            assert_eq!(prototype.get(), proto.get());
+            assert!(JS_SetPrototype(
+                cx,
+                object.handle().into(),
+                proto.handle().into()
+            ));
+            assert!(JS_GetPrototype(
+                cx,
+                object.handle().into(),
+                prototype.handle_mut().into()
+            ));
+            let prototype_replaced = prototype.get() == proto.get();
+            assert!(prototype_replaced);
 
             rooted!(&in(cx) let number = Int32Value(3));
             rooted!(&in(cx) let mut boxed: *mut js::jsapi::JSObject = ptr::null_mut());
@@ -432,7 +457,8 @@ pub fn run(engine: &JSEngine) {
                 number.handle().into(),
                 boxed.handle_mut().into(),
             ));
-            assert!(!boxed.get().is_null());
+            let boxed_number_is_object = !boxed.get().is_null();
+            assert!(boxed_number_is_object);
 
             let constructor = eval(cx, _global, "(function C(v) { this.v = v; })");
             rooted!(&in(cx) let constructor = constructor);
@@ -447,6 +473,9 @@ pub fn run(engine: &JSEngine) {
                 constructed.handle_mut().into(),
             ));
             assert!(!constructed.get().is_null());
+            set_global(cx, _global, c"constructed", ObjectValue(constructed.get()));
+            let constructed_instanceof_object =
+                eval_observe(cx, _global, "globalThis.constructed instanceof Object");
 
             rooted!(&in(cx) let mut rval = UndefinedValue());
             assert!(JS_CallFunctionName(
@@ -456,29 +485,84 @@ pub fn run(engine: &JSEngine) {
                 &HandleValueArray::empty(),
                 rval.handle_mut().into(),
             ));
-            assert_eq!(rval.get().to_int32(), 7);
+            let native_fun_result = observe(cx, rval.get());
 
-            assert_js(cx, _global, "o.int_value === -7 && o.uint_value === 4294967295");
-            assert_js(cx, _global, "o.double_value === 1.5 && o.ünicode === 12");
-            assert_js(cx, _global, "o.desc_id === 99 && o.id_string_value === 'native string'");
-            assert_js(cx, _global, "o.by_id_set === undefined");
-            assert_js(cx, _global, "o.native_fun() === 7 && o.by_id_fun === undefined");
-            assert_js(cx, _global, "o[0] === 5 && o.uc_set === 22");
-            assert_js(cx, _global, "new (function C(v) { this.v = v; })(31) instanceof Object");
-            Observation::ok(Observed::Boolean(true))
+            let object_value = ObjectValue(object.get());
+            Observation::new(vec![
+                ("object_accessor", object_accessor),
+                ("seen_after_set", seen_after_set),
+                ("id_accessor", id_accessor),
+                ("uc_property_get", uc_get),
+                (
+                    "int_value",
+                    observe_property(cx, object_value, c"int_value"),
+                ),
+                (
+                    "uint_value",
+                    observe_property(cx, object_value, c"uint_value"),
+                ),
+                (
+                    "double_value",
+                    observe_property(cx, object_value, c"double_value"),
+                ),
+                ("unicode", eval_observe(cx, _global, "o.ünicode")),
+                ("desc_id", observe_property(cx, object_value, c"desc_id")),
+                (
+                    "id_string_value",
+                    observe_property(cx, object_value, c"id_string_value"),
+                ),
+                (
+                    "by_id_set_after_delete",
+                    observe_property(cx, object_value, c"by_id_set"),
+                ),
+                ("native_fun_result", native_fun_result),
+                (
+                    "by_id_fun_after_delete",
+                    observe_property(cx, object_value, c"by_id_fun"),
+                ),
+                ("element_0", observe_property(cx, object_value, c"0")),
+                (
+                    "uc_property_set",
+                    observe_property(cx, object_value, c"uc_set"),
+                ),
+                (
+                    "constructed_instanceof_object",
+                    constructed_instanceof_object,
+                ),
+                ("int_descriptor_value", int_descriptor_value),
+                (
+                    "int_descriptor_writable",
+                    Observed::Boolean(int_descriptor_writable),
+                ),
+                (
+                    "int_descriptor_enumerable",
+                    Observed::Boolean(int_descriptor_enumerable),
+                ),
+                (
+                    "int_descriptor_configurable",
+                    Observed::Boolean(int_descriptor_configurable),
+                ),
+                ("uint_descriptor_value", uint_descriptor_value),
+                ("prototype_replaced", Observed::Boolean(prototype_replaced)),
+                (
+                    "boxed_number_is_object",
+                    Observed::Boolean(boxed_number_is_object),
+                ),
+                ("holder_is_object", Observed::Boolean(holder_is_object)),
+                ("double_descriptor_value", double_descriptor_value),
+            ])
         },
     );
-}
-
-unsafe fn assert_js(cx: &mut JSContext, global: HandleObject, source: &str) {
-    let value = eval(cx, global, source);
-    assert!(value.is_boolean() && value.to_boolean(), "{source}");
 }
 
 unsafe fn id_for(cx: &mut JSContext, global: HandleObject, source: &str) -> jsid {
     rooted!(&in(cx) let value = eval(cx, global, source));
     rooted!(&in(cx) let mut id = jsid::default());
-    assert!(JS_ValueToId(cx, value.handle().into(), id.handle_mut().into()));
+    assert!(JS_ValueToId(
+        cx,
+        value.handle().into(),
+        id.handle_mut().into()
+    ));
     id.get()
 }
 
