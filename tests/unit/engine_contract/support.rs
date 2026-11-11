@@ -15,7 +15,10 @@ use js::jsapi::OnNewGlobalHookOption;
 use js::jsval::{JSVal, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
-use js::rust::wrappers2::{JS_NewGlobalObject, JS_SetProperty};
+use js::rust::wrappers2::{
+    HasAnyMicroTasks, JS_DequeueNextMicroTask, JS_NewGlobalObject, JS_SetProperty, RunJSMicroTask,
+    SetJobQueue,
+};
 use js::rust::{
     CompileOptionsWrapper, HandleObject, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
     evaluate_script,
@@ -69,6 +72,15 @@ impl Observation {
 
 /// Runs `f` in a fresh runtime and global object, like a document realm.
 pub fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, HandleObject)) {
+    with_realm_options(engine, RealmOptions::default(), f);
+}
+
+/// Runs `f` in a fresh runtime with caller-selected realm options.
+pub fn with_realm_options(
+    engine: &JSEngine,
+    options: RealmOptions,
+    f: impl FnOnce(&mut JSContext, HandleObject),
+) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
     unsafe {
@@ -77,7 +89,7 @@ pub fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, HandleObjec
             &SIMPLE_GLOBAL_CLASS,
             ptr::null_mut(),
             OnNewGlobalHookOption::FireOnNewGlobalHook,
-            &*RealmOptions::default(),
+            &*options,
         ));
         let mut realm = AutoRealm::new_from_handle(cx, global.handle());
         f(&mut realm, global.handle());
@@ -138,8 +150,61 @@ pub fn get_property(cx: &mut JSContext, object: JSVal, name: &CStr) -> JSVal {
     }
 }
 
+static JOB_QUEUE_TRAPS: js::glue::JobQueueTraps = js::glue::JobQueueTraps {
+    getHostDefinedData: Some(job_queue_host_defined_data),
+    getHostDefinedGlobal: Some(job_queue_host_defined_global),
+    runJobs: Some(run_queued_jobs),
+    traceNonGCThingMicroTask: None,
+};
+
+unsafe extern "C" fn job_queue_host_defined_data(
+    _cx: *mut js::jsapi::JSContext,
+    incumbent: js::jsapi::MutableHandleObject,
+    data: js::jsapi::MutableHandleObject,
+) -> bool {
+    incumbent.set(ptr::null_mut());
+    data.set(ptr::null_mut());
+    true
+}
+
+unsafe extern "C" fn job_queue_host_defined_global(
+    _cx: *mut js::jsapi::JSContext,
+    _incumbent: js::jsapi::MutableHandleObject,
+) -> bool {
+    true
+}
+
+unsafe extern "C" fn run_queued_jobs(cx: *mut js::jsapi::JSContext) {
+    let cx = std::ptr::NonNull::new(cx).expect("non-null JSContext in the job queue trap");
+    let mut cx = JSContext::from_ptr(cx);
+    while HasAnyMicroTasks(&cx) {
+        rooted!(&in(cx) let mut task = UndefinedValue());
+        JS_DequeueNextMicroTask(&cx, task.handle_mut());
+        assert!(js::jsapi::IsJSMicroTask(task.as_ptr()));
+        let task = js::jsapi::ToMaybeWrappedJSMicroTask(task.as_ptr());
+        rooted!(&in(cx) let task = task);
+        assert!(RunJSMicroTask(&mut cx, task.handle()));
+    }
+}
+
+/// Installs a host job queue for the current context and returns the queue to delete after use.
+pub unsafe fn install_job_queue(cx: &mut JSContext) -> *mut std::ffi::c_void {
+    let queue = js::glue::CreateJobQueue(&JOB_QUEUE_TRAPS);
+    assert!(!queue.is_null());
+    SetJobQueue(cx, queue as *mut js::jsapi::JobQueue);
+    queue.cast()
+}
+
+pub unsafe fn remove_job_queue(cx: &mut JSContext, queue: *mut std::ffi::c_void) {
+    SetJobQueue(cx, ptr::null_mut());
+    js::glue::DeleteJobQueue(queue.cast());
+}
+
 /// Writes one JSON line per case so the two engine runs can be diffed.
-pub fn record(case: &str, observation: &Observation) {
+///
+/// `apis` names every mozjs entry point the case exercises. The coverage gate checks these names
+/// against `api-manifest.toml`, so a case cannot silently claim capability it never calls.
+pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     static RESET: Once = Once::new();
 
     let Ok(path) = std::env::var("CONTRACT_OUT") else {
@@ -157,6 +222,7 @@ pub fn record(case: &str, observation: &Observation) {
         "engine": engine,
         "value": observation.value.to_json(),
         "exception": observation.exception,
+        "apis": apis,
     });
     let mut file = OpenOptions::new()
         .create(true)
@@ -164,4 +230,29 @@ pub fn record(case: &str, observation: &Observation) {
         .open(path)
         .expect("opening CONTRACT_OUT");
     writeln!(file, "{line}").expect("writing CONTRACT_OUT");
+}
+
+/// Runs a case in a fresh runtime and records its observation together with the entries it
+/// exercises. The `apis` list is the coverage contract: every entry named here must be classified
+/// as implemented in `api-manifest.toml`.
+pub fn record_case(
+    engine: &JSEngine,
+    case: &str,
+    apis: &[&str],
+    f: impl FnOnce(&mut JSContext, HandleObject) -> Observation,
+) {
+    with_global(engine, |cx, global| record(case, &f(cx, global), apis));
+}
+
+/// Like [`record_case`], but constructs the realm with the supplied options.
+pub fn record_case_with_options(
+    engine: &JSEngine,
+    case: &str,
+    apis: &[&str],
+    options: RealmOptions,
+    f: impl FnOnce(&mut JSContext, HandleObject) -> Observation,
+) {
+    with_realm_options(engine, options, |cx, global| {
+        record(case, &f(cx, global), apis)
+    });
 }
