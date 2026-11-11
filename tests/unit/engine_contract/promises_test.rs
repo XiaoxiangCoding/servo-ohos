@@ -403,7 +403,9 @@ unsafe extern "C" fn run_jobs(cx: *mut jsapi::JSContext) {
 }
 
 pub fn run(engine: &JSEngine) {
-    promise_values(engine);
-    job_queue(engine);
-    internal_job_queue(engine);
+    crate::support::isolate_case("promise.values_and_reactions", || promise_values(engine));
+    crate::support::isolate_case("promise.job_queue", || job_queue(engine));
+    crate::support::isolate_case("promise.internal_job_queue", || {
+        internal_job_queue(engine)
+    });
 }

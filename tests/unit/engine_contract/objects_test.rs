@@ -530,32 +530,34 @@ fn accessor_function_names(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    arrays(engine);
-    property_keys(engine);
-    collections(engine);
-    dates_and_regexps(engine);
-    reserved_slots(engine);
-    jit_info(engine);
-    accessor_function_names(engine);
-    crate::support::record(
-        "objects.core",
-        &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
-        &[
-            "CallJitMethodOp", "CheckRegExpSyntax", "DateGetMsecSinceEpoch",
-            "ExecuteRegExpNoStatics", "GetArrayLength", "GetBuiltinClass",
-            "GetFunctionNativeReserved", "GetPropertyKeys", "GetRealmKeyObject",
-            "GetRealmObjectPrototype", "GetWeakMapEntry", "IsArrayObject", "IsCallable",
-            "IsConstructor", "IsWeakMapObject", "JS_ClearPendingException",
-            "JS_DefineFunctions", "JS_DefineProperties", "JS_DefineProperty",
-            "JS_FreezeObject", "JS_GC", "JS_GetElement", "JS_GetFunctionId",
-            "JS_GetPropertyById", "JS_HasInstance", "JS_IsExceptionPending",
-            "JS_NewGlobalObject", "JS_NewObjectWithGivenProto", "JS_NewPlainObject",
-            "JS_SetElement", "JS_SetProperty", "MapDelete", "MapEntries", "MapGet",
-            "MapHas", "MapSet", "MapSize", "NewArrayObject", "NewArrayObject1",
-            "NewDateObject", "NewFunctionWithReserved", "NewMapObject", "NewSetObject",
-            "NewUCRegExpObject", "NewWeakMapObject", "ObjectIsDate", "ObjectIsRegExp",
-            "RUST_FUNCTION_VALUE_TO_JITINFO", "RunJobs", "SetAdd", "SetArrayLength",
-            "SetClear", "SetFunctionNativeReserved", "SetSize", "SetWeakMapEntry",
-        ],
-    );
+    crate::support::isolate_case("objects.core", || {
+        arrays(engine);
+        property_keys(engine);
+        collections(engine);
+        dates_and_regexps(engine);
+        reserved_slots(engine);
+        jit_info(engine);
+        accessor_function_names(engine);
+        crate::support::record(
+            "objects.core",
+            &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
+            &[
+                "CallJitMethodOp", "CheckRegExpSyntax", "DateGetMsecSinceEpoch",
+                "ExecuteRegExpNoStatics", "GetArrayLength", "GetBuiltinClass",
+                "GetFunctionNativeReserved", "GetPropertyKeys", "GetRealmKeyObject",
+                "GetRealmObjectPrototype", "GetWeakMapEntry", "IsArrayObject", "IsCallable",
+                "IsConstructor", "IsWeakMapObject", "JS_ClearPendingException",
+                "JS_DefineFunctions", "JS_DefineProperties", "JS_DefineProperty",
+                "JS_FreezeObject", "JS_GC", "JS_GetElement", "JS_GetFunctionId",
+                "JS_GetPropertyById", "JS_HasInstance", "JS_IsExceptionPending",
+                "JS_NewGlobalObject", "JS_NewObjectWithGivenProto", "JS_NewPlainObject",
+                "JS_SetElement", "JS_SetProperty", "MapDelete", "MapEntries", "MapGet",
+                "MapHas", "MapSet", "MapSize", "NewArrayObject", "NewArrayObject1",
+                "NewDateObject", "NewFunctionWithReserved", "NewMapObject", "NewSetObject",
+                "NewUCRegExpObject", "NewWeakMapObject", "ObjectIsDate", "ObjectIsRegExp",
+                "RUST_FUNCTION_VALUE_TO_JITINFO", "RunJobs", "SetAdd", "SetArrayLength",
+                "SetClear", "SetFunctionNativeReserved", "SetSize", "SetWeakMapEntry",
+            ],
+        );
+    });
 }

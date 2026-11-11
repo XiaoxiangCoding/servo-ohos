@@ -696,10 +696,18 @@ fn with_global_with_callbacks(
 }
 
 pub fn run(engine: &JSEngine) {
-    rooted_vectors(engine);
-    identity_and_functions(engine);
-    collections(engine);
-    descriptors_and_forwarding(engine);
-    jit_getters_and_setters(engine);
-    stack_gc_vectors_and_for_of(engine);
+    crate::support::isolate_case("objects.extra_rooted_vectors", || rooted_vectors(engine));
+    crate::support::isolate_case("objects.extra_identity_and_functions", || {
+        identity_and_functions(engine)
+    });
+    crate::support::isolate_case("objects.extra_collections", || collections(engine));
+    crate::support::isolate_case("objects.extra_descriptors_and_forwarding", || {
+        descriptors_and_forwarding(engine)
+    });
+    crate::support::isolate_case("objects.extra_jit_accessors", || {
+        jit_getters_and_setters(engine)
+    });
+    crate::support::isolate_case("objects.extra_stack_vectors_for_of", || {
+        stack_gc_vectors_and_for_of(engine)
+    });
 }

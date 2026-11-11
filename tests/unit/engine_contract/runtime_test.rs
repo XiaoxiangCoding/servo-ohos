@@ -14,6 +14,7 @@ use crate::support::{Observation, Value, record};
 unsafe extern "C" fn warning_reporter(_cx: *mut jsapi::JSContext, _report: *mut JSErrorReport) {}
 
 pub fn run(_engine: &JSEngine) {
+    crate::support::isolate_case("runtime.context_lifecycle", || {
     unsafe {
         let cx = jsapi::JS_NewContext(1 << 20, ptr::null_mut());
         assert!(!cx.is_null(), "JS_NewContext");
@@ -68,4 +69,5 @@ pub fn run(_engine: &JSEngine) {
         jsapi::JS_SetGCParameter(cx, JSGCParamKey::JSGC_MAX_BYTES, previous);
         jsapi::JS_DestroyContext(cx);
     }
+    });
 }

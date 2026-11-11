@@ -170,6 +170,6 @@ fn roots_options_and_memory(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    gc_state(engine);
-    roots_options_and_memory(engine);
+    crate::support::isolate_case("misc.gc_state", || gc_state(engine));
+    crate::support::isolate_case("misc.roots_options_memory", || roots_options_and_memory(engine));
 }
