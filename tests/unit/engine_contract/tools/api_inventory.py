@@ -13,9 +13,10 @@ Usage:
       [--stub-bindings FILE]
 
 ``--engine-src`` normally points at ``servo-quickjs/mozjs/src/engine``. A function whose body is
-empty or only ignores arguments is classified as ``empty`` because the generated forwarding stub
-has no observable engine semantics to exercise. Everything else present in the engine tree is
-``implemented``; everything else is ``todo``.
+empty, only ignores arguments, or only writes a constant to a scalar out parameter is classified
+as ``empty`` because the generated forwarding stub has no observable engine semantics to
+exercise. Everything else present in the engine tree is ``implemented``; everything else is
+``todo``.
 """
 
 import argparse
@@ -77,6 +78,8 @@ def skip_string(text, index):
 
 
 CONSTANT = r"(true|false|0|\(\)|None|::std::ptr::null_mut\(\)|::core::ptr::null_mut\(\)|ptr::null_mut\(\))"
+SCALAR = r"(?:bool|u8|u16|u32|u64|usize|i8|i16|i32|i64|isize|f32|f64)"
+SCALAR_OUT_PARAM = re.compile(r"\*\s*mut\s+" + SCALAR + r"\s*$")
 
 
 def strip_comments(text):
@@ -84,11 +87,16 @@ def strip_comments(text):
     return re.sub(r"//[^\n]*", "", text)
 
 
-def is_empty_body(body):
+def is_empty_body(body, out_params=()):
     normalized = re.sub(r"\s+", " ", strip_comments(body)).strip()
     statements = [part.strip() for part in re.findall(r"[^;]+;", normalized)]
     rest = re.sub(r"[^;]+;", "", normalized).strip()
-    if not all(re.fullmatch(r"let _ = .*;", statement) for statement in statements):
+    for statement in statements:
+        if re.fullmatch(r"let _ = .*;", statement):
+            continue
+        match = re.fullmatch(r"\*\s*(\w+)\s*=\s*" + CONSTANT + r";", statement)
+        if match and match.group(1) in out_params:
+            continue
         return False
     return rest == "" or re.fullmatch(CONSTANT + r"( as .+)?", rest) is not None
 
@@ -113,7 +121,7 @@ def split_params(params):
     return result
 
 
-def engine_functions(engine_src, stub):
+def engine_functions(engine_src):
     functions = {}
     for path in sorted(glob.glob(os.path.join(engine_src, "**", "*.rs"), recursive=True)):
         text = read_text(path)
@@ -122,7 +130,13 @@ def engine_functions(engine_src, stub):
             params_end = find_matching(text, match.end() - 1, "(", ")")
             if params_end < 0:
                 continue
-            arity = len(stub.param_names(text[match.end() : params_end]))
+            parameters = split_params(text[match.end() : params_end])
+            arity = len(parameters)
+            out_params = set()
+            for parameter in parameters:
+                parameter_name, separator, parameter_type = parameter.partition(":")
+                if separator and SCALAR_OUT_PARAM.fullmatch(parameter_type.strip()):
+                    out_params.add(parameter_name.strip())
             body_start = params_end + 1
             while body_start < len(text) and text[body_start] not in "{;":
                 body_start += 1
@@ -130,7 +144,7 @@ def engine_functions(engine_src, stub):
             if body_start < len(text) and text[body_start] == "{":
                 body_end = find_matching(text, body_start, "{", "}")
                 if body_end >= 0:
-                    empty = is_empty_body(text[body_start + 1 : body_end])
+                    empty = is_empty_body(text[body_start + 1 : body_end], out_params)
             line = text.count("\n", 0, match.start()) + 1
             functions.setdefault((name, arity), []).append(
                 {
@@ -237,7 +251,7 @@ def write_manifest(path, entries, metadata):
 
 def generate_entries(bindgen_dir, engine_src, stub):
     definitions = bindgen_entries(bindgen_dir, stub)
-    functions = engine_functions(engine_src, stub)
+    functions = engine_functions(engine_src)
 
     entries = []
     for definition in definitions:

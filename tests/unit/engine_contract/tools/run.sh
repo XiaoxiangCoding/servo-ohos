@@ -5,6 +5,7 @@
 #   tools/run.sh sm       [cargo test args...]
 #   tools/run.sh qjs      [cargo test args...]
 #   tools/run.sh diff
+#   tools/run.sh generate   regenerate api-manifest.toml from the current mozjs bindgen and shim
 #   tools/run.sh manifest   check api-manifest.toml against the current mozjs bindgen and shim
 #   tools/run.sh coverage   check the coverage of api-manifest.toml in sm.jsonl
 #   tools/run.sh all
@@ -59,6 +60,24 @@ run_manifest() {
         --stub-bindings "$qjs_dir/mozjs/stub_bindings.py"
 }
 
+run_generate() {
+    [[ -f "$qjs_dir/mozjs/upstream-bindgen/jsapi.rs" ]] || {
+        echo "missing $qjs_dir/mozjs/upstream-bindgen; set QJS_DIR to a servo-quickjs checkout" >&2
+        return 1
+    }
+    local mozjs_version quickjs_revision
+    mozjs_version=$(sed -nE 's/^version = "([^"]+)".*/\1/p' "$qjs_dir/mozjs/Cargo.toml" | head -n 1)
+    quickjs_revision=$(git -C "$qjs_dir" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+    cd "$repo_root"
+    python3 tests/unit/engine_contract/tools/api_inventory.py generate \
+        --bindgen-dir "$qjs_dir/mozjs/upstream-bindgen" \
+        --engine-src "$qjs_dir/mozjs/src/engine" \
+        --stub-bindings "$qjs_dir/mozjs/stub_bindings.py" \
+        --output tests/unit/engine_contract/api-manifest.toml \
+        --mozjs-version "$mozjs_version" \
+        --quickjs-revision "$quickjs_revision"
+}
+
 run_coverage() {
     run_manifest
     [[ -f "$out_dir/sm.jsonl" ]] || {
@@ -79,6 +98,7 @@ case "$command" in
     sm) run_sm "$@" ;;
     qjs) run_qjs "$@" ;;
     diff) run_diff ;;
+    generate) run_generate ;;
     manifest) run_manifest ;;
     coverage) run_coverage ;;
     all)
@@ -88,7 +108,7 @@ case "$command" in
         run_coverage
         ;;
     *)
-        echo "usage: $0 {sm|qjs|diff|manifest|coverage|all} [cargo test args...]" >&2
+        echo "usage: $0 {sm|qjs|diff|generate|manifest|coverage|all} [cargo test args...]" >&2
         exit 2
         ;;
 esac

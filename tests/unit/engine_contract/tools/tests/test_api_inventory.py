@@ -190,6 +190,26 @@ class ManifestVerifyTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("~ Existing(1) [jsapi]: status implemented -> empty", output)
 
+    def test_constant_scalar_out_parameter_is_an_empty_body(self):
+        function = textwrap.dedent(
+            """
+            pub(crate) unsafe fn Existing(valueOut: *mut u32) -> bool {
+                let _ = valueOut;
+                *valueOut = 0;
+                true
+            }
+            """
+        )
+        self.write(os.path.join(self.engine, "object.rs"), function)
+        functions = api_inventory.engine_functions(self.engine)
+        self.assertTrue(functions[("Existing", 1)][0]["empty"])
+
+    def test_non_constant_scalar_out_parameter_is_not_empty(self):
+        self.assertFalse(api_inventory.is_empty_body("*valueOut = 1 + 1; true", {"valueOut"}))
+
+    def test_scalar_out_parameter_without_matching_name_is_not_empty(self):
+        self.assertFalse(api_inventory.is_empty_body("*other = 0; true", {"valueOut"}))
+
     def test_verify_ignores_renamed_parameters(self):
         self.generate()
         self.write(

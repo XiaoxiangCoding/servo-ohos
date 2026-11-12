@@ -21,7 +21,7 @@ The suite currently runs 76 cases over the implemented mozjs surface:
 | Proxies, realms and principals | 8 | `proxy_test.rs` |
 
 Every case records the `apis` it calls. The coverage gate compares those names with
-`api-manifest.toml`; the current release run covers all 631 `implemented` entries.
+`api-manifest.toml`; the current release run covers all 629 `implemented` entries.
 
 Known-unimplemented entries are outside this suite's scope until their capability is enabled.
 
@@ -32,6 +32,19 @@ return types, so changing a type, adding or removing a parameter, or reordering 
 parameters fails; renaming a parameter does not. This makes a mozjs upgrade that adds entry points
 fail before coverage is computed: the manifest must be updated, then every new `implemented` entry
 needs a case. Line-number and file movements in the shim do not fail this check.
+
+`api-manifest.toml` is generated, not edited by hand. When a mozjs upgrade or a shim change alters
+the entry points, regenerate it and add cases for every new `implemented` entry:
+
+```bash
+tests/unit/engine_contract/tools/run.sh generate
+tests/unit/engine_contract/tools/run.sh sm
+tests/unit/engine_contract/tools/run.sh coverage
+```
+
+`generate` reads the bindgen files, engine sources, mozjs version and shim commit from `QJS_DIR`,
+so `QJS_DIR` must point at the same checkout that the build uses. Review the manifest diff, then
+update the cases; do not edit the TOML by hand.
 
 ## Tool tests
 
@@ -56,6 +69,7 @@ python3 -m unittest discover -s tests/unit/engine_contract/tools/tests
 tests/unit/engine_contract/tools/run.sh sm       # SpiderMonkey reference
 tests/unit/engine_contract/tools/run.sh qjs      # local servo-quickjs checkout
 tests/unit/engine_contract/tools/run.sh diff
+tests/unit/engine_contract/tools/run.sh generate # regenerate api-manifest.toml after an API change
 tests/unit/engine_contract/tools/run.sh manifest # api-manifest.toml matches the shim and bindgen
 tests/unit/engine_contract/tools/run.sh coverage # manifest check plus API coverage
 ```
