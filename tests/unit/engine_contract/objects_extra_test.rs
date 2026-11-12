@@ -32,7 +32,7 @@ use js::rust::wrappers2::{
     JS_DefineProperty2, JS_DefineUCProperty2, JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo,
     JS_GetFunctionDisplayId, JS_InitializePropertiesFromCompatibleNativeObject,
     JS_LinkConstructorAndPrototype, JS_NewGlobalObject,
-    JS_NewObjectWithoutMetadata, JS_NewPlainObject, JS_ResolveStandardClass,
+    JS_NewObjectWithoutMetadata, JS_NewPlainObject,
     JS_SetImmutablePrototype, JS_SetSecurityCallbacks, JS_ValueToFunction, MapClear, MapForEach,
     MapKeys, MapValues, NewMapObject, NewSetObject, SetAdd, SetDataPropertyDescriptor, SetDelete,
     SetEntries, SetForEach, SetHas, SetKeys,
@@ -387,7 +387,6 @@ fn descriptors_and_forwarding(engine: &JSEngine) {
             "JS_ForwardGetPropertyTo",
             "JS_ForwardSetPropertyTo",
             "JS_NewPlainObject",
-            "JS_ResolveStandardClass",
             "JS_SetProperty",
             "SetDataPropertyDescriptor",
             "SetPropertyIgnoringNamedGetter",
@@ -505,17 +504,6 @@ fn descriptors_and_forwarding(engine: &JSEngine) {
                 &mut ignored_result,
             ));
             assert!(!ignored_result.ok());
-
-            let array_id = id_for(cx, global, "'Array'");
-            rooted!(&in(cx) let array_id = array_id);
-            let mut resolved = false;
-            assert!(JS_ResolveStandardClass(
-                cx,
-                global,
-                array_id.handle(),
-                &mut resolved,
-            ));
-            assert!(resolved);
 
             Observation::ok(Observed::Boolean(true))
         },

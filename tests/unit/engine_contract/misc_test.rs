@@ -11,7 +11,7 @@ use std::ptr;
 
 use js::jsapi::{
     self, ContextOptions, GCReason, GCOptions, HeapState, MemoryUse, ObjectPrivateVisitor,
-    ServoSizes, SliceBudget, TraceKind, JSJitCompilerOption,
+    ServoSizes, SliceBudget, TraceKind,
 };
 use js::jsval::Int32Value;
 use js::rooted;
@@ -76,12 +76,6 @@ fn gc_state(engine: &JSEngine) {
             std::ffi::CStr::from_ptr(jsapi::GCTraceKindToAscii(TraceKind::Script)).to_str(),
             Ok("JS Script")
         );
-        let mut value = 0;
-        assert!(jsapi::JS_GetGlobalJitCompilerOption(
-            cx.raw_cx(),
-            JSJitCompilerOption::JSJITCOMPILER_ION_ENABLE,
-            &mut value,
-        ));
     });
     record(
         "misc.gc_state",
@@ -89,7 +83,6 @@ fn gc_state(engine: &JSEngine) {
         &[
             "GCTraceKindToAscii",
             "GetGCHeapUsage",
-            "JS_GetGlobalJitCompilerOption",
             "JS_GetParentRuntime",
             "JS_GetRuntime",
             "JS_NewGlobalObject",

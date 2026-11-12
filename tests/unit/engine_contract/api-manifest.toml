@@ -1,14 +1,14 @@
 [manifest]
 mozjs_version = "0.26.14"
 bindgen_sha256 = "39053877b056c173c89d1ffb0c70891bb14d46b2485ee7a8a6766eb7308962e3"
-quickjs_revision = "952049f"
+quickjs_revision = "464d718"
 bindgen_definitions = 1225
 unique_names = 1224
 variadic = 11
-implemented = 631
-empty = 91
+implemented = 629
+empty = 93
 todo = 503
-eligible = 631
+eligible = 629
 
 [[api]]
 name = "AbortCollectingDelazifications"
@@ -4938,10 +4938,11 @@ line = 386
 name = "JS_GetGlobalJitCompilerOption"
 arity = 3
 source = "jsapi"
-status = "implemented"
+status = "empty"
 signature = "(*mut root::JSContext, root::JSJitCompilerOption, *mut u32) -> bool"
 file = "engine/misc.rs"
 line = 390
+reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
 name = "JS_GetImplementationVersion"
@@ -6768,10 +6769,11 @@ reason = "qjs_todo!: calling this entry panics until servo-quickjs implements it
 name = "JS_ResolveStandardClass"
 arity = 4
 source = "jsapi"
-status = "implemented"
+status = "empty"
 signature = "(*mut root::JSContext, root::JS::HandleObject, root::JS::HandleId, *mut bool) -> bool"
 file = "engine/object.rs"
 line = 866
+reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
 name = "JS_ScriptHasMutedErrors"

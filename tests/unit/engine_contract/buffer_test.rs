@@ -756,9 +756,34 @@ fn get_object_as_family(cx: &mut JSContext, _global: HandleObject) {
     check_array!(JS_NewUint32ArrayWithBuffer, JS_GetObjectAsUint32Array, JS_GetUint32ArrayData, GetUint32ArrayLengthAndData, u32, 2);
     check_array!(JS_NewFloat32ArrayWithBuffer, JS_GetObjectAsFloat32Array, JS_GetFloat32ArrayData, GetFloat32ArrayLengthAndData, f32, 2);
     check_array!(JS_NewFloat64ArrayWithBuffer, JS_GetObjectAsFloat64Array, JS_GetFloat64ArrayData, GetFloat64ArrayLengthAndData, f64, 1);
-    check_array!(JS_NewFloat16ArrayWithBuffer, JS_GetObjectAsFloat16Array, JS_GetFloat16ArrayData, GetFloat32ArrayLengthAndData, u16, 2);
-    check_array!(JS_NewBigInt64ArrayWithBuffer, JS_GetObjectAsBigInt64Array, JS_GetBigInt64ArrayData, GetFloat64ArrayLengthAndData, i64, 1);
-    check_array!(JS_NewBigUint64ArrayWithBuffer, JS_GetObjectAsBigUint64Array, JS_GetBigUint64ArrayData, GetFloat64ArrayLengthAndData, u64, 1);
+
+    // Float16 and the BigInt arrays have no `Get*ArrayLengthAndData` glue helper, so check the
+    // view-level byte length rather than borrowing the accessor of a different element type.
+    macro_rules! check_view {
+        ($new:ident, $object_as:ident, $data:ident, $ty:ty, $count:expr) => {{
+            let array = unsafe { $new(cx, buffer.handle(), 0, $count) };
+            rooted!(&in(cx) let array = array);
+            assert!(!array.get().is_null());
+            let mut length = 0;
+            let (mut data, mut is_shared) = (ptr::null_mut::<$ty>(), false);
+            let object = unsafe { $object_as(array.get(), &mut length, &mut is_shared, &mut data) };
+            assert_eq!(object, array.get());
+            assert_eq!(length, $count);
+            assert!(!is_shared);
+            assert_eq!(data as *mut u8, base);
+            assert_eq!(unsafe { $data(array.get(), &mut is_shared, ptr::null()) }, data);
+            assert!(!is_shared);
+            let (mut glen, mut gshared, mut gdata) = (0usize, true, ptr::null_mut());
+            unsafe { GetArrayBufferViewLengthAndData(array.get(), &mut glen, &mut gshared, &mut gdata) };
+            assert_eq!(glen, $count * std::mem::size_of::<$ty>());
+            assert!(!gshared);
+            assert_eq!(gdata, data as *mut u8);
+        }};
+    }
+
+    check_view!(JS_NewFloat16ArrayWithBuffer, JS_GetObjectAsFloat16Array, JS_GetFloat16ArrayData, u16, 2);
+    check_view!(JS_NewBigInt64ArrayWithBuffer, JS_GetObjectAsBigInt64Array, JS_GetBigInt64ArrayData, i64, 1);
+    check_view!(JS_NewBigUint64ArrayWithBuffer, JS_GetObjectAsBigUint64Array, JS_GetBigUint64ArrayData, u64, 1);
 
     let view = unsafe { JS_NewUint8ArrayWithBuffer(cx, buffer.handle(), 8, 4) };
     rooted!(&in(cx) let view = view);
@@ -987,7 +1012,8 @@ fn apis_for_case(case: &str) -> &'static [&'static str] {
             "JS_GetObjectAsFloat16Array", "JS_GetFloat16ArrayData", "JS_NewBigInt64ArrayWithBuffer",
             "JS_GetObjectAsBigInt64Array", "JS_GetBigInt64ArrayData",
             "JS_NewBigUint64ArrayWithBuffer", "JS_GetObjectAsBigUint64Array",
-            "JS_GetBigUint64ArrayData", "JS_GetObjectAsArrayBufferView", "GetObjectAsArrayBuffer",
+            "JS_GetBigUint64ArrayData", "GetArrayBufferViewLengthAndData",
+            "JS_GetObjectAsArrayBufferView", "GetObjectAsArrayBuffer",
         ],
         "buffer.shared" => &[
             "NewSharedArrayBuffer", "IsArrayBufferObjectMaybeShared", "IsSharedArrayBufferObject",
