@@ -57,11 +57,11 @@ python3 -m unittest discover -s tests/unit/engine_contract/tools/tests
 ## Engine policy
 
 - This suite is Servo's source of engine contract cases, and every case must pass on
-  SpiderMonkey. It is the diagnostic reference, not the QuickJS upgrade gate.
-- The QuickJS upgrade gate lives in `servo-quickjs/engine-contract`: `qjs-baseline.jsonl` is the
-  strong gate, and a SpiderMonkey difference is review evidence rather than an automatic failure.
+  SpiderMonkey. SpiderMonkey is the reference implementation.
+- The QuickJS gate is `run.sh qjs` followed by `run.sh diff`: an unlisted difference fails,
+  while a difference recorded in `known-differences.toml` is reported but allowed.
 - Do not weaken an assertion to make a shim green. Accepted QuickJS behavior changes are recorded
-  in the QJS baseline after review.
+  in `known-differences.toml` after review, per field, and the entry is removed once fixed.
 
 ## Running
 
@@ -94,6 +94,6 @@ newly implemented entry points.
 
 Each case records its normalized value, the pending exception name, and the `apis` it calls. A
 case that panics records a `panic` field instead.
-`compare.py` ignores the `engine` field. `known-differences.toml` remains for the legacy
-SpiderMonkey/QuickJS comparison; the QuickJS upgrade gate is the baseline checker in
-`servo-quickjs/engine-contract/tools/check_baseline.py`.
+`compare.py` ignores the `engine` field. `known-differences.toml` is the only difference list for
+the SpiderMonkey/QuickJS comparison: an entry names one case and the fields that may differ, and
+anything not listed fails the run.
