@@ -21,6 +21,13 @@ repo_root="$(cd "$script_dir/../../../.." && pwd)"
 out_dir="${OUT_DIR:-$repo_root/target/contract}"
 qjs_dir="${QJS_DIR:-$repo_root/../servo-quickjs}"
 
+# Resolve a caller-supplied relative OUT_DIR against the invoking directory, not the repository
+# root or the crate directory that `cargo test` runs from. `sm`, `qjs` and `diff` must agree on it.
+case "$out_dir" in
+    /*) ;;
+    *) out_dir="$(pwd)/$out_dir" ;;
+esac
+
 run_sm() {
     mkdir -p "$out_dir"
     cd "$repo_root"

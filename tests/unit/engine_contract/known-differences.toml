@@ -6,6 +6,30 @@
 
 [[difference]]
 id = "rooter.trace_on_gc"
-fields = ["value"]
+fields = ["fields"]
 reason = "QuickJS does not invoke CustomAutoRooter trace callbacks during an explicit collection"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "objects.core"
+fields = ["fields", "apis"]
+reason = "JSITER_SYMBOLSONLY is a proxy-only flag in SpiderMonkey; QuickJS also treats it as symbol selection for ordinary objects"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "strings.core"
+fields = ["fields"]
+reason = "JS_ValueToSource uses double quotes for property names; SpiderMonkey keeps the source quote style"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "misc.gc_state"
+fields = ["fields", "apis"]
+reason = "GCTraceKindToAscii returns QuickJS class names such as Object; SpiderMonkey returns JS Object"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "errors.core"
+fields = ["fields", "apis"]
+reason = "QuickJS reports the Error construction column; SpiderMonkey reports the throw site column"
 owner = "servo-quickjs"
