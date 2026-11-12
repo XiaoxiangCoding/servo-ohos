@@ -65,7 +65,7 @@ fn compile_function_with_environment_chain(engine: &JSEngine) {
         ));
 
         let chain = EnvironmentChain::new(cx, SupportUnscopables::Yes);
-        // SpiderMonkey gives later appends precedence, so the inner scope is appended last.
+        // SpiderMonkey gives earlier appends precedence, so the inner scope is appended first.
         chain.append(inner.get());
         chain.append(outer.get());
 

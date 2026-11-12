@@ -1,7 +1,7 @@
 [manifest]
 mozjs_version = "0.26.14"
 bindgen_sha256 = "39053877b056c173c89d1ffb0c70891bb14d46b2485ee7a8a6766eb7308962e3"
-quickjs_revision = "464d718"
+quickjs_revision = "ae9eb96"
 bindgen_definitions = 1225
 unique_names = 1224
 variadic = 11
@@ -3091,7 +3091,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::SelfHostedCache, root::JS::SelfHostedWriter) -> bool"
 file = "engine/runtime.rs"
-line = 109
+line = 107
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -3694,7 +3694,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JSTraceDataOp, *mut ::std::os::raw::c_void) -> bool"
 file = "engine/runtime.rs"
-line = 87
+line = 85
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -4425,7 +4425,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> ()"
 file = "engine/runtime.rs"
-line = 51
+line = 50
 
 [[api]]
 name = "JS_DisableInterruptCallback"
@@ -4670,7 +4670,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::GCReason) -> ()"
 file = "engine/runtime.rs"
-line = 125
+line = 123
 
 [[api]]
 name = "JS_GetArrayBufferViewBuffer"
@@ -5292,7 +5292,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> *mut root::JSRuntime"
 file = "engine/runtime.rs"
-line = 75
+line = 73
 
 [[api]]
 name = "JS_GetScriptBaseLineNumber"
@@ -6914,7 +6914,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JSGCParamKey, u32) -> ()"
 file = "engine/runtime.rs"
-line = 79
+line = 77
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -6961,7 +6961,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::NativeStackSize, root::JS::NativeStackSize, root::JS::NativeStackSize) -> ()"
 file = "engine/runtime.rs"
-line = 97
+line = 95
 
 [[api]]
 name = "JS_SetOffthreadBaselineCompilationEnabled"
@@ -9475,7 +9475,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::WarningReporter) -> root::JS::WarningReporter"
 file = "engine/runtime.rs"
-line = 118
+line = 116
 
 [[api]]
 name = "SetWeakMapEntry"
