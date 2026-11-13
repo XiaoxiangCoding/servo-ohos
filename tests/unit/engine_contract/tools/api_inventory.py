@@ -11,6 +11,7 @@ Usage:
   api_inventory.py check --manifest FILE
   api_inventory.py verify --manifest FILE --bindgen-dir DIR --engine-src DIR \
       [--stub-bindings FILE]
+  api_inventory.py report --baseline FILE --manifest FILE --output FILE [--format toml|tsv]
 
 ``--engine-src`` normally points at ``servo-quickjs/mozjs/src/engine``. A function whose body is
 empty, only ignores arguments, or only writes a constant to a scalar out parameter is classified
@@ -412,6 +413,97 @@ def diff_inventory(recorded, generated):
             lines.append(f"      recorded:  {recorded[key][0]}")
             lines.append(f"      generated: {generated[key][0]}")
     return lines
+
+
+def change_rows(baseline, current):
+    """Pair entries by their stable (name, arity, source) key and describe what changed."""
+    rows = []
+    for key in sorted(set(baseline) | set(current)):
+        before = baseline.get(key)
+        after = current.get(key)
+        name, arity, source = key
+        if before is None:
+            rows.append(("added", name, arity, source, after[1], after[0], "", after[1]))
+        elif after is None:
+            rows.append(("removed", name, arity, source, before[1], before[0], before[1], ""))
+        elif before != after:
+            old_signature, old_status = before
+            new_signature, new_status = after
+            if old_signature != new_signature:
+                rows.append(
+                    (
+                        "signature",
+                        name,
+                        arity,
+                        source,
+                        new_status,
+                        new_signature,
+                        old_signature,
+                        new_signature,
+                    )
+                )
+            if old_status != new_status:
+                rows.append(
+                    (
+                        "status",
+                        name,
+                        arity,
+                        source,
+                        new_status,
+                        new_signature,
+                        old_status,
+                        new_status,
+                    )
+                )
+    return rows
+
+
+def write_report(path, baseline_metadata, current_metadata, rows, fmt):
+    if fmt == "tsv":
+        lines = ["change\tname\tarity\tsource\tstatus\tbefore\tafter\n"]
+        for change, name, arity, source, status, _signature, before, after in rows:
+            lines.append(
+                "\t".join(
+                    (change, name, str(arity), source, status, before.replace("\t", " "), after.replace("\t", " "))
+                )
+                + "\n"
+            )
+        with open(path, "w", encoding="utf-8") as file:
+            file.writelines(lines)
+        return
+
+    lines = ["[manifest]"]
+    for label, metadata in (("baseline", baseline_metadata), ("current", current_metadata)):
+        for key in ("mozjs_version", "quickjs_revision", "bindgen_sha256"):
+            lines.append(f"{label}_{key} = {quote(metadata.get(key, 'unknown'))}")
+    lines.append(f"changes = {len(rows)}")
+    lines.append("")
+    for change, name, arity, source, status, signature, before, after in rows:
+        lines.append("[[change]]")
+        lines.append(f"kind = {quote(change)}")
+        lines.append(f"name = {quote(name)}")
+        lines.append(f"arity = {arity}")
+        lines.append(f"source = {quote(source)}")
+        lines.append(f"status = {quote(status)}")
+        lines.append(f"signature = {quote(signature)}")
+        lines.append(f"before = {quote(before)}")
+        lines.append(f"after = {quote(after)}")
+        lines.append("")
+    with open(path, "w", encoding="utf-8") as file:
+        file.write("\n".join(lines))
+
+
+def report(args):
+    baseline_metadata, baseline_entries = load_manifest(args.baseline)
+    current_metadata, current_entries = load_manifest(args.manifest)
+    rows = change_rows(inventory(baseline_entries), inventory(current_entries))
+    write_report(args.output, baseline_metadata, current_metadata, rows, args.format)
+    counts = {}
+    for change, *_rest in rows:
+        counts[change] = counts.get(change, 0) + 1
+    summary = ", ".join(f"{kind} {counts[kind]}" for kind in sorted(counts)) or "no changes"
+    print(f"wrote {args.output}: {len(rows)} changes ({summary})")
+    return 0
 
 
 def verify(args):

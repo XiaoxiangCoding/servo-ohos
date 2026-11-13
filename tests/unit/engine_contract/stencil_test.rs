@@ -169,6 +169,7 @@ pub fn run(engine: &JSEngine) {
                 "InstantiateGlobalStencil",
                 "NewFrontendContext",
                 "OwningCompileOptions_for_fc",
+                "PrepareForInstantiate",
                 "SetNativeStackQuota",
                 "StencilAddRef",
                 "StencilRelease",

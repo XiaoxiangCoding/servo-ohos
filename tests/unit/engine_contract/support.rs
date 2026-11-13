@@ -268,7 +268,8 @@ pub unsafe fn remove_job_queue(cx: &mut JSContext, queue: *mut std::ffi::c_void)
 /// Writes one JSON line per case so the two engine runs can be diffed.
 ///
 /// `apis` names every mozjs entry point the case exercises. The coverage gate checks these names
-/// against `api-manifest.toml`, so a case cannot silently claim capability it never calls.
+/// against `api-scope.toml` and `api-manifest.toml`, so a case cannot silently claim capability it
+/// never calls or a status that the shim does not support.
 pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     static RESET: Once = Once::new();
 
@@ -367,16 +368,46 @@ pub fn run_module(name: &str, f: impl FnOnce()) {
     }
 }
 
+/// Runs a case for a scoped entry that `api-manifest.toml` reports as `empty` or `todo`.
+///
+/// The case still asserts SpiderMonkey semantics, so the reference run stays strict. On QuickJS a
+/// `qjs_todo!` panic is recorded as `fields.panic` but does not fail the run: whether the recorded
+/// divergence is acceptable is decided by `known-differences.toml` in `run.sh diff`, not by the
+/// test binary. That keeps the QJS run going so `qjs.jsonl` stays complete and comparable.
+pub fn run_case_for_unimplemented_entry(
+    case: &str,
+    apis: &[&str],
+    f: impl FnOnce() -> Observation,
+) {
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(observation) => record(case, &observation, apis),
+        Err(payload) => {
+            let message = panic_message(payload);
+            eprintln!("case {case} recorded a shim failure: {message}");
+            record(case, &Observation::failure(&message), apis);
+            if !cfg!(feature = "js-quickjs") {
+                CASE_FAILURES
+                    .lock()
+                    .expect("case failure list")
+                    .push(format!("{case}: {message}"));
+            }
+        },
+    }
+}
+
 /// Runs a case in a fresh runtime and records its observation together with the entries it
-/// exercises. The `apis` list is the coverage contract: every entry named here must be classified
-/// as implemented in `api-manifest.toml`.
+/// exercises. The `apis` list is the coverage evidence: every named entry must be classified as
+/// implemented in `api-manifest.toml`, and every implemented entry in `api-scope.toml` must appear
+/// in at least one case.
 pub fn record_case(
     engine: &JSEngine,
     case: &str,
     apis: &[&str],
     f: impl FnOnce(&mut JSContext, HandleObject) -> Observation,
 ) {
-    run_case(case, apis, || with_global(engine, |cx, global| f(cx, global)));
+    run_case(case, apis, || {
+        with_global(engine, |cx, global| f(cx, global))
+    });
 }
 
 /// Like [`record_case`], but constructs the realm with the supplied options.

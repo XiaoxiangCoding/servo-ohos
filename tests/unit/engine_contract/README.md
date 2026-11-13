@@ -7,7 +7,14 @@ test source never names an engine and never uses `mozjs::quickjs` or `qjs::`.
 
 ## Scope
 
-The suite currently runs 76 cases over the implemented mozjs surface:
+The suite currently runs 90 cases. Coverage is measured against `api-scope.toml`: the mozjs
+entries Servo production code actually calls directly or reaches through the mozjs wrappers.
+The current scope has 410 unique names (313 direct, 112 indirect, 61 only indirect), of which 367
+are `implemented`. Every scoped entry has a contract case: the 367 `implemented` entries are
+checked as normal coverage, and the remaining 43 (37 `empty`, 6 `todo`) are required cases whose
+shim behavior is reported separately. Such a case still asserts SpiderMonkey behavior; on QuickJS
+the silent no-op or `qjs_todo!` panic is recorded and must be settled by an entry in
+`known-differences.toml`, so a missing capability can never silently drop its case.
 
 | Area | Cases | Source |
 | --- | --- | --- |
@@ -19,32 +26,60 @@ The suite currently runs 76 cases over the implemented mozjs surface:
 | Class, misc and errors | 5 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
 | Elements, calls and rooters | 5 | `contract_test.rs` |
 | Proxies, realms and principals | 8 | `proxy_test.rs` |
+| Engine configuration and lifecycle | 8 | `runtime_test.rs`, `misc_test.rs` |
+| Debugger object | 1 | `debugger_test.rs` |
+| Event-loop dispatch | 2 | `event_loop_test.rs` |
+| Streaming callbacks | 1 | `streaming_test.rs` |
 
 Every case records the `apis` it calls. The coverage gate compares those names with
-`api-manifest.toml`; the current release run covers all 629 `implemented` entries.
+`api-manifest.toml` for status and with `api-scope.toml` for the required set.
 
-Known-unimplemented entries are outside this suite's scope until their capability is enabled.
+Cases may exercise entries outside the scope; those entries are ignored for coverage. This keeps
+shared cases intact while the requirement follows Servo's actual use. `implemented` entries
+outside the scope do not need a case.
 
-`coverage` first regenerates the inventory from the `servo-quickjs` checkout in `QJS_DIR` and
-compares it with `api-manifest.toml`. It fails if a bindgen entry was added, removed, or changed
-status or signature without regenerating the manifest. The signature records the parameter and
-return types, so changing a type, adding or removing a parameter, or reordering same-typed
-parameters fails; renaming a parameter does not. This makes a mozjs upgrade that adds entry points
-fail before coverage is computed: the manifest must be updated, then every new `implemented` entry
-needs a case. Line-number and file movements in the shim do not fail this check.
+Scoped `empty` and `todo` entries must also have a case. They are counted separately, and a case
+may declare them even though the manifest does not classify them as `implemented`; outside the
+scope the same entries are rejected. This is what keeps an unimplemented
+entry visible: dropping the case would fail `coverage`, while keeping it records today's behavior
+for the diff.
+
+`api-scope.toml` is generated, not hand maintained. Entries reached only through mozjs wrapper
+methods, generic `TypedArray` helpers, generated bindings or callback registrations are not
+visible to the conservative call scan; each one is listed in `tools/reviewed_usage.toml` with
+its review evidence, and the generator merges that list into the scope. It is the usage standard: a mozjs upgrade
+that adds entries does not fail coverage unless Servo starts using them. If Servo gains a new
+call site, `scope-check` fails until the scope and any newly required case are updated.
+
+`coverage` first checks that `api-manifest.toml` still matches the bindgen and QuickJS shim, then
+checks that `api-scope.toml` still matches Servo's usage, and finally checks cases against the
+scope. A bindgen addition, removal, status change, or signature change requires regenerating the
+manifest; it does not require a case by itself. The signature records the parameter and return
+types, so changing a type, adding or removing a parameter, or reordering same-typed parameters
+fails; renaming a parameter does not. Line-number and file movements in the shim do not fail this
+check.
+
+Regenerate the usage scope after adding or removing a mozjs call in Servo:
+
+```bash
+tests/unit/engine_contract/tools/run.sh scope
+tests/unit/engine_contract/tools/run.sh scope-check
+```
 
 `api-manifest.toml` is generated, not edited by hand. When a mozjs upgrade or a shim change alters
-the entry points, regenerate it and add cases for every new `implemented` entry:
+the entry points, regenerate it, then regenerate the scope and add cases only for newly used
+`implemented` entries:
 
 ```bash
 tests/unit/engine_contract/tools/run.sh generate
+tests/unit/engine_contract/tools/run.sh scope
 tests/unit/engine_contract/tools/run.sh sm
 tests/unit/engine_contract/tools/run.sh coverage
 ```
 
 `generate` reads the bindgen files, engine sources, mozjs version and shim commit from `QJS_DIR`,
 so `QJS_DIR` must point at the same checkout that the build uses. Review the manifest diff, then
-update the cases; do not edit the TOML by hand.
+update the scope and cases; do not edit the TOML files by hand.
 
 ## Tool tests
 
@@ -71,7 +106,9 @@ tests/unit/engine_contract/tools/run.sh qjs      # local servo-quickjs checkout
 tests/unit/engine_contract/tools/run.sh diff
 tests/unit/engine_contract/tools/run.sh generate # regenerate api-manifest.toml after an API change
 tests/unit/engine_contract/tools/run.sh manifest # api-manifest.toml matches the shim and bindgen
-tests/unit/engine_contract/tools/run.sh coverage # manifest check plus API coverage
+tests/unit/engine_contract/tools/run.sh scope    # regenerate api-scope.toml from Servo usage
+tests/unit/engine_contract/tools/run.sh scope-check # api-scope.toml matches Servo usage
+tests/unit/engine_contract/tools/run.sh coverage # manifest, scope, and case coverage
 ```
 
 Set `QJS_DIR` if `servo-quickjs` is not next to this checkout. Set `OUT_DIR` to change where the
@@ -85,10 +122,14 @@ Cases are isolated from each other. A failed assertion records
 next case. The test still fails after every case has run, and the failure summary lists each
 failed case, so one engine defect cannot hide the cases that follow it.
 
+Cases for `empty`/`todo` entries use `run_case_for_unimplemented_entry`: a panic on QuickJS is recorded
+as `fields.panic` together with the case's `apis`, but it does not fail the QJS run, so
+`qjs.jsonl` stays complete for `diff`. On SpiderMonkey the same panic is a normal case failure.
+
 CI runs `coverage` after the unit tests, with `CONTRACT_OUT` pointing at the JSONL of that run. It
 checks out the `servo-quickjs` revision pinned in `support/quickjs/cargo-config.toml` and passes it
-as `QJS_DIR`, so a mozjs or shim update cannot land with a stale manifest or without cases for the
-newly implemented entry points.
+as `QJS_DIR`, so a mozjs or shim update cannot land with a stale manifest, a stale usage scope, or
+a used `implemented` entry that has no case.
 
 ## Comparing
 

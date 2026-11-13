@@ -8,6 +8,8 @@
 #   tools/run.sh generate   regenerate api-manifest.toml from the current mozjs bindgen and shim
 #   tools/run.sh manifest   check api-manifest.toml against the current mozjs bindgen and shim
 #   tools/run.sh coverage   check the coverage of api-manifest.toml in sm.jsonl
+#   tools/run.sh scope      regenerate api-scope.toml from Servo's actual usage
+#   tools/run.sh scope-check  verify api-scope.toml is fresh
 #   tools/run.sh all
 #
 # Environment:
@@ -87,13 +89,53 @@ run_generate() {
 
 run_coverage() {
     run_manifest
+    run_scope_check
     [[ -f "$out_dir/sm.jsonl" ]] || {
         echo "missing $out_dir/sm.jsonl; run '$0 sm' first" >&2
         return 1
     }
     cd "$repo_root"
     python3 tests/unit/engine_contract/tools/check_api_coverage.py \
-        tests/unit/engine_contract/api-manifest.toml "$out_dir/sm.jsonl"
+        "$out_dir/sm.jsonl" tests/unit/engine_contract/api-manifest.toml \
+        tests/unit/engine_contract/api-scope.toml
+}
+
+locate_mozjs() {
+    cd "$repo_root"
+    local registries
+    registries=$(cargo metadata --locked --offline --format-version 1 | python3 -c '
+import json, sys
+for package in json.load(sys.stdin)["packages"]:
+    if package["name"] in ("mozjs", "mozjs_sys"):
+        print(package["name"], package["manifest_path"])
+')
+    mozjs_manifest=$(sed -n 's/^mozjs //p' <<<"$registries")
+    mozjs_sys_manifest=$(sed -n 's/^mozjs_sys //p' <<<"$registries")
+    [[ -n "$mozjs_manifest" && -n "$mozjs_sys_manifest" ]] || {
+        echo "could not locate the mozjs and mozjs_sys crate sources" >&2
+        return 1
+    }
+}
+
+run_scope() {
+    locate_mozjs || return 1
+    python3 tests/unit/engine_contract/tools/scope_manifest.py \
+        --servo-dir . \
+        --manifest tests/unit/engine_contract/api-manifest.toml \
+        --scope tests/unit/engine_contract/api-scope.toml \
+        --mozjs-root "$(dirname "$mozjs_manifest")/src" \
+        --mozjs-sys-root "$(dirname "$mozjs_sys_manifest")/src"
+}
+
+run_scope_check() {
+    locate_mozjs || return 1
+    python3 tests/unit/engine_contract/tools/scope_manifest.py \
+        --servo-dir . \
+        --manifest tests/unit/engine_contract/api-manifest.toml \
+        --scope tests/unit/engine_contract/api-scope.toml \
+        --mozjs-root "$(dirname "$mozjs_manifest")/src" \
+        --mozjs-sys-root "$(dirname "$mozjs_sys_manifest")/src" \
+        --check
 }
 
 command="${1:-all}"
@@ -108,6 +150,8 @@ case "$command" in
     generate) run_generate ;;
     manifest) run_manifest ;;
     coverage) run_coverage ;;
+    scope) run_scope ;;
+    scope-check) run_scope_check ;;
     all)
         run_sm
         run_qjs
@@ -115,7 +159,7 @@ case "$command" in
         run_coverage
         ;;
     *)
-        echo "usage: $0 {sm|qjs|diff|generate|manifest|coverage|all} [cargo test args...]" >&2
+        echo "usage: $0 {sm|qjs|diff|generate|manifest|coverage|scope|scope-check|all} [cargo test args...]" >&2
         exit 2
         ;;
 esac

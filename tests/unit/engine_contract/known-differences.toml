@@ -33,3 +33,27 @@ id = "errors.core"
 fields = ["fields", "apis"]
 reason = "QuickJS reports the Error construction column; SpiderMonkey reports the throw site column"
 owner = "servo-quickjs"
+
+[[difference]]
+id = "misc.gc_callbacks"
+fields = ["fields"]
+reason = "QuickJS keeps JS_SetGCCallback as a silent no-op, so the registered callback never runs during JS_GC"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "misc.standard_classes"
+fields = ["fields"]
+reason = "QuickJS implements JS_NewEnumerateStandardClasses, JS_ResolveStandardClass and JS_MayResolveStandardClass as no-ops, so no lazily resolved standard class names are enumerated"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "promise.internal_job_queue"
+fields = ["fields", "apis"]
+reason = "QuickJS does not enqueue promise reactions into the internal job queue exposed to HasAnyMicroTasks; RunJobs still drains QuickJS's own queue"
+owner = "servo-quickjs"
+
+[[difference]]
+id = "debugger.global_object"
+fields = ["fields"]
+reason = "QuickJS binds JS_DefineDebuggerObject to a qjs_todo! stub that aborts across extern C; the case records the precondition and Servo does not compile the call for js-quickjs"
+owner = "servo-quickjs"

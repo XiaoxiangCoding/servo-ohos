@@ -16,9 +16,9 @@ use js::glue::{
 };
 use js::jsapi::{
     self, GCReason, Heap, JSCLASS_RESERVED_SLOTS_MASK, JSCLASS_RESERVED_SLOTS_SHIFT, JSClass,
-    JSClassOps, JSObject, JSTracer,
+    JSClassOps, JSObject, JSTracer, jsid,
 };
-use js::jsval::{NullValue, ObjectValue, PrivateValue, UndefinedValue};
+use js::jsval::{Int32Value, NullValue, ObjectValue, PrivateValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{JS_GC, JS_NewObject, JS_NewStringCopyN};
 use js::rust::{CompileOptionsWrapper, JSEngine, transform_str_to_source_text};
@@ -113,7 +113,7 @@ fn reserved_slots_and_tracing(engine: &JSEngine) {
                 .cast(),
         );
         held.string.set(JS_NewStringCopyN(cx, c"slot".as_ptr(), 4));
-        held.bigint.set(eval(cx, global, "42n").to_bigint());
+        held.bigint.set(eval(cx, global, "123456789012345678901234567890n").to_bigint());
         let options = CompileOptionsWrapper::new(cx, c"trace-script.js".to_owned(), 1);
         held.script.set(jsapi::Compile1(
             cx.raw_cx(),
@@ -170,7 +170,7 @@ fn write_barriers(engine: &JSEngine) {
         assert!(!object.is_null());
         let function = eval(cx, global, "(function () {})").to_object() as *mut jsapi::JSFunction;
         let string = JS_NewStringCopyN(cx, c"barrier".as_ptr(), 7);
-        let bigint = eval(cx, global, "7n").to_bigint();
+        let bigint = eval(cx, global, "123456789012345678901234567890n").to_bigint();
         let options = CompileOptionsWrapper::new(cx, c"barrier-script.js".to_owned(), 1);
         let script = jsapi::Compile1(
             cx.raw_cx(),
@@ -227,9 +227,98 @@ fn write_barriers(engine: &JSEngine) {
     );
 }
 
+
+// ---------------------------------------------------------------------------
+// Tracing every GC edge kind through a class trace hook.
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static TRACER_COUNT: Cell<u32> = const { Cell::new(0) };
+}
+
+static TRACER_CLASS_OPS: JSClassOps = JSClassOps {
+    addProperty: None,
+    delProperty: None,
+    enumerate: None,
+    newEnumerate: None,
+    resolve: None,
+    mayResolve: None,
+    finalize: None,
+    call: None,
+    construct: None,
+    trace: Some(trace_edge_kinds),
+};
+
+unsafe extern "C" fn trace_edge_kinds(trc: *mut JSTracer, _obj: *mut JSObject) {
+    let mut values = [Int32Value(1), Int32Value(2)];
+    jsapi::TraceValueArray(trc, values.len(), values.as_mut_ptr());
+
+    let mut object: *mut JSObject = ptr::null_mut();
+    js::glue::CallObjectRootTracer(trc, &mut object, c"object".as_ptr());
+
+    let mut value = Int32Value(3);
+    js::glue::CallValueRootTracer(trc, &mut value, c"value".as_ptr());
+
+    let mut bigint: Heap<*mut jsapi::BigInt> = Heap::default();
+    js::glue::CallBigIntTracer(trc, &mut bigint, c"bigint".as_ptr());
+
+    let mut id = Heap {
+        ptr: std::cell::UnsafeCell::new(jsid::default()),
+    };
+    js::glue::CallIdTracer(trc, &mut id, c"id".as_ptr());
+
+    let mut symbol: Heap<*mut jsapi::Symbol> = Heap::default();
+    js::glue::CallSymbolTracer(trc, &mut symbol, c"symbol".as_ptr());
+
+    let mut desc: jsapi::PropertyDescriptor = std::mem::zeroed();
+    js::glue::CallPropertyDescriptorTracer(trc, &mut desc);
+
+    TRACER_COUNT.with(|count| count.set(count.get() + 1));
+}
+
+fn edge_tracers(engine: &JSEngine) -> Observation {
+    with_global(engine, |cx, _global| unsafe {
+        let class = JSClass {
+            name: c"ContractTracer".as_ptr(),
+            flags: 0,
+            cOps: &TRACER_CLASS_OPS,
+            spec: ptr::null(),
+            ext: ptr::null(),
+            oOps: ptr::null(),
+        };
+        let object = JS_NewObject(cx, &class);
+        assert!(!object.is_null(), "creating the traced object");
+        rooted!(&in(cx) let object = object);
+
+        TRACER_COUNT.with(|count| count.set(0));
+        JS_GC(cx, GCReason::API);
+        assert!(
+            TRACER_COUNT.with(Cell::get) > 0,
+            "the class trace hook did not run"
+        );
+    });
+
+    Observation::new(vec![("ran", Value::Boolean(true))])
+}
+
 pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("class.reserved_slots_trace", || {
         reserved_slots_and_tracing(engine)
     });
     crate::support::isolate_case("class.heap_write_barriers", || write_barriers(engine));
+    crate::support::run_case(
+        "class.edge_tracers",
+        &[
+            "CallBigIntTracer",
+            "CallIdTracer",
+            "CallObjectRootTracer",
+            "CallPropertyDescriptorTracer",
+            "CallSymbolTracer",
+            "CallValueRootTracer",
+            "JS_GC",
+            "JS_NewObject",
+            "TraceValueArray",
+        ],
+        || edge_tracers(engine),
+    );
 }

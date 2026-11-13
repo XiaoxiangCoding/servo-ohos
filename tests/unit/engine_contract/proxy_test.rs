@@ -36,6 +36,7 @@ use js::jsapi::{
 use js::jsval::{Int32Value, ObjectValue, PrivateValue, StringValue, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
+use js::rust::wrappers2::SetPreserveWrapperCallbacks;
 use js::rust::wrappers2::{
     CheckedUnwrapDynamic, IterateRealms, IterateRealmsInCompartment, IterateRealmsWithPrincipals,
     JS_NewDeadWrapper, JS_NewPlainObject, JS_NewStringCopyN, JS_ValueToId, NewProxyObject,
@@ -784,6 +785,31 @@ fn dead_wrapper(engine: &JSEngine) {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Trusted principals and preserve-wrapper callbacks.
+// ---------------------------------------------------------------------------
+
+unsafe extern "C" fn preserve_wrapper(
+    _cx: *mut jsapi::JSContext,
+    _obj: jsapi::HandleObject,
+) -> bool {
+    false
+}
+
+unsafe extern "C" fn has_released_wrapper(_obj: jsapi::HandleObject) -> bool {
+    false
+}
+
+fn wrapper_callbacks(engine: &JSEngine) -> Observation {
+    with_global(engine, |cx, global| unsafe {
+        jsapi::JS_SetTrustedPrincipals(cx.raw_cx(), ptr::null_mut());
+        SetPreserveWrapperCallbacks(cx, Some(preserve_wrapper), Some(has_released_wrapper));
+        jsapi::AssertSameCompartment(cx.raw_cx(), global.get());
+    });
+
+    Observation::new(vec![("ran", Value::Boolean(true))])
+}
+
 pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("proxy.handlers_private_and_slots", || {
         handlers_private_and_slots(engine)
@@ -799,4 +825,9 @@ pub fn run(engine: &JSEngine) {
     });
     crate::support::isolate_case("proxy.dom_callbacks", || dom_proxy(engine));
     crate::support::isolate_case("proxy.dead_wrapper", || dead_wrapper(engine));
+    crate::support::run_case(
+        "proxy.wrapper_callbacks",
+        &["JS_SetTrustedPrincipals", "SetPreserveWrapperCallbacks"],
+        || wrapper_callbacks(engine),
+    );
 }
