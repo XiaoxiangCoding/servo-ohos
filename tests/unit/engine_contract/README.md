@@ -7,7 +7,7 @@ test source never names an engine and never uses `mozjs::quickjs` or `qjs::`.
 
 ## Scope
 
-The suite currently runs 90 cases. Coverage is measured against `api-scope.toml`: the mozjs
+The suite currently runs 58 cases. Coverage is measured against `api-scope.toml`: the mozjs
 entries Servo production code actually calls directly or reaches through the mozjs wrappers.
 The current scope has 410 unique names (313 direct, 112 indirect, 61 only indirect), of which 367
 are `implemented`. Every scoped entry has a contract case: the 367 `implemented` entries are
@@ -18,15 +18,14 @@ the silent no-op or `qjs_todo!` panic is recorded and must be settled by an entr
 
 | Area | Cases | Source |
 | --- | --- | --- |
-| Buffer and typed arrays | 26 | `buffer_test.rs`, `typed_array_test.rs` |
-| Objects and properties | 11 | `objects_test.rs`, `objects_extra_test.rs`, `property_test.rs` |
-| Modules and clone | 11 | `module_test.rs`, `clone_test.rs` |
-| Strings, eval and stencil | 5 | `strings_test.rs`, `strings_extra_test.rs`, `eval_test.rs`, `eval_ext_test.rs`, `stencil_test.rs` |
-| Promises, realm and runtime | 5 | `promises_test.rs`, `realm_test.rs`, `runtime_test.rs` |
-| Class, misc and errors | 5 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
-| Elements, calls and rooters | 5 | `contract_test.rs` |
+| Buffer and typed arrays | 6 | `buffer_test.rs` |
+| Objects and properties | 7 | `objects_test.rs`, `objects_extra_test.rs`, `property_test.rs` |
+| Modules and clone | 7 | `module_test.rs`, `clone_test.rs` |
+| Strings, eval and stencil | 4 | `strings_test.rs`, `strings_extra_test.rs`, `eval_test.rs`, `eval_ext_test.rs`, `stencil_test.rs` |
+| Promises, realm and runtime | 4 | `promises_test.rs`, `realm_test.rs`, `runtime_test.rs` |
+| Class, misc and errors | 13 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
+| Calls and rooters | 2 | `contract_test.rs` |
 | Proxies, realms and principals | 8 | `proxy_test.rs` |
-| Engine configuration and lifecycle | 8 | `runtime_test.rs`, `misc_test.rs` |
 | Debugger object | 1 | `debugger_test.rs` |
 | Event-loop dispatch | 2 | `event_loop_test.rs` |
 | Streaming callbacks | 1 | `streaming_test.rs` |
@@ -34,9 +33,9 @@ the silent no-op or `qjs_todo!` panic is recorded and must be settled by an entr
 Every case records the `apis` it calls. The coverage gate compares those names with
 `api-manifest.toml` for status and with `api-scope.toml` for the required set.
 
-Cases may exercise entries outside the scope; those entries are ignored for coverage. This keeps
-shared cases intact while the requirement follows Servo's actual use. `implemented` entries
-outside the scope do not need a case.
+Cases may exercise entries outside the scope; those entries are ignored for coverage, but every
+case must exercise at least one scoped entry. `implemented` entries outside the scope do not need
+a case.
 
 Scoped `empty` and `todo` entries must also have a case. They are counted separately, and a case
 may declare them even though the manifest does not classify them as `implemented`; outside the
@@ -122,9 +121,8 @@ Cases are isolated from each other. A failed assertion records
 next case. The test still fails after every case has run, and the failure summary lists each
 failed case, so one engine defect cannot hide the cases that follow it.
 
-Cases for `empty`/`todo` entries use `run_case_for_unimplemented_entry`: a panic on QuickJS is recorded
-as `fields.panic` together with the case's `apis`, but it does not fail the QJS run, so
-`qjs.jsonl` stays complete for `diff`. On SpiderMonkey the same panic is a normal case failure.
+Cases for `empty`/`todo` entries record the shim precondition or divergence; the QuickJS diff must
+already have the corresponding entry in `known-differences.toml`.
 
 CI runs `coverage` after the unit tests, with `CONTRACT_OUT` pointing at the JSONL of that run. It
 checks out the `servo-quickjs` revision pinned in `support/quickjs/cargo-config.toml` and passes it

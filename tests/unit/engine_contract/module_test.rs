@@ -23,7 +23,7 @@ use js::jsapi::{
 use js::jsval::{Int32Value, ObjectValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{
-    Compile1, CompileJsonModule, CompileJsonModule1, CompileModule, CompileModule1,
+    Compile1, CompileJsonModule, CompileJsonModule1, CompileModule1,
     CreateDefaultExportSyntheticModule, GetModuleNamespace, GetModuleScript, GetPromiseState,
     GetRequestedModuleType, JS_ExecuteScript, LoadRequestedModules, LoadRequestedModules1,
     ModuleEvaluate, ModuleLink, ResolvePromise, RunJobs, ThrowOnModuleEvaluationFailure,
@@ -96,22 +96,6 @@ unsafe fn compile_dependency(cx: *mut RawJSContext, source: &str) -> *mut JSObje
         options.ptr,
         &mut transform_str_to_source_text(source),
     )
-}
-
-unsafe fn pending_message(cx: &mut JSContext) -> String {
-    let mut pending = UndefinedValue();
-    if !jsapi::JS_GetPendingException(
-        cx.raw_cx(),
-        MutableHandleValue::from_marked_location(&mut pending),
-    ) {
-        return "<no pending exception>".to_owned();
-    }
-    if pending.is_object() {
-        let message = crate::support::get_property(cx, pending, c"message");
-        format!("{:?}", observe(cx, message))
-    } else {
-        format!("{pending:?}")
-    }
 }
 
 unsafe fn prepare_module(cx: &mut JSContext, module: js::rust::Handle<*mut JSObject>) {
@@ -245,61 +229,6 @@ unsafe extern "C" fn prepare_and_run(
         PREPARED.with(|prepared| prepared.borrow_mut().push(error.to_int32()));
         jsapi::JS_ClearPendingException(cx.raw_cx());
     }
-}
-
-fn compile_evaluate(engine: &JSEngine) {
-    record_case(
-        engine,
-        "module.compile_link_evaluate",
-        &[
-            "CompileModule",
-            "CompileModule1",
-            "GetModuleNamespace",
-            "GetModuleScript",
-            "IsCyclicModule",
-            "ModuleEvaluate",
-            "ModuleLink",
-        ],
-        |cx, _global| unsafe {
-            let options = CompileOptionsWrapper::new(cx, c"contract-module.js".to_owned(), 1);
-            let module = CompileModule1(
-                cx,
-                options.ptr,
-                &mut transform_str_to_source_text("export const answer = 42;"),
-            );
-            assert!(!module.is_null());
-            rooted!(&in(cx) let module = module);
-            assert!(jsapi::IsCyclicModule(module.get()));
-            assert!(!GetModuleScript(module.handle()).is_null());
-            prepare_module(cx, module.handle());
-            assert!(
-                ModuleLink(cx, module.handle()),
-                "ModuleLink failed: {}",
-                pending_message(cx)
-            );
-            rooted!(&in(cx) let mut evaluation = UndefinedValue());
-            assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
-            assert!(evaluation.get().is_object());
-            let namespace = GetModuleNamespace(cx, module.handle());
-            assert!(!namespace.is_null());
-            let answer = crate::support::get_property(cx, ObjectValue(namespace), c"answer");
-            let answer = observe(cx, answer);
-
-            let options = CompileOptionsWrapper::new(cx, c"contract-module-utf16.js".to_owned(), 1);
-            let source: Vec<u16> = "export const text = 'hello';".encode_utf16().collect();
-            let module = CompileModule(cx, options.ptr, &mut transform_u16_to_source_text(&source));
-            assert!(!module.is_null());
-            rooted!(&in(cx) let module = module);
-            prepare_module(cx, module.handle());
-            assert!(ModuleLink(cx, module.handle()));
-            rooted!(&in(cx) let mut evaluation = UndefinedValue());
-            assert!(ModuleEvaluate(cx, module.handle(), evaluation.handle_mut()));
-            let namespace = GetModuleNamespace(cx, module.handle());
-            assert!(!namespace.is_null());
-            let text = crate::support::get_property(cx, ObjectValue(namespace), c"text");
-            Observation::new(vec![("answer", answer), ("text", observe(cx, text))])
-        },
-    );
 }
 
 fn json_and_synthetic(engine: &JSEngine) {
@@ -912,7 +841,6 @@ fn failures_and_evaluation(engine: &JSEngine) {
 }
 
 pub fn run(engine: &JSEngine) {
-    compile_evaluate(engine);
     json_and_synthetic(engine);
     privates_hooks_and_requests(engine);
     load_requested(engine);

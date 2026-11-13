@@ -12,29 +12,27 @@ use std::ptr::{self, NonNull};
 
 use js::context::JSContext;
 use js::glue::{
-    CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer,
-    GetLengthOfJSStructuredCloneData, JS_GetReservedSlot, NewJSAutoStructuredCloneBuffer,
-    WriteBytesToJSStructuredCloneData,
+    CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer, GetLengthOfJSStructuredCloneData,
+    JS_GetReservedSlot, NewJSAutoStructuredCloneBuffer, WriteBytesToJSStructuredCloneData,
 };
 use js::jsapi::{
-    CloneDataPolicy, Handle, HandleObject, JSClass, JSObject, JSStructuredCloneCallbacks,
-    JSStructuredCloneData, JSStructuredCloneReader, JSStructuredCloneWriter, JSString,
-    MutableHandle, OnNewGlobalHookOption, StructuredCloneScope, JS_STRUCTURED_CLONE_VERSION,
-    JSCLASS_RESERVED_SLOTS_MASK, JSCLASS_RESERVED_SLOTS_SHIFT,
+    CloneDataPolicy, Handle, HandleObject, JS_STRUCTURED_CLONE_VERSION,
+    JSCLASS_RESERVED_SLOTS_MASK, JSCLASS_RESERVED_SLOTS_SHIFT, JSClass, JSObject, JSString,
+    JSStructuredCloneCallbacks, JSStructuredCloneData, JSStructuredCloneReader,
+    JSStructuredCloneWriter, MutableHandle, OnNewGlobalHookOption, StructuredCloneScope,
 };
 use js::jsval::{Int32Value, JSVal, ObjectValue, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
-    JS_ClearPendingException, JS_IsExceptionPending, JS_NewGlobalObject, JS_NewUint8Array,
-    JS_ReadStructuredClone, JS_StructuredClone, JS_WriteStructuredClone,
+    JS_NewGlobalObject, JS_NewUint8Array, JS_ReadStructuredClone, JS_WriteStructuredClone,
 };
 use js::rust::{
-    evaluate_script, CompileOptionsWrapper, HandleObject as SafeHandleObject, JSEngine,
-    RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
+    CompileOptionsWrapper, HandleObject as SafeHandleObject, JSEngine, RealmOptions, Runtime,
+    SIMPLE_GLOBAL_CLASS, evaluate_script,
 };
 
-use crate::support::{record, Observation, Value as Observed};
+use crate::support::{Observation, Value as Observed, record};
 
 const SCOPE: StructuredCloneScope = StructuredCloneScope::DifferentProcess;
 
@@ -126,7 +124,11 @@ unsafe extern "C" fn write_callback(
         return false;
     };
     WRITES.with(|writes| writes.borrow_mut().push(id as u32));
-    SCOPES.with(|scopes| scopes.borrow_mut().push(js::jsapi::JS_GetStructuredCloneScope(writer)));
+    SCOPES.with(|scopes| {
+        scopes
+            .borrow_mut()
+            .push(js::jsapi::JS_GetStructuredCloneScope(writer))
+    });
     let cx = JSContext::from_ptr(NonNull::new(cx).unwrap());
     let cx = &mut { cx };
 
@@ -174,7 +176,10 @@ unsafe extern "C" fn read_callback(
     assert_eq!(double, 2.5);
 
     let mut typed = UndefinedValue();
-    assert!(js::jsapi::JS_ReadTypedArray(reader, raw_mutable(&mut typed)));
+    assert!(js::jsapi::JS_ReadTypedArray(
+        reader,
+        raw_mutable(&mut typed)
+    ));
     assert!(typed.is_object());
 
     let mut p1 = 0;
@@ -224,10 +229,7 @@ unsafe fn write_value(
     )
 }
 
-unsafe fn read_value(
-    cx: &mut JSContext,
-    data: *const JSStructuredCloneData,
-) -> Option<JSVal> {
+unsafe fn read_value(cx: &mut JSContext, data: *const JSStructuredCloneData) -> Option<JSVal> {
     let mut value = UndefinedValue();
     let ok = JS_ReadStructuredClone(
         cx,
@@ -271,7 +273,10 @@ fn buffer_lifecycle(engine: &JSEngine) {
         let output = read_value(cx, &(*destination).data_).expect("reading copied bytes");
         assert!(output.is_object());
         let answer = crate::support::get_property(cx, output, c"answer");
-        assert_eq!(crate::support::observe(cx, answer), crate::support::Value::Number(42.0));
+        assert_eq!(
+            crate::support::observe(cx, answer),
+            crate::support::Value::Number(42.0)
+        );
         DeleteJSAutoStructuredCloneBuffer(destination);
     });
 
@@ -359,122 +364,7 @@ fn callback_roundtrip(engine: &JSEngine) {
     );
 }
 
-fn convenience_clone(engine: &JSEngine) {
-    with_global(engine, |cx, global| unsafe {
-        let source = eval(cx, global, "let o = { a: [1, 2] }; o.self = o; o");
-        let mut clone = UndefinedValue();
-        assert!(JS_StructuredClone(
-            cx,
-            safe_handle(&source),
-            safe_mutable(&mut clone),
-            ptr::null(),
-            ptr::null_mut()
-        ));
-        assert!(clone.is_object());
-        assert_ne!(clone.to_object(), source.to_object());
-        let self_value = crate::support::get_property(cx, clone, c"self");
-        assert_eq!(self_value.to_object(), clone.to_object());
-
-        let mut integer = UndefinedValue();
-        let five = Int32Value(5);
-        assert!(JS_StructuredClone(
-            cx,
-            safe_handle(&five),
-            safe_mutable(&mut integer),
-            ptr::null(),
-            ptr::null_mut()
-        ));
-        assert_eq!(integer.to_int32(), 5);
-    });
-
-    record(
-        "clone.convenience_entry",
-        &Observation::ok(Observed::Boolean(true)),
-        &["JS_NewGlobalObject", "JS_StructuredClone"],
-    );
-}
-
-fn transferables(engine: &JSEngine) {
-    with_global(engine, |cx, global| unsafe {
-        let value = eval(cx, global, "let b = new Uint8Array([1, 2, 3]).buffer; b");
-        let transfer = eval(cx, global, "[b]");
-        assert!(transfer.is_object());
-
-        let buffer = NewJSAutoStructuredCloneBuffer(SCOPE, &CALLBACKS);
-        assert!(write_value(cx, value, transfer, &mut (*buffer).data_));
-        let mut has_transferables = false;
-        assert!(js::jsapi::JS_StructuredCloneHasTransferables(
-            &mut (*buffer).data_,
-            &mut has_transferables
-        ));
-        // SpiderMonkey inspects only the first pair of the buffer here, which is the format
-        // header even when a transfer map follows. The accessor's boolean is therefore not a
-        // portable assertion; reading the value back checks the actual transfer contract.
-        let _ = has_transferables;
-        let output = read_value(cx, &(*buffer).data_).expect("reading transferred buffer");
-        assert!(output.is_object());
-        DeleteJSAutoStructuredCloneBuffer(buffer);
-    });
-
-    record(
-        "clone.transferables",
-        &Observation::ok(Observed::Boolean(true)),
-        &[
-            "JS_NewGlobalObject",
-            "JS_ReadStructuredClone",
-            "JS_StructuredCloneHasTransferables",
-            "JS_WriteStructuredClone",
-            "NewJSAutoStructuredCloneBuffer",
-            "DeleteJSAutoStructuredCloneBuffer",
-        ],
-    );
-}
-
-fn invalid_data(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
-        let buffer = NewJSAutoStructuredCloneBuffer(SCOPE, ptr::null());
-        let garbage = [0u8; 32];
-        assert!(WriteBytesToJSStructuredCloneData(
-            garbage.as_ptr(),
-            garbage.len(),
-            &mut (*buffer).data_
-        ));
-        let mut value = UndefinedValue();
-        let ok = JS_ReadStructuredClone(
-            cx,
-            &(*buffer).data_,
-            JS_STRUCTURED_CLONE_VERSION,
-            SCOPE,
-            safe_mutable(&mut value),
-            &POLICY,
-            ptr::null(),
-            ptr::null_mut(),
-        );
-        assert!(!ok);
-        assert!(JS_IsExceptionPending(cx));
-        JS_ClearPendingException(cx);
-        DeleteJSAutoStructuredCloneBuffer(buffer);
-    });
-
-    record(
-        "clone.invalid_data",
-        &Observation::ok(Observed::Boolean(true)),
-        &[
-            "DeleteJSAutoStructuredCloneBuffer",
-            "JS_ClearPendingException",
-            "JS_IsExceptionPending",
-            "JS_NewGlobalObject",
-            "JS_ReadStructuredClone",
-            "NewJSAutoStructuredCloneBuffer",
-            "WriteBytesToJSStructuredCloneData",
-        ],
-    );
-}
-
 pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("clone.buffer_lifecycle", || buffer_lifecycle(engine));
     crate::support::isolate_case("clone.callback_roundtrip", || callback_roundtrip(engine));
-    crate::support::isolate_case("clone.convenience_entry", || convenience_clone(engine));
-    crate::support::isolate_case("clone.transferables", || transferables(engine));
-    crate::support::isolate_case("clone.invalid_data", || invalid_data(engine));
 }

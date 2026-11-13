@@ -14,6 +14,7 @@ fn ran() -> Observation {
     Observation::new(vec![("ran", Value::Boolean(true))])
 }
 
+#[cfg(feature = "js-quickjs")]
 fn precondition(text: impl Into<String>) -> Observation {
     Observation::new(vec![("precondition", Value::String(text.into()))])
 }

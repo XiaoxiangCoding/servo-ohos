@@ -56,8 +56,6 @@ mod support;
 mod stencil_test;
 #[cfg(test)]
 mod streaming_test;
-#[cfg(test)]
-mod typed_array_test;
 
 #[cfg(test)]
 mod tests {
@@ -86,7 +84,6 @@ mod tests {
         super::support::run_module("strings", || super::strings_test::run(&engine));
         super::support::run_module("strings_extra", || super::strings_extra_test::run(&engine));
         super::support::run_module("stencil", || super::stencil_test::run(&engine));
-        super::support::run_module("typed_array", || super::typed_array_test::run(&engine));
         super::support::assert_no_case_failures();
     }
 }

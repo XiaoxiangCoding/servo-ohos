@@ -6,7 +6,8 @@ Usage: check_api_coverage.py COVERAGE.jsonl MANIFEST.toml SCOPE.toml
 The JSON Lines input is one of the files written by `CONTRACT_OUT`. Each case must list the mozjs
 entry points it calls in its `apis` field. Only entries in `SCOPE.toml` are required to have a
 case: that is the surface Servo actually uses. Entries outside the scope are validated against
-the manifest but do not affect coverage.
+the manifest but do not affect coverage. Every case must still exercise at least one scoped
+entry: the suite only keeps cases for Servo's usage surface.
 
 Every `implemented` scoped entry must be exercised by a case. `empty` and `todo` scoped entries
 must also have a case, but they are counted separately: the case records what the shim does today
@@ -122,6 +123,9 @@ def main(argv):
                 covered_outside_scope.add(name)
             else:
                 covered_eligible.add(name)
+
+        if not set(apis) & set(scope):
+            errors.append(f"{case_id}: case has no entry in api-scope.toml")
 
     eligible = {
         name for name, entry in scope.items() if entry.get("status") == "implemented"

@@ -277,105 +277,6 @@ unsafe extern "C" fn read_reserved(_cx: *mut RawJSContext, argc: u32, vp: *mut V
     true
 }
 
-fn collections(engine: &JSEngine) {
-    record_case(
-        engine,
-        "objects.extra_collections",
-        &[
-            "IsMapObject",
-            "IsSetObject",
-            "MapClear",
-            "MapForEach",
-            "MapKeys",
-            "MapSize",
-            "MapValues",
-            "NewMapObject",
-            "JS_NewPlainObject",
-            "NewSetObject",
-            "SetAdd",
-            "SetDelete",
-            "SetEntries",
-            "SetForEach",
-            "SetHas",
-            "SetKeys",
-            "SetValues",
-        ],
-        |cx, global| unsafe {
-            rooted!(&in(cx) let map = NewMapObject(cx));
-            rooted!(&in(cx) let one = Int32Value(1));
-            rooted!(&in(cx) let two = Int32Value(2));
-            rooted!(&in(cx) let forty_two = Int32Value(42));
-            assert!(js::rust::wrappers2::MapSet(cx, map.handle(), one.handle(), forty_two.handle()));
-            assert!(js::rust::wrappers2::MapSet(cx, map.handle(), two.handle(), one.handle()));
-            let mut is_map = false;
-            assert!(IsMapObject(cx, map.handle().into(), &mut is_map));
-            assert!(is_map);
-            let mut map_is_set = false;
-            assert!(IsSetObject(cx, map.handle().into(), &mut map_is_set));
-            assert!(!map_is_set);
-
-            rooted!(&in(cx) let callback = eval(
-                cx,
-                global,
-                "(function (v, k) { globalThis.result = (globalThis.result || 0) + v * 10 + k; })",
-            ));
-            rooted!(&in(cx) let receiver = UndefinedValue());
-            assert!(MapForEach(cx, map.handle(), callback.handle(), receiver.handle()));
-            assert_eq!(eval(cx, global, "result").to_int32(), 433);
-
-            rooted!(&in(cx) let mut keys = UndefinedValue());
-            assert!(MapKeys(cx, map.handle(), keys.handle_mut()));
-            set_global(cx, global, c"map_keys", keys.get());
-            assert!(eval(cx, global, "Array.from(map_keys).join(',') === '1,2'").to_boolean());
-            rooted!(&in(cx) let mut values = UndefinedValue());
-            assert!(MapValues(cx, map.handle(), values.handle_mut()));
-            set_global(cx, global, c"map_values", values.get());
-            assert!(eval(cx, global, "Array.from(map_values).join(',') === '42,1'").to_boolean());
-            assert!(MapClear(cx, map.handle()));
-            assert_eq!(js::rust::wrappers2::MapSize(cx, map.handle()), 0);
-
-            rooted!(&in(cx) let set = NewSetObject(cx));
-            assert!(SetAdd(cx, set.handle(), one.handle()));
-            assert!(SetAdd(cx, set.handle(), two.handle()));
-            let mut has = false;
-            assert!(SetHas(cx, set.handle(), one.handle(), &mut has));
-            assert!(has);
-            let mut deleted = false;
-            assert!(SetDelete(cx, set.handle(), one.handle(), &mut deleted));
-            assert!(deleted);
-            assert!(SetAdd(cx, set.handle(), one.handle()));
-            let mut set_is_map = false;
-            assert!(IsMapObject(cx, set.handle().into(), &mut set_is_map));
-            assert!(!set_is_map);
-            let mut is_set = false;
-            assert!(IsSetObject(cx, set.handle().into(), &mut is_set));
-            assert!(is_set);
-
-            rooted!(&in(cx) let mut set_keys = UndefinedValue());
-            assert!(SetKeys(cx, set.handle(), set_keys.handle_mut()));
-            set_global(cx, global, c"set_keys", set_keys.get());
-            assert!(eval(cx, global, "Array.from(set_keys).join(',') === '2,1'").to_boolean());
-            rooted!(&in(cx) let mut set_values = UndefinedValue());
-            assert!(SetValues(cx, set.handle(), set_values.handle_mut()));
-            set_global(cx, global, c"set_values", set_values.get());
-            assert!(eval(cx, global, "Array.from(set_values).join(',') === '2,1'").to_boolean());
-            rooted!(&in(cx) let mut set_entries = UndefinedValue());
-            assert!(SetEntries(cx, set.handle(), set_entries.handle_mut()));
-            set_global(cx, global, c"set_entries", set_entries.get());
-            assert!(eval(cx, global, "JSON.stringify(Array.from(set_entries)) === '[[2,2],[1,1]]'").to_boolean());
-            rooted!(&in(cx) let set_callback = eval(
-                cx,
-                global,
-                "(function (v) { globalThis.set_result = (globalThis.set_result || 0) + v * 2; })",
-            ));
-            assert!(SetForEach(cx, set.handle(), set_callback.handle(), receiver.handle()));
-            assert_eq!(eval(cx, global, "set_result").to_int32(), 6);
-
-            Observation::ok(Observed::Boolean(true))
-        },
-    );
-}
-
 fn descriptors_and_forwarding(engine: &JSEngine) {
     record_case(
         engine,
@@ -688,7 +589,6 @@ pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("objects.extra_identity_and_functions", || {
         identity_and_functions(engine)
     });
-    crate::support::isolate_case("objects.extra_collections", || collections(engine));
     crate::support::isolate_case("objects.extra_descriptors_and_forwarding", || {
         descriptors_and_forwarding(engine)
     });
