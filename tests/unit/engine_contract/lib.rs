@@ -4,9 +4,10 @@
 
 //! Engine-independent contract tests for the `mozjs` API served by SpiderMonkey or QuickJS.
 //!
-//! Every case declares the C entry points it exercises in `apis`. The manifest is generated from
-//! the same bindgen and shim parser as `servo-quickjs`, and the coverage gate rejects entries that
-//! are missing from the manifest or classified as `empty`/`todo`.
+//! Every case declares the C entry points it exercises in `apis`. `api-scope.toml` records the
+//! entries Servo actually uses, and the coverage gate requires a case for every scoped entry:
+//! `implemented` entries count as normal coverage, while `empty`/`todo` entries also need a case
+//! whose QuickJS divergence must be registered in `known-differences.toml`.
 #![allow(unsafe_op_in_unsafe_fn)]
 
 #[cfg(test)]
@@ -23,6 +24,10 @@ mod errors_test;
 mod eval_test;
 #[cfg(test)]
 mod eval_ext_test;
+#[cfg(test)]
+mod debugger_test;
+#[cfg(test)]
+mod event_loop_test;
 #[cfg(test)]
 mod misc_test;
 #[cfg(test)]
@@ -50,6 +55,8 @@ mod support;
 #[cfg(test)]
 mod stencil_test;
 #[cfg(test)]
+mod streaming_test;
+#[cfg(test)]
 mod typed_array_test;
 
 #[cfg(test)]
@@ -64,6 +71,9 @@ mod tests {
         super::support::run_module("errors", || super::errors_test::run(&engine));
         super::support::run_module("eval", || super::eval_test::run(&engine));
         super::support::run_module("eval_ext", || super::eval_ext_test::run(&engine));
+        super::support::run_module("debugger", || super::debugger_test::run(&engine));
+        super::support::run_module("event_loop", || super::event_loop_test::run(&engine));
+        super::support::run_module("streaming", || super::streaming_test::run(&engine));
         super::support::run_module("misc", || super::misc_test::run(&engine));
         super::support::run_module("module", || super::module_test::run(&engine));
         super::support::run_module("objects", || super::objects_test::run(&engine));

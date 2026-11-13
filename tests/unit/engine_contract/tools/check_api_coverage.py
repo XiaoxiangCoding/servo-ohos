@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Check that every eligible mozjs entry point is exercised by the contract run.
+"""Check that every implemented mozjs entry in Servo's usage scope has a contract case.
 
-Usage: check_api_coverage.py MANIFEST.jsonl MANIFEST.toml
+Usage: check_api_coverage.py COVERAGE.jsonl MANIFEST.toml SCOPE.toml
 
 The JSON Lines input is one of the files written by `CONTRACT_OUT`. Each case must list the mozjs
-entry points it calls in its `apis` field. A name is accepted only if the manifest classifies it
-as `implemented`; listing an `empty` or `todo` entry is an error, because the suite must not claim
-to test known-unimplemented behavior. Coverage is reported per engine module so the gap is
-actionable.
+entry points it calls in its `apis` field. Only entries in `SCOPE.toml` are required to have a
+case: that is the surface Servo actually uses. Entries outside the scope are validated against
+the manifest but do not affect coverage.
+
+Every `implemented` scoped entry must be exercised by a case. `empty` and `todo` scoped entries
+must also have a case, but they are counted separately: the case records what the shim does today
+(silent no-op or a `qjs_todo!` panic), and any behavioural difference is settled by
+`known-differences.toml` during the QuickJS diff. A case may only claim an entry with the status
+the manifest gives it, so a case cannot pass an unimplemented entry off as working.
 """
 
 import collections
@@ -20,6 +25,26 @@ def load_manifest(path):
     with open(path, "rb") as file:
         document = tomllib.load(file)
     return document["api"]
+
+
+def load_scope(path):
+    with open(path, "rb") as file:
+        document = tomllib.load(file)
+    scope = {}
+    for entry in document.get("entry", []):
+        name = entry["name"]
+        if name in scope:
+            raise SystemExit(f"{path}: duplicate scope entry {name!r}")
+        provenance = entry.get("provenance")
+        if not isinstance(provenance, list) or not provenance:
+            raise SystemExit(f"{path}: scope entry {name!r} has no provenance")
+        scope[name] = entry
+    declared = document.get("scope", {}).get("entries")
+    if declared is not None and declared != len(scope):
+        raise SystemExit(
+            f"{path}: scope.entries says {declared}, but there are {len(scope)} entries"
+        )
+    return scope
 
 
 def load_coverage(path):
@@ -44,43 +69,81 @@ def load_coverage(path):
 
 
 def main(argv):
-    if len(argv) != 3:
+    if len(argv) != 4:
         raise SystemExit(__doc__)
-    manifest_path, coverage_path = argv[1], argv[2]
+    coverage_path, manifest_path, scope_path = argv[1], argv[2], argv[3]
     entries = load_manifest(manifest_path)
+    scope = load_scope(scope_path)
     cases, covered = load_coverage(coverage_path)
 
     by_name = collections.defaultdict(list)
     for entry in entries:
         by_name[entry["name"]].append(entry)
 
+    statuses = {
+        name: (
+            "implemented"
+            if any(entry["status"] == "implemented" for entry in matches)
+            else sorted({entry["status"] for entry in matches})[0]
+        )
+        for name, matches in by_name.items()
+    }
+
     errors = []
+    for name, entry in scope.items():
+        matches = by_name.get(name)
+        if not matches:
+            errors.append(f"scope entry {name} is not in the mozjs manifest")
+            continue
+        expected = entry.get("status")
+        actual = statuses[name]
+        if expected != actual:
+            errors.append(f"scope entry {name} says {expected}, manifest says {actual}")
+
     covered_eligible = set()
+    covered_unimplemented = set()
+    covered_outside_scope = set()
     for case_id, apis in cases:
         for name in apis:
             matches = by_name.get(name)
             if not matches:
                 errors.append(f"{case_id}: {name} is not in the mozjs manifest")
-            elif not any(entry["status"] == "implemented" for entry in matches):
-                statuses = ", ".join(sorted({entry["status"] for entry in matches}))
-                errors.append(f"{case_id}: {name} is classified {statuses}, not implemented")
+            elif statuses[name] != "implemented":
+                if name in scope:
+                    # A scoped entry the shim does not implement yet still needs a case. The
+                    # case documents today's behaviour; the QuickJS diff decides whether the
+                    # recorded divergence is a known defect or a fixable bug.
+                    covered_unimplemented.add(name)
+                else:
+                    errors.append(
+                        f"{case_id}: {name} is classified {statuses[name]}, not implemented"
+                    )
+            elif name not in scope:
+                covered_outside_scope.add(name)
             else:
                 covered_eligible.add(name)
 
     eligible = {
-        entry["name"]
-        for entry in entries
-        if entry["status"] == "implemented"
+        name for name, entry in scope.items() if entry.get("status") == "implemented"
     }
     missing = eligible - covered_eligible
     if missing:
-        by_file = collections.Counter()
-        for entry in entries:
-            if entry["name"] in missing:
-                by_file[entry.get("file", "?")] += 1
-        errors.append(f"{len(missing)} eligible mozjs entry points have no contract case")
-        for path, count in sorted(by_file.items()):
-            errors.append(f"  {path.removeprefix('engine/')}: {count}")
+        errors.append(f"{len(missing)} scoped mozjs entry points have no contract case")
+        for name in sorted(missing):
+            errors.append(f"  {name}: {scope[name]['provenance'][0]}")
+
+    unimplemented = {
+        name for name, entry in scope.items() if entry.get("status") != "implemented"
+    }
+    missing_unimplemented = unimplemented - covered_unimplemented
+    if missing_unimplemented:
+        errors.append(
+            f"{len(missing_unimplemented)} scoped mozjs entry points are not exercised by any case"
+        )
+        for name in sorted(missing_unimplemented):
+            errors.append(
+                f"  {name} ({scope[name]['status']}): {scope[name]['provenance'][0]}"
+            )
 
     if errors:
         for error in errors:
@@ -88,8 +151,16 @@ def main(argv):
         return 1
 
     print(
-        f"API coverage ok: {len(covered_eligible)}/{len(eligible)} eligible entries "
+        f"API coverage ok: {len(covered_eligible)}/{len(eligible)} scoped implemented entries "
         f"covered by {len(cases)} cases"
+    )
+    print(
+        f"scope: {len(scope)} entries; "
+        f"{len(covered_outside_scope)} out-of-scope entries exercised and ignored"
+    )
+    print(
+        f"unimplemented coverage ok: {len(covered_unimplemented)}/{len(unimplemented)} "
+        f"scoped empty/todo entries exercised (differences must be registered)"
     )
     return 0
 

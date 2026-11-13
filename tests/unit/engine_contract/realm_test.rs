@@ -13,11 +13,60 @@ use js::jsapi::OnNewGlobalHookOption;
 use js::rooted;
 use js::rust::Runtime;
 
-use crate::support::{Observation, Value, record};
+use crate::support::{Observation, Value, record, with_global};
 
 unsafe extern "C" fn trace_global(_trc: *mut JSTracer, _global: *mut jsapi::JSObject) {}
 
+// ---------------------------------------------------------------------------
+// Compartment iteration and flags.
+// ---------------------------------------------------------------------------
+
+unsafe extern "C" fn visit_compartment(
+    _cx: *mut jsapi::JSContext,
+    data: *mut std::ffi::c_void,
+    comp: *mut jsapi::Compartment,
+) -> jsapi::CompartmentIterResult {
+    *(data as *mut *mut jsapi::Compartment) = comp;
+    jsapi::CompartmentIterResult::Stop
+}
+
+fn compartments(engine: &JSEngine) -> Observation {
+    with_global(engine, |cx, global| unsafe {
+        let mut compartment: *mut jsapi::Compartment = ptr::null_mut();
+        jsapi::JS_IterateCompartments(
+            cx.raw_cx(),
+            &mut compartment as *mut _ as *mut std::ffi::c_void,
+            Some(visit_compartment),
+        );
+        assert!(
+            !compartment.is_null(),
+            "JS_IterateCompartments found no compartment"
+        );
+        assert!(
+            !jsapi::IsSystemCompartment(compartment),
+            "an ordinary realm is not a system compartment"
+        );
+        assert!(jsapi::IsSharableCompartment(compartment));
+
+        jsapi::AssertSameCompartment(cx.raw_cx(), global.get());
+        jsapi::JS_FireOnNewGlobalObject(cx.raw_cx(), global.into());
+    });
+
+    Observation::new(vec![("ran", Value::Boolean(true))])
+}
+
 pub fn run(engine: &JSEngine) {
+    crate::support::run_case(
+        "realm.compartments",
+        &[
+            "AssertSameCompartment",
+            "IsSharableCompartment",
+            "IsSystemCompartment",
+            "JS_FireOnNewGlobalObject",
+            "JS_IterateCompartments",
+        ],
+        || compartments(engine),
+    );
     crate::support::isolate_case("realm.enter_exit_and_private", || {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
