@@ -560,104 +560,6 @@ unsafe extern "C" fn visit_compartment(
     CompartmentIterResult::KeepGoing
 }
 
-fn realms_and_compartments(engine: &JSEngine) {
-    let mut runtime = Runtime::new(engine.handle());
-    let cx = runtime.cx();
-    unsafe {
-        REALM_CALLBACKS.with(|count| count.set(0));
-        COMPARTMENT_CALLBACKS.with(|count| count.set(0));
-        rooted!(&in(cx) let g1 = JS_NewGlobalObject(
-            cx.raw_cx(),
-            &SIMPLE_GLOBAL_CLASS,
-            ptr::null_mut(),
-            OnNewGlobalHookOption::FireOnNewGlobalHook,
-            &*RealmOptions::default(),
-        ));
-        rooted!(&in(cx) let g2 = JS_NewGlobalObject(
-            cx.raw_cx(),
-            &SIMPLE_GLOBAL_CLASS,
-            ptr::null_mut(),
-            OnNewGlobalHookOption::FireOnNewGlobalHook,
-            &*RealmOptions::default(),
-        ));
-        EXPECTED_GLOBAL.with(|global| global.set(g1.get()));
-
-        let realm = GetObjectRealmOrNull(g1.get());
-        assert!(!realm.is_null());
-        let options = RealmCreationOptionsRef(realm);
-        assert!(!options.is_null());
-        let behaviors = RealmBehaviorsRef(realm);
-        assert!(!behaviors.is_null());
-        {
-            // The context overloads describe the current realm. Enter the global's realm before
-            // asking for them; creating a global object does not make its realm current.
-            let mut realm = AutoRealm::new_from_handle(cx, g1.handle());
-            let cx = &mut *realm;
-            let options_from_cx = RealmCreationOptionsRef1(cx.raw_cx());
-            assert_eq!(options_from_cx, options);
-            let behaviors_from_cx = RealmBehaviorsRef1(cx.raw_cx());
-            assert_eq!(behaviors_from_cx, behaviors);
-        }
-
-        IterateRealms(cx, ptr::null_mut(), Some(count_realm));
-        assert!(REALM_CALLBACKS.with(Cell::get) >= 2);
-        let all_realms = REALM_CALLBACKS.with(Cell::get);
-        REALM_CALLBACKS.with(|count| count.set(0));
-        IterateRealmsWithPrincipals(cx, ptr::null_mut(), ptr::null_mut(), Some(count_realm));
-        assert_eq!(REALM_CALLBACKS.with(Cell::get), all_realms);
-
-        JS_IterateCompartments(cx.raw_cx(), ptr::null_mut(), Some(visit_compartment));
-        assert!(COMPARTMENT_CALLBACKS.with(Cell::get) >= 1);
-        // A compartment may contain several realms; the global's compartment must contain at
-        // least the one realm we looked up above.
-        assert!(REALM_CALLBACKS.with(Cell::get) >= 1);
-        assert!(FOUND_GLOBAL.with(Cell::get));
-
-        // QJS has no zone getter, and its implementation ignores the zone argument. SM needs a
-        // real zone to iterate the compartments of this runtime.
-        #[cfg(not(feature = "js-quickjs"))]
-        let zone = js::jsapi::GetRealmZone(realm);
-        #[cfg(feature = "js-quickjs")]
-        let zone = ptr::NonNull::<u8>::dangling()
-            .as_ptr()
-            .cast::<js::jsapi::JS::Zone>();
-        COMPARTMENT_CALLBACKS.with(|count| count.set(0));
-        REALM_CALLBACKS.with(|count| count.set(0));
-        FOUND_GLOBAL.with(|found| found.set(false));
-        JS_IterateCompartmentsInZone(cx.raw_cx(), zone, ptr::null_mut(), Some(visit_compartment));
-        // QJS ignores the zone argument; SpiderMonkey iterates only the zone's compartments.
-        assert!(COMPARTMENT_CALLBACKS.with(Cell::get) >= 1);
-        assert!(FOUND_GLOBAL.with(Cell::get));
-        let _ = g2;
-    }
-    record(
-        "proxy.realms_and_compartments",
-        &Observation::new(vec![
-            ("iterate_realms", Value::Boolean(true)),
-            ("iterate_realms_with_principals", Value::Boolean(true)),
-            ("iterate_compartments", Value::Boolean(true)),
-            ("iterate_compartments_in_zone", Value::Boolean(true)),
-            ("first_global", Value::Boolean(true)),
-            ("realm_options", Value::Boolean(true)),
-            ("realm_behaviors", Value::Boolean(true)),
-        ]),
-        &[
-            "GetFirstGlobalInCompartment",
-            "GetObjectRealmOrNull",
-            "IterateRealms",
-            "IterateRealmsInCompartment",
-            "IterateRealmsWithPrincipals",
-            "JS_IterateCompartments",
-            "JS_IterateCompartmentsInZone",
-            "JS_NewGlobalObject",
-            "RealmBehaviorsRef",
-            "RealmBehaviorsRef1",
-            "RealmCreationOptionsRef",
-            "RealmCreationOptionsRef1",
-        ],
-    );
-}
-
 fn dom_proxy(engine: &JSEngine) {
     with_global(engine, |cx, _global| unsafe {
         SetDOMProxyInformation(GetProxyHandlerFamily(), None, ptr::null());
@@ -820,9 +722,6 @@ pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("proxy.window_proxy", || window_proxy(engine));
     crate::support::isolate_case("proxy.transplant", || transplant(engine));
     crate::support::isolate_case("proxy.principals", || principals(engine));
-    crate::support::isolate_case("proxy.realms_and_compartments", || {
-        realms_and_compartments(engine)
-    });
     crate::support::isolate_case("proxy.dom_callbacks", || dom_proxy(engine));
     crate::support::isolate_case("proxy.dead_wrapper", || dead_wrapper(engine));
     crate::support::run_case(

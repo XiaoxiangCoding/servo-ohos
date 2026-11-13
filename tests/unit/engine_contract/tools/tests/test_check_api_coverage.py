@@ -102,6 +102,14 @@ class CoverageTest(unittest.TestCase):
         self.assertIn("1/1 scoped implemented entries", output)
         self.assertIn("1 out-of-scope entries exercised and ignored", output)
 
+    def test_requires_every_case_to_exercise_a_scoped_entry(self):
+        result, output = self.run_check(
+            self.coverage([("case", ["Scoped"]), ("outside-only", ["Outside"])]),
+            self.scope([("Scoped", "implemented")]),
+        )
+        self.assertEqual(result, 1)
+        self.assertIn("outside-only: case has no entry in api-scope.toml", output)
+
     def test_accepts_empty_scope_entry_as_unimplemented(self):
         result, output = self.run_check(
             self.coverage([("case", ["Empty"])]),
