@@ -367,6 +367,59 @@ JSONL
         self.assertIn("==> check-contract-case-coverage", completed.stdout)
         self.assertIn("engine contract steps failed:", completed.stderr)
 
+    def test_run_sh_all_passes_when_quickjs_fails_but_comparison_accepts(self):
+        repository, contract = self.write_run_sh_repo("repo-known-difference")
+        bin_dir = os.path.join(self.temporary.name, "bin-known-difference")
+        os.makedirs(bin_dir)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        with open(fake_cargo, "w", encoding="utf-8") as file:
+            file.write(
+                """#!/usr/bin/env bash
+set -eu
+cat >"${CONTRACT_CASES_OUT:?}" <<'JSON'
+{"version": 1, "cases": ["module.one"]}
+JSON
+cat >"${CONTRACT_OUT:?}" <<'JSONL'
+{"id": "module.one", "fields": {"value": true}, "exception": null, "apis": ["JS_Test"]}
+JSONL
+if [[ "$*" == *"js-quickjs"* ]]; then
+    exit 1
+fi
+"""
+            )
+        os.chmod(fake_cargo, 0o755)
+        output_dir = os.path.join(self.temporary.name, "out-known-difference")
+        os.makedirs(output_dir)
+        completed = subprocess.run(
+            [
+                os.path.join(contract, "tools", "run.sh"),
+                "run-contract-gate",
+                "--case",
+                "module.one",
+            ],
+            cwd=repository,
+            env={
+                **os.environ,
+                "OUT_DIR": output_dir,
+                "QJS_DIR": self.temporary.name,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                "FIX_CHECK_BASELINE": os.path.join(
+                    contract, "baseline-quickjs-difference-allowlist.toml"
+                ),
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("==> run-quickjs-contract", completed.stdout)
+        self.assertIn(
+            "check-contract-case-coverage (skipped: coverage requires the full case set)",
+            completed.stdout,
+        )
+        self.assertIn("compared 1 cases", completed.stdout)
+        self.assertIn("run-quickjs-contract exited non-zero", completed.stderr)
+        self.assertNotIn("engine contract steps failed:", completed.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

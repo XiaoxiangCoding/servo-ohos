@@ -224,7 +224,10 @@ a used scoped entry that has no case.
 
 `run.sh run-contract-gate` runs `run-spidermonkey-contract → run-quickjs-contract → compare-engine-results → check-quickjs-shim-fixes → check-contract-case-coverage` without stopping at the first failure. It reports
 every failed step at the end and exits non-zero if any step failed, so a known QuickJS failure
-still produces `quickjs-contract-results.jsonl`, the diff, and the coverage result. When `--case`/`--cases` is used,
+still produces `quickjs-contract-results.jsonl`, the diff, and the coverage result. A non-zero
+`run-quickjs-contract` is deliberately not a gate failure on its own: an assertion failure is how a
+QuickJS difference is recorded, and `compare-engine-results` decides whether every one is accepted.
+The gate only fails on the QuickJS run when the comparison also fails. When `--case`/`--cases` is used,
 `run-contract-gate` skips coverage because a single case cannot cover the full 410-entry scope; the skip is
 reported explicitly.
 
