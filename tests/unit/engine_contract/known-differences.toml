@@ -23,6 +23,7 @@ reason = "QuickJS does not invoke CustomAutoRooter trace callbacks during an exp
 owner = "servo-quickjs"
 status = "accepted"
 severity = "P3"
+issue = "servo-quickjs#16"
 
 [[difference]]
 id = "objects.core"

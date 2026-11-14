@@ -46,6 +46,20 @@ class CompareTest(unittest.TestCase):
             + "\n",
         )
 
+    def observation(self, name, case_id="case.one", fields=None):
+        return self.write(
+            name,
+            json.dumps(
+                {
+                    "id": case_id,
+                    "fields": fields or {"value": True},
+                    "exception": None,
+                    "apis": ["JS_Test"],
+                }
+            )
+            + "\n",
+        )
+
     def run_compare(self, status, severity, qjs_fields=None):
         sm = self.coverage("sm.jsonl", {"value": True})
         qjs = self.coverage("qjs.jsonl", qjs_fields or {"value": False})
@@ -165,6 +179,39 @@ class CompareTest(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, "duplicate difference id 'case.one'"):
             compare.main(["compare.py", sm, qjs, differences])
 
+    def test_rejects_a_difference_that_no_longer_differs(self):
+        sm = self.observation("sm.jsonl")
+        qjs = self.observation("qjs.jsonl")
+        differences = self.write(
+            "known-differences.toml",
+            DIFFERENCES_HEADER
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = compare.main(["compare.py", sm, qjs, differences])
+        self.assertEqual(result, 1)
+        self.assertIn("stale known QuickJS defect: case.one", output.getvalue())
+        self.assertIn("listed case no longer differs", output.getvalue())
+
+    def test_rejects_a_difference_when_only_listed_fields_match(self):
+        sm = self.observation("sm.jsonl", fields={"value": True, "extra": 1})
+        qjs = self.observation("qjs.jsonl", fields={"value": False, "extra": 2})
+        differences = self.write(
+            "known-differences.toml",
+            DIFFERENCES_HEADER
+            .replace('fields = ["fields"]', 'fields = ["value"]')
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = compare.main(["compare.py", sm, qjs, differences])
+        self.assertEqual(result, 1)
+        self.assertIn("mismatch: case.one", output.getvalue())
+        self.assertNotIn("stale known QuickJS defect: case.one", output.getvalue())
+
     def inventory(self, cases):
         path = os.path.join(self.temporary.name, "cases.json")
         with open(path, "w", encoding="utf-8") as file:
@@ -191,6 +238,64 @@ class CompareTest(unittest.TestCase):
             result = compare.main(["compare.py", sm, qjs, "--cases", cases])
         self.assertEqual(result, 1)
         self.assertIn("unexpected in SpiderMonkey case inventory: case.one", output.getvalue())
+
+    def test_rejects_a_difference_for_a_case_missing_from_complete_inventories(self):
+        sm = self.observation("sm.jsonl", case_id="case.two")
+        qjs = self.observation("qjs.jsonl", case_id="case.two")
+        cases = self.inventory(["case.two"])
+        differences = self.write(
+            "known-differences.toml",
+            DIFFERENCES_HEADER
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = compare.main(
+                ["compare.py", sm, qjs, differences, "--cases", cases]
+            )
+        self.assertEqual(result, 1)
+        self.assertIn("stale known QuickJS defect: case.one", output.getvalue())
+        self.assertIn("listed case no longer exists", output.getvalue())
+
+    def test_does_not_report_a_difference_for_a_case_outside_a_selected_run(self):
+        sm = self.coverage("sm.jsonl", {"value": True})
+        qjs = self.coverage("qjs.jsonl", {"value": False})
+        selected_path = os.path.join(self.temporary.name, "selected-cases.json")
+        with open(selected_path, "w", encoding="utf-8") as file:
+            json.dump(
+                {"version": 1, "cases": ["case.one"], "complete": False},
+                file,
+            )
+        differences = self.write(
+            "known-differences.toml",
+            DIFFERENCES_HEADER
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n'
+            + '\n[[difference]]\n'
+            + 'id = "case.two"\n'
+            + 'fields = ["fields"]\n'
+            + 'reason = "not selected"\n'
+            + 'owner = "servo-quickjs"\n'
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = compare.main(
+                [
+                    "compare.py",
+                    sm,
+                    qjs,
+                    differences,
+                    "--sm-cases",
+                    selected_path,
+                    "--qjs-cases",
+                    selected_path,
+                ]
+            )
+        self.assertEqual(result, 0, output.getvalue())
+        self.assertNotIn("stale known QuickJS defect: case.two", output.getvalue())
 
     def test_rejects_an_unsupported_case_inventory(self):
         sm = self.coverage("sm.jsonl", {"value": True})

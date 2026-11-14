@@ -364,6 +364,7 @@ fn flush_case_inventory() {
     let document = serde_json::json!({
         "version": 1,
         "cases": cases.into_iter().collect::<Vec<_>>(),
+        "complete": selected_cases().is_none(),
     });
     if let Some(parent) = Path::new(&path).parent() {
         std::fs::create_dir_all(parent).expect("creating CONTRACT_CASES_OUT parent directory");
