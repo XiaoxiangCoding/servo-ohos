@@ -77,7 +77,7 @@ class FixRecordTest(unittest.TestCase):
             file.write(textwrap.dedent(content))
         return path
 
-    def run_check(self, baseline=BASE, current=CURRENT, record=RECORD, cases=None):
+    def run_check(self, baseline=BASE, current=CURRENT, record=RECORD, cases=None, complete=True):
         baseline_path = self.write("baseline.toml", baseline)
         current_path = self.write("known-differences.toml", current)
         record_path = self.write("fix-record.md", record)
@@ -93,7 +93,7 @@ class FixRecordTest(unittest.TestCase):
         if cases is not None:
             cases_path = os.path.join(self.temporary.name, "cases.json")
             with open(cases_path, "w", encoding="utf-8") as file:
-                json.dump({"version": 1, "cases": cases}, file)
+                json.dump({"version": 1, "cases": cases, "complete": complete}, file)
             arguments.extend(["--cases", cases_path])
         output = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
@@ -136,6 +136,33 @@ class FixRecordTest(unittest.TestCase):
         result, output = self.run_check(cases=["module.two"])
         self.assertEqual(result, 1)
         self.assertIn("record 'module.one' is not in the runtime case inventory", output)
+
+    def test_accepts_records_outside_a_selected_inventory(self):
+        result, output = self.run_check(cases=["module.two"], complete=False)
+        self.assertEqual(result, 0, output)
+        self.assertIn("1 removed difference(s), 1 record(s), 0 problems", output)
+
+    def test_rejects_a_non_boolean_inventory_complete_flag(self):
+        baseline_path = self.write("baseline.toml", BASE)
+        current_path = self.write("known-differences.toml", CURRENT)
+        record_path = self.write("fix-record.md", RECORD)
+        cases_path = os.path.join(self.temporary.name, "cases.json")
+        with open(cases_path, "w", encoding="utf-8") as file:
+            json.dump({"version": 1, "cases": ["module.one"], "complete": "yes"}, file)
+        with self.assertRaisesRegex(SystemExit, "expected 'complete' to be a boolean"):
+            fix_record.main(
+                [
+                    "check",
+                    "--baseline",
+                    baseline_path,
+                    "--differences",
+                    current_path,
+                    "--record",
+                    record_path,
+                    "--cases",
+                    cases_path,
+                ]
+            )
 
     def test_rejects_a_missing_records_section(self):
         with self.assertRaisesRegex(SystemExit, "missing '## Records' section"):

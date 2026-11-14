@@ -149,7 +149,8 @@ record. Each `sm`/`qjs` run writes its runtime inventory to `$OUT_DIR/sm-cases.j
 inventory and requires the two inventories to agree. A truncated or stale run therefore fails
 instead of silently comparing a subset. The inventory is written by the harness when cases
 execute, so case ids computed at runtime are included; `case_inventory.py` remains a diagnostic
-source scan and is not a gate input.
+source scan and is not a gate input. A selected run marks the inventory `"complete": false`, so
+`diff` does not treat differences for unselected cases as stale.
 
 Set `QJS_DIR` if `servo-quickjs` is not next to this checkout. Set `OUT_DIR` to change where the
 JSONL files are written. The script always uses absolute paths for `CONTRACT_OUT`.
@@ -192,4 +193,6 @@ exact fingerprint for a panicking case: when present, the QuickJS `panic` text m
 character for character, and a QuickJS panic on an entry without one is a mismatch. A fixed
 difference is removed from this file and recorded in `fix-record.md`; `fix-check` rejects a removed
 entry without a complete record, and rejects a record whose case id is not in the runtime
-inventory.
+inventory. An entry for a case that participated in both runs but no longer differs is stale and
+fails `diff`; when both runtime inventories are complete, an entry for a case that no longer
+exists is stale too. A selected run only reports the first kind for its selected cases.

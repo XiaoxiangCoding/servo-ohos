@@ -10,7 +10,9 @@ Both inputs are JSON Lines produced by `engine_contract_tests`. Cases are matche
 defect and does not fail the run. A listed difference with status `pending` or `bug` still fails,
 as does an unlisted difference. When ``CASES.json`` is supplied, both engine runs must contain
 exactly those case ids; a truncated or stale run therefore fails instead of comparing a subset.
-Entries are never silent skips.
+An entry whose listed case participated in both runs but no longer differs is stale and fails the
+run. When both runtime inventories are marked complete, an entry for a case that no longer exists
+is stale as well. Entries are never silent skips.
 
 Use ``--sm-cases`` and ``--qjs-cases`` when the two engines write their own runtime case
 inventories. Each engine's JSONL is then checked against its own inventory, and the inventories
@@ -57,7 +59,10 @@ def load_expected_cases(path, allow_empty=True):
         raise SystemExit(f"{path}: expected a non-empty 'cases' string list")
     if len(cases) != len(set(cases)):
         raise SystemExit(f"{path}: duplicate case id in case inventory")
-    return set(cases)
+    complete = document.get("complete", True)
+    if not isinstance(complete, bool):
+        raise SystemExit(f"{path}: expected 'complete' to be a boolean")
+    return set(cases), complete
 
 
 def load_differences(path):
@@ -172,21 +177,22 @@ def main(argv):
     expected = load_expected_cases(cases_path) if cases_path else None
     expected_sm = load_expected_cases(sm_cases_path) if sm_cases_path else expected
     expected_qjs = load_expected_cases(qjs_cases_path) if qjs_cases_path else expected
-    if cases_path and expected == set():
-        expected = set()
+    expected_sm_cases, expected_sm_complete = expected_sm if expected_sm else (None, False)
+    expected_qjs_cases, expected_qjs_complete = expected_qjs if expected_qjs else (None, False)
 
     missing_in_qjs = sorted(set(sm) - set(qjs))
     missing_in_sm = sorted(set(qjs) - set(sm))
-    missing_from_sm = sorted(expected_sm - set(sm)) if expected_sm is not None else []
-    missing_from_qjs = sorted(expected_qjs - set(qjs)) if expected_qjs is not None else []
-    unexpected_in_sm = sorted(set(sm) - expected_sm) if expected_sm is not None else []
-    unexpected_in_qjs = sorted(set(qjs) - expected_qjs) if expected_qjs is not None else []
+    missing_from_sm = sorted(expected_sm_cases - set(sm)) if expected_sm_cases is not None else []
+    missing_from_qjs = sorted(expected_qjs_cases - set(qjs)) if expected_qjs_cases is not None else []
+    unexpected_in_sm = sorted(set(sm) - expected_sm_cases) if expected_sm_cases is not None else []
+    unexpected_in_qjs = sorted(set(qjs) - expected_qjs_cases) if expected_qjs_cases is not None else []
     inventory_mismatches = []
-    if expected_sm is not None and expected_qjs is not None and expected_sm != expected_qjs:
-        inventory_mismatches = sorted(expected_sm ^ expected_qjs)
+    if expected_sm_cases is not None and expected_qjs_cases is not None and expected_sm_cases != expected_qjs_cases:
+        inventory_mismatches = sorted(expected_sm_cases ^ expected_qjs_cases)
     mismatches = []
     known = []
-    for case_id in sorted(set(sm) & set(qjs)):
+    compared_cases = set(sm) & set(qjs)
+    for case_id in sorted(compared_cases):
         left = sm[case_id]
         right = qjs[case_id]
         if left == right:
@@ -196,6 +202,24 @@ def main(argv):
             known.append((case_id, left, right, difference))
         else:
             mismatches.append((case_id, left, right))
+
+    known_ids = {case_id for case_id, _, _, _ in known}
+    mismatch_ids = {case_id for case_id, _, _ in mismatches}
+    stale = []
+    for case_id in sorted(differences):
+        difference = differences[case_id]
+        if case_id in compared_cases:
+            if case_id not in known_ids and case_id not in mismatch_ids:
+                stale.append((case_id, difference, "listed case no longer differs"))
+        elif (
+            expected_sm_cases is not None
+            and expected_qjs_cases is not None
+            and expected_sm_complete
+            and expected_qjs_complete
+            and case_id not in expected_sm_cases
+            and case_id not in expected_qjs_cases
+        ):
+            stale.append((case_id, difference, "listed case no longer exists"))
 
     released = 0
     for case_id, left, right, difference in known:
@@ -237,6 +261,11 @@ def main(argv):
         print(f"unexpected in QuickJS case inventory: {case_id}")
     for case_id in inventory_mismatches:
         print(f"case inventory mismatch between engines: {case_id}")
+    for case_id, difference, reason in stale:
+        print(
+            f"stale known QuickJS defect: {case_id} "
+            f"(fields: {', '.join(sorted(difference['fields']))}, {reason})"
+        )
     for case_id, left, right in mismatches:
         print(f"mismatch: {case_id}")
         print(f"  SpiderMonkey: {json.dumps(left, sort_keys=True)}")
@@ -251,6 +280,7 @@ def main(argv):
         or unexpected_in_sm
         or unexpected_in_qjs
         or inventory_mismatches
+        or stale
         or mismatches
         or unaccepted
     )
@@ -259,6 +289,7 @@ def main(argv):
         f"{len(mismatches)} mismatches, "
         f"{released} known QuickJS defects, "
         f"{unaccepted} unaccepted QuickJS defects, "
+        f"{len(stale)} stale known QuickJS defects, "
         f"{len(missing_in_qjs)} missing in QuickJS, "
         f"{len(missing_in_sm)} missing in SpiderMonkey, "
         f"{len(missing_from_sm)} missing from SpiderMonkey case inventory, "

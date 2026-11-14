@@ -8,7 +8,9 @@ Usage:
 A difference that disappeared from ``known-differences.toml`` must have a matching record in
 ``fix-record.md``. Records are Markdown sections headed by a contract case id. Each record must
 carry the fields in ``REQUIRED_FIELDS`` and its case id must exist in the runtime case inventory
-when ``--cases`` is supplied. Code fences (including the template) are ignored.
+when ``--cases`` is supplied. A selected run writes an inventory with ``complete = false``; in
+that case records outside the selection are not treated as unknown. Code fences (including the
+template) are ignored.
 """
 
 import argparse
@@ -134,7 +136,10 @@ def load_cases(path):
     cases = document.get("cases")
     if not isinstance(cases, list) or not all(isinstance(case, str) and case for case in cases):
         raise SystemExit(f"{path}: expected a 'cases' string list")
-    return set(cases)
+    complete = document.get("complete", True)
+    if not isinstance(complete, bool):
+        raise SystemExit(f"{path}: expected 'complete' to be a boolean")
+    return set(cases), complete
 
 
 def is_placeholder(value):
@@ -178,11 +183,12 @@ def check(args):
         problems.extend(validate_record(record, args.record))
 
     if args.cases:
-        cases = load_cases(args.cases)
-        for case_id in sorted(set(records) - cases):
-            problems.append(
-                f"{args.record}: record {case_id!r} is not in the runtime case inventory"
-            )
+        cases, complete = load_cases(args.cases)
+        if complete:
+            for case_id in sorted(set(records) - cases):
+                problems.append(
+                    f"{args.record}: record {case_id!r} is not in the runtime case inventory"
+                )
 
     for problem in problems:
         print(problem, file=sys.stderr)
