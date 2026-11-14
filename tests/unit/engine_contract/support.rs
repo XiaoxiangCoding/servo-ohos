@@ -269,7 +269,7 @@ pub unsafe fn remove_job_queue(cx: &mut JSContext, queue: *mut std::ffi::c_void)
 /// Writes one JSON line per case so the two engine runs can be diffed.
 ///
 /// `apis` names every mozjs entry point the case exercises. The coverage gate checks these names
-/// against `api-scope.toml` and `api-manifest.toml`, so a case cannot silently claim capability it
+/// against `servo-mozjs-api-usage.toml` and `mozjs-api-snapshot.toml`, so a case cannot silently claim capability it
 /// never calls or a status that the shim does not support.
 pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     static RESET: Once = Once::new();
@@ -478,8 +478,8 @@ pub fn run_module(name: &str, f: impl FnOnce()) {
 
 /// Runs a case in a fresh runtime and records its observation together with the entries it
 /// exercises. The `apis` list is the coverage evidence: every named entry must be classified as
-/// implemented in `api-manifest.toml`, or as `empty`/`todo` in both the manifest and
-/// `api-scope.toml`. Every scoped entry must appear in at least one case.
+/// implemented in `mozjs-api-snapshot.toml`, or as `empty`/`todo` in both the inventory and
+/// `servo-mozjs-api-usage.toml`. Every scoped entry must appear in at least one case.
 pub fn record_case(
     engine: &JSEngine,
     case: &str,

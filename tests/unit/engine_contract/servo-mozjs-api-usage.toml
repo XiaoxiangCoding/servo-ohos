@@ -3,8 +3,8 @@
 # This file is the coverage standard for the engine contract suite. Entries outside it are
 # not required to have a contract case. Regenerate with:
 #   python3 tests/unit/engine_contract/tools/scope_manifest.py \
-#     --servo-dir . --manifest tests/unit/engine_contract/api-manifest.toml \
-#     --scope tests/unit/engine_contract/api-scope.toml \
+#     --servo-dir . --inventory tests/unit/engine_contract/mozjs-api-snapshot.toml \
+#     --usage tests/unit/engine_contract/servo-mozjs-api-usage.toml \
 #     --mozjs-root DIR --mozjs-sys-root DIR
 
 [scope]

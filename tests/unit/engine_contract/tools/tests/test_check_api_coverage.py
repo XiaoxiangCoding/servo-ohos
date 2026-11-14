@@ -51,7 +51,7 @@ class CoverageTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.manifest = self.write("api-manifest.toml", MANIFEST)
+        self.manifest = self.write("mozjs-api-snapshot.toml", MANIFEST)
 
     def write(self, name, content):
         path = os.path.join(self.temporary.name, name)
@@ -67,7 +67,7 @@ class CoverageTest(unittest.TestCase):
             body.append(f'status = "{status}"\n')
             body.append('mode = "direct"\n')
             body.append('provenance = ["components/script/test.rs:1"]\n')
-        return self.write("api-scope.toml", "".join(body))
+        return self.write("servo-mozjs-api-usage.toml", "".join(body))
 
     def coverage(self, cases):
         lines = [
@@ -109,7 +109,7 @@ class CoverageTest(unittest.TestCase):
             self.scope([("Scoped", "implemented")]),
         )
         self.assertEqual(result, 1)
-        self.assertIn("outside-only: case has no entry in api-scope.toml", output)
+        self.assertIn("outside-only: case has no entry in servo-mozjs-api-usage.toml", output)
 
     def test_rejects_duplicate_case_ids(self):
         coverage = self.coverage([("case", ["Scoped"]), ("case", ["Scoped"])])
@@ -150,7 +150,7 @@ class CoverageTest(unittest.TestCase):
             self.scope([("Scoped", "empty")]),
         )
         self.assertEqual(result, 1)
-        self.assertIn("scope entry Scoped says empty, manifest says implemented", output)
+        self.assertIn("usage entry Scoped says empty, inventory says implemented", output)
 
     def test_rejects_scope_entry_missing_from_manifest(self):
         result, output = self.run_check(
@@ -158,7 +158,7 @@ class CoverageTest(unittest.TestCase):
             self.scope([("Scoped", "implemented"), ("Unknown", "implemented")]),
         )
         self.assertEqual(result, 1)
-        self.assertIn("scope entry Unknown is not in the mozjs manifest", output)
+        self.assertIn("usage entry Unknown is not in the mozjs API inventory", output)
 
 
 if __name__ == "__main__":

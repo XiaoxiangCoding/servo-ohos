@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate the Servo usage scope used by the engine contract coverage gate.
+"""Generate the Servo mozjs API usage used by the engine contract coverage gate.
 
-The scope contains the mozjs entries Servo production code calls directly or reaches through
-the mozjs wrapper crates. It is the standard for contract coverage; the full API manifest stays
+The usage file contains the mozjs entries Servo production code calls directly or reaches through
+the mozjs wrapper crates. It is the standard for contract coverage; the full API inventory stays
 in place to detect bindgen and shim changes.
 
 Usage:
-  scope_manifest.py --servo-dir . --manifest tests/unit/engine_contract/api-manifest.toml \
-      --scope tests/unit/engine_contract/api-scope.toml \
+  scope_manifest.py --servo-dir . --inventory tests/unit/engine_contract/mozjs-api-snapshot.toml \
+      --usage tests/unit/engine_contract/servo-mozjs-api-usage.toml \
       --mozjs-root DIR --mozjs-sys-root DIR
   scope_manifest.py ... --check
 
@@ -17,7 +17,7 @@ graph inside the `mozjs` and `mozjs_sys` crates.
 
 Calls that reach mozjs through wrapper methods, generic `TypedArray` helpers, generated bindings
 or callback registrations are not visible to that scan. They are reviewed by hand and recorded
-in `reviewed_usage.toml`; the generated scope merges that list so a reviewed use cannot silently
+in `servo-mozjs-api-usage-reviewed.toml`; the generated usage merges that list so a reviewed use cannot silently
 drop out of coverage.
 """
 
@@ -36,7 +36,7 @@ import tomllib
 CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
 
 REVIEWED_USAGE = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "reviewed_usage.toml"
+    os.path.dirname(os.path.abspath(__file__)), "servo-mozjs-api-usage-reviewed.toml"
 )
 
 
@@ -198,7 +198,7 @@ def direct_scan(servo_dir, manifest_path):
 def merge_reviewed_usage(direct, reached, reviewed, all_entries):
     unknown = sorted(set(reviewed) - all_entries)
     if unknown:
-        raise SystemExit(f"reviewed usage not in the mozjs manifest: {', '.join(unknown)}")
+        raise SystemExit(f"reviewed usage not in the mozjs API inventory: {', '.join(unknown)}")
     for name, entry in reviewed.items():
         if entry["mode"] == "direct":
             direct.setdefault(name, []).append(entry["evidence"])
@@ -259,8 +259,8 @@ def render_scope(result):
         "# This file is the coverage standard for the engine contract suite. Entries outside it are\n",
         "# not required to have a contract case. Regenerate with:\n",
         "#   python3 tests/unit/engine_contract/tools/scope_manifest.py \\\n",
-        "#     --servo-dir . --manifest tests/unit/engine_contract/api-manifest.toml \\\n",
-        "#     --scope tests/unit/engine_contract/api-scope.toml \\\n",
+        "#     --servo-dir . --inventory tests/unit/engine_contract/mozjs-api-snapshot.toml \\\n",
+        "#     --usage tests/unit/engine_contract/servo-mozjs-api-usage.toml \\\n",
         "#     --mozjs-root DIR --mozjs-sys-root DIR\n",
         "\n",
         "[scope]\n",
@@ -303,7 +303,10 @@ def load_scope_entries(path):
 
 def check_scope(path, result):
     if not os.path.exists(path):
-        print(f"error: missing scope file {path}; run 'run.sh scope'", file=sys.stderr)
+        print(
+            f"error: missing usage file {path}; run 'run.sh scan-mozjs-surface'",
+            file=sys.stderr,
+        )
         return 1
     recorded = load_scope_entries(path)
     generated = {
@@ -334,17 +337,21 @@ def check_scope(path, result):
                 f"{generated[name][0]} [{generated[name][1]}]",
                 file=sys.stderr,
             )
-        print("Regenerate with 'tests/unit/engine_contract/tools/run.sh scope'.", file=sys.stderr)
+        print(
+            "Regenerate with "
+            "'tests/unit/engine_contract/tools/run.sh scan-mozjs-surface'.",
+            file=sys.stderr,
+        )
         return 1
-    print(f"scope ok: {len(recorded)} entries match Servo's current mozjs usage")
+    print(f"servo mozjs API usage ok: {len(recorded)} entries match Servo's current usage")
     return 0
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--servo-dir", default=".")
-    parser.add_argument("--manifest", required=True)
-    parser.add_argument("--scope", required=True)
+    parser.add_argument("--inventory", required=True)
+    parser.add_argument("--usage", required=True)
     parser.add_argument("--mozjs-root", required=True)
     parser.add_argument("--mozjs-sys-root", required=True)
     parser.add_argument("--check", action="store_true")
@@ -353,18 +360,21 @@ def main(argv=None):
     servo_dir = os.path.abspath(args.servo_dir)
     result = summarize(
         servo_dir,
-        os.path.abspath(os.path.join(servo_dir, args.manifest)),
+        os.path.abspath(os.path.join(servo_dir, args.inventory)),
         os.path.abspath(args.mozjs_root),
         os.path.abspath(args.mozjs_sys_root),
     )
-    scope_path = os.path.abspath(os.path.join(servo_dir, args.scope))
+    scope_path = os.path.abspath(os.path.join(servo_dir, args.usage))
     if args.check:
         return check_scope(scope_path, result)
     with open(scope_path, "w", encoding="utf-8") as handle:
         handle.write(render_scope(result))
+    rendered = load_scope_entries(scope_path)
+    direct = sum(mode == "direct" for _status, mode in rendered.values())
+    indirect = sum(mode == "indirect" for _status, mode in rendered.values())
     print(
-        f"wrote {args.scope}: {len(result['used'])} entries "
-        f"({len(result['direct'])} direct, {len(result['via'])} indirect)"
+        f"wrote {args.usage}: {len(result['used'])} entries "
+        f"({direct} direct, {indirect} indirect)"
     )
     return 0
 

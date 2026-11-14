@@ -132,17 +132,30 @@ class CaseInventoryTest(unittest.TestCase):
             os.path.join(tools, "fix_record.py"),
             os.path.join(contract, "tools", "fix_record.py"),
         )
-        with open(os.path.join(contract, "known-differences.toml"), "w", encoding="utf-8"):
+        with open(
+            os.path.join(contract, "quickjs-difference-allowlist.toml"), "w", encoding="utf-8"
+        ):
             pass
-        with open(os.path.join(contract, "fix-record.md"), "w", encoding="utf-8") as file:
+        with open(
+            os.path.join(contract, "quickjs-shim-fix-records.md"), "w", encoding="utf-8"
+        ) as file:
             file.write("## Records\n")
-        with open(os.path.join(contract, "baseline-known-differences.toml"), "w", encoding="utf-8") as file:
+        with open(
+            os.path.join(contract, "baseline-quickjs-difference-allowlist.toml"),
+            "w",
+            encoding="utf-8",
+        ) as file:
             file.write("")
         return repository, contract
 
     def run_diff(self, repository, output_dir):
         return subprocess.run(
-            [os.path.join(repository, "tests", "unit", "engine_contract", "tools", "run.sh"), "diff"],
+            [
+                os.path.join(
+                    repository, "tests", "unit", "engine_contract", "tools", "run.sh"
+                ),
+                "compare-engine-results",
+            ],
             cwd=repository,
             env={**os.environ, "OUT_DIR": output_dir},
             text=True,
@@ -150,7 +163,10 @@ class CaseInventoryTest(unittest.TestCase):
         )
 
     def write_observations(self, output_dir, cases):
-        for name in ("sm.jsonl", "qjs.jsonl"):
+        for name in (
+            "spidermonkey-contract-results.jsonl",
+            "quickjs-contract-results.jsonl",
+        ):
             with open(os.path.join(output_dir, name), "w", encoding="utf-8") as file:
                 for case_id in cases:
                     file.write(
@@ -169,9 +185,15 @@ class CaseInventoryTest(unittest.TestCase):
         repository, _ = self.write_run_sh_repo("repo-runtime")
         output_dir = os.path.join(self.temporary.name, "out-runtime")
         os.makedirs(output_dir)
-        with open(os.path.join(output_dir, "sm-cases.json"), "w", encoding="utf-8") as file:
+        with open(
+            os.path.join(output_dir, "spidermonkey-contract-cases.json"),
+            "w",
+            encoding="utf-8",
+        ) as file:
             json.dump({"version": 1, "cases": ["module.real", "module.stale"]}, file)
-        with open(os.path.join(output_dir, "qjs-cases.json"), "w", encoding="utf-8") as file:
+        with open(
+            os.path.join(output_dir, "quickjs-contract-cases.json"), "w", encoding="utf-8"
+        ) as file:
             json.dump({"version": 1, "cases": ["module.real", "module.stale"]}, file)
         self.write_observations(output_dir, ["module.real"])
         completed = self.run_diff(repository, output_dir)
@@ -183,7 +205,10 @@ class CaseInventoryTest(unittest.TestCase):
         repository, _ = self.write_run_sh_repo("repo-selected")
         output_dir = os.path.join(self.temporary.name, "out-selected")
         os.makedirs(output_dir)
-        for name in ("sm-cases.json", "qjs-cases.json"):
+        for name in (
+            "spidermonkey-contract-cases.json",
+            "quickjs-contract-cases.json",
+        ):
             with open(os.path.join(output_dir, name), "w", encoding="utf-8") as file:
                 json.dump({"version": 1, "cases": ["module.one"]}, file)
         self.write_observations(output_dir, ["module.one"])
@@ -197,9 +222,15 @@ class CaseInventoryTest(unittest.TestCase):
         repository, _ = self.write_run_sh_repo("repo-inventory-mismatch")
         output_dir = os.path.join(self.temporary.name, "out-inventory-mismatch")
         os.makedirs(output_dir)
-        with open(os.path.join(output_dir, "sm-cases.json"), "w", encoding="utf-8") as file:
+        with open(
+            os.path.join(output_dir, "spidermonkey-contract-cases.json"),
+            "w",
+            encoding="utf-8",
+        ) as file:
             json.dump({"version": 1, "cases": ["module.one"]}, file)
-        with open(os.path.join(output_dir, "qjs-cases.json"), "w", encoding="utf-8") as file:
+        with open(
+            os.path.join(output_dir, "quickjs-contract-cases.json"), "w", encoding="utf-8"
+        ) as file:
             json.dump({"version": 1, "cases": ["module.two"]}, file)
         self.write_observations(output_dir, ["module.one", "module.two"])
         completed = self.run_diff(repository, output_dir)
@@ -240,19 +271,28 @@ JSONL
                 "OUT_DIR": output_dir,
                 "QJS_DIR": self.temporary.name,
                 "PATH": bin_dir + os.pathsep + os.environ["PATH"],
-                "FIX_CHECK_BASELINE": os.path.join(contract, "baseline-known-differences.toml"),
+                "FIX_CHECK_BASELINE": os.path.join(
+                    contract, "baseline-quickjs-difference-allowlist.toml"
+                ),
             },
             text=True,
             capture_output=True,
         )
         self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
-        self.assertIn("fix-check (no runtime inventory; checking records only)", completed.stdout)
+        self.assertIn(
+            "check-quickjs-shim-fixes (no runtime inventory; checking records only)",
+            completed.stdout,
+        )
         self.assertIn(
             "fix record: 0 removed difference(s), 0 record(s), 0 problems",
             completed.stdout,
         )
         self.assertNotIn("No such file or directory", completed.stderr)
-        self.assertIn("engine contract steps failed: sm diff coverage", completed.stderr)
+        self.assertIn(
+            "engine contract steps failed: run-spidermonkey-contract compare-engine-results "
+            "check-contract-case-coverage",
+            completed.stderr,
+        )
 
     def test_run_sh_all_with_case_skips_coverage(self):
         repository, contract = self.write_run_sh_repo("repo-all")
@@ -275,17 +315,25 @@ JSONL
                 "OUT_DIR": output_dir,
                 "QJS_DIR": self.temporary.name,
                 "PATH": bin_dir + os.pathsep + os.environ["PATH"],
-                "FIX_CHECK_BASELINE": os.path.join(contract, "baseline-known-differences.toml"),
+                "FIX_CHECK_BASELINE": os.path.join(
+                    contract, "baseline-quickjs-difference-allowlist.toml"
+                ),
             },
             text=True,
             capture_output=True,
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
-        self.assertIn("coverage (skipped: coverage requires the full case set)", completed.stdout)
-        self.assertIn("=> sm", completed.stdout)
-        self.assertIn("=> qjs", completed.stdout)
-        self.assertIn("=> diff", completed.stdout)
-        for name in ("sm-cases.json", "qjs-cases.json"):
+        self.assertIn(
+            "check-contract-case-coverage (skipped: coverage requires the full case set)",
+            completed.stdout,
+        )
+        self.assertIn("=> run-spidermonkey-contract", completed.stdout)
+        self.assertIn("=> run-quickjs-contract", completed.stdout)
+        self.assertIn("=> compare-engine-results", completed.stdout)
+        for name in (
+            "spidermonkey-contract-cases.json",
+            "quickjs-contract-cases.json",
+        ):
             with open(os.path.join(output_dir, name), encoding="utf-8") as file:
                 self.assertEqual(json.load(file)["cases"], ["module.one"])
 
@@ -305,16 +353,18 @@ JSONL
                 "OUT_DIR": output_dir,
                 "QJS_DIR": self.temporary.name,
                 "PATH": bin_dir + os.pathsep + os.environ["PATH"],
-                "FIX_CHECK_BASELINE": os.path.join(contract, "baseline-known-differences.toml"),
+                "FIX_CHECK_BASELINE": os.path.join(
+                    contract, "baseline-quickjs-difference-allowlist.toml"
+                ),
             },
             text=True,
             capture_output=True,
         )
         self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
-        self.assertIn("==> sm", completed.stdout)
-        self.assertIn("==> qjs", completed.stdout)
-        self.assertIn("==> diff", completed.stdout)
-        self.assertIn("==> coverage", completed.stdout)
+        self.assertIn("==> run-spidermonkey-contract", completed.stdout)
+        self.assertIn("==> run-quickjs-contract", completed.stdout)
+        self.assertIn("==> compare-engine-results", completed.stdout)
+        self.assertIn("==> check-contract-case-coverage", completed.stdout)
         self.assertIn("engine contract steps failed:", completed.stderr)
 
 

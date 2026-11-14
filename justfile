@@ -37,10 +37,10 @@ genui-min-size:
 
 # Run the shared engine contract tests on SpiderMonkey (the reference) and QuickJS, then compare.
 contract-sm *args:
-    tests/unit/engine_contract/tools/run.sh sm {{args}}
+    tests/unit/engine_contract/tools/run.sh run-spidermonkey-contract {{args}}
 
 contract-qjs *args:
-    tests/unit/engine_contract/tools/run.sh qjs {{args}}
+    tests/unit/engine_contract/tools/run.sh run-quickjs-contract {{args}}
 
 contract-diff:
-    tests/unit/engine_contract/tools/run.sh diff
+    tests/unit/engine_contract/tools/run.sh compare-engine-results

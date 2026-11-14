@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -97,7 +98,7 @@ class ManifestVerifyTest(unittest.TestCase):
         self.bindgen = os.path.join(self.root, "mozjs", "upstream-bindgen")
         self.engine = os.path.join(self.root, "mozjs", "src", "engine")
         self.stub = os.path.join(self.root, "mozjs", "stub_bindings.py")
-        self.manifest = os.path.join(self.root, "api-manifest.toml")
+        self.manifest = os.path.join(self.root, "mozjs-api-snapshot.toml")
         self.write(self.stub, STUB_SOURCE)
         self.write(
             os.path.join(self.bindgen, "jsapi.rs"),
@@ -149,7 +150,7 @@ class ManifestVerifyTest(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
             result = api_inventory.verify(
                 types.SimpleNamespace(
-                    manifest=self.manifest,
+                    snapshot=self.manifest,
                     bindgen_dir=self.bindgen,
                     engine_src=self.engine,
                     stub_bindings=self.stub,
@@ -161,7 +162,7 @@ class ManifestVerifyTest(unittest.TestCase):
         self.generate()
         result, output = self.verify()
         self.assertEqual(result, 0)
-        self.assertIn("manifest ok: 1 entries", output)
+        self.assertIn("mozjs API inventory ok: 1 entries", output)
 
     def test_verify_ignores_moved_shim_lines(self):
         self.generate()
@@ -287,7 +288,9 @@ class ManifestReportTest(unittest.TestCase):
         self.root = self.temporary.name
         self.baseline = os.path.join(self.root, "baseline.toml")
         self.current = os.path.join(self.root, "current.toml")
-        self.output = os.path.join(self.root, "reports", "nested", "api-changes.toml")
+        self.output = os.path.join(
+            self.root, "reports", "nested", "mozjs-api-changes.toml"
+        )
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -318,7 +321,7 @@ class ManifestReportTest(unittest.TestCase):
         }
 
     def write_fixtures(self):
-        api_inventory.write_manifest(
+        api_inventory.write_inventory(
             self.baseline,
             [
                 self.entry("RemovedFn", 0, "jsapi", "todo", "() -> ()"),
@@ -327,7 +330,7 @@ class ManifestReportTest(unittest.TestCase):
             ],
             self.metadata("baseline-rev"),
         )
-        api_inventory.write_manifest(
+        api_inventory.write_inventory(
             self.current,
             [
                 self.entry("AddedFn", 1, "gluebindings", "empty", "(u8) -> bool"),
@@ -345,7 +348,7 @@ class ManifestReportTest(unittest.TestCase):
                     "report",
                     "--baseline",
                     self.baseline,
-                    "--manifest",
+                    "--inventory",
                     self.current,
                     "--output",
                     self.output,
@@ -398,10 +401,10 @@ class ManifestReportTest(unittest.TestCase):
         completed = subprocess.run(
             [
                 script,
-                "report",
+                "report-mozjs-api-changes",
                 "--baseline",
                 self.baseline,
-                "--manifest",
+                "--inventory",
                 self.current,
                 "--output",
                 self.output,
@@ -423,10 +426,10 @@ class ManifestReportTest(unittest.TestCase):
         completed = subprocess.run(
             [
                 script,
-                "report",
+                "report-mozjs-api-changes",
                 "--baseline",
                 self.baseline,
-                "--manifest",
+                "--inventory",
                 self.current,
                 "--format",
                 "tsv",
@@ -437,13 +440,232 @@ class ManifestReportTest(unittest.TestCase):
             capture_output=True,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertTrue(os.path.exists(os.path.join(report_dir, "api-changes.tsv")))
+        self.assertTrue(
+            os.path.exists(os.path.join(report_dir, "mozjs-api-changes.tsv"))
+        )
 
     def test_report_rejects_an_unknown_format(self):
         self.write_fixtures()
         with self.assertRaises(SystemExit) as raised:
             self.run_report("--format", "json")
         self.assertEqual(raised.exception.code, 2)
+
+
+class ApiScanEntryPointTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = self.temporary.name
+        self.repository = os.path.join(self.root, "servo")
+        self.contract = os.path.join(self.repository, "tests", "unit", "engine_contract")
+        self.tools = os.path.join(self.contract, "tools")
+        os.makedirs(self.tools)
+        source_tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for name in ("run.sh", "api_inventory.py", "scope_manifest.py", "scan_scope.py"):
+            shutil.copy(os.path.join(source_tools, name), os.path.join(self.tools, name))
+        with open(
+            os.path.join(self.tools, "servo-mozjs-api-usage-reviewed.toml"),
+            "w",
+            encoding="utf-8",
+        ):
+            pass
+
+        self.qjs = os.path.join(self.root, "servo-quickjs")
+        bindgen = os.path.join(self.qjs, "mozjs", "upstream-bindgen")
+        engine = os.path.join(self.qjs, "mozjs", "src", "engine")
+        os.makedirs(bindgen)
+        os.makedirs(engine)
+        self.write(
+            os.path.join(self.qjs, "mozjs", "Cargo.toml"),
+            '[package]\nname = "mozjs"\nversion = "0.26.14"\n',
+        )
+        self.write(
+            os.path.join(bindgen, "jsapi.rs"),
+            """
+            unsafe extern "C" {
+                pub fn Existing(x: i32) -> i32;
+            }
+            """,
+        )
+        self.write(os.path.join(bindgen, "gluebindings.rs"), "")
+        self.write(
+            os.path.join(engine, "object.rs"),
+            """
+            pub(crate) unsafe fn Existing(x: i32) -> i32 {
+                x
+            }
+            """,
+        )
+        self.write(os.path.join(self.qjs, "mozjs", "stub_bindings.py"), STUB_SOURCE)
+
+        self.write(
+            os.path.join(self.repository, "components", "script", "Cargo.toml"),
+            '[package]\nname = "script"\n',
+        )
+        self.write(
+            os.path.join(self.repository, "components", "script", "lib.rs"),
+            """
+            use mozjs::jsapi::Existing;
+            pub fn call_existing() { unsafe { Existing(1); } }
+            """,
+        )
+
+        self.baseline = os.path.join(self.root, "baseline.toml")
+        self.output = os.path.join(self.root, "reports", "mozjs-api-changes.toml")
+        self.write_inventory(
+            self.baseline,
+            [self.entry("Existing", 1, "jsapi", "implemented", "(u64) -> i32")],
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def write(self, path, source):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(textwrap.dedent(source))
+
+    @staticmethod
+    def entry(name, arity, source, status, signature):
+        return {
+            "name": name,
+            "arity": arity,
+            "source": source,
+            "status": status,
+            "signature": signature,
+        }
+
+    def write_inventory(self, path, entries):
+        api_inventory.write_inventory(
+            path,
+            entries,
+            {
+                "mozjs_version": "0.26.14",
+                "bindgen_sha256": "baseline",
+                "quickjs_revision": "baseline-rev",
+                "bindgen_definitions": len(entries),
+                "unique_names": len(entries),
+                "variadic": 0,
+                "implemented": len(entries),
+                "empty": 0,
+                "todo": 0,
+                "eligible": len(entries),
+            },
+        )
+
+    def test_internal_scan_mozjs_api_generates_verifies_and_reports_in_one_command(self):
+        completed = subprocess.run(
+            [
+                os.path.join(self.tools, "run.sh"),
+                "scan-mozjs-api",
+                "--baseline",
+                self.baseline,
+                "--output",
+                self.output,
+            ],
+            cwd=self.repository,
+            env={**os.environ, "QJS_DIR": self.qjs},
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("wrote tests/unit/engine_contract/mozjs-api-snapshot.toml", completed.stdout)
+        self.assertIn("mozjs API inventory ok: 1 entries", completed.stdout)
+        self.assertIn("1 changes (signature 1)", completed.stdout)
+
+        manifest = os.path.join(self.contract, "mozjs-api-snapshot.toml")
+        self.assertTrue(os.path.exists(manifest))
+        self.assertTrue(os.path.exists(self.output))
+        with open(self.output, encoding="utf-8") as file:
+            report = file.read()
+        self.assertIn('kind = "signature"', report)
+        self.assertIn('name = "Existing"', report)
+        self.assertIn('before = "(u64) -> i32"', report)
+        self.assertIn('after = "(i32) -> i32"', report)
+
+    def test_internal_scan_mozjs_api_rejects_an_explicit_inventory(self):
+        completed = subprocess.run(
+            [
+                os.path.join(self.tools, "run.sh"),
+                "scan-mozjs-api",
+                "--baseline",
+                self.baseline,
+                "--inventory",
+                self.baseline,
+            ],
+            cwd=self.repository,
+            env={**os.environ, "QJS_DIR": self.qjs},
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("scan-mozjs-api always regenerates", completed.stderr)
+
+    def test_compatibility_aliases_keep_the_same_snapshot_and_change_names(self):
+        expected_run = os.path.join(self.contract, "mozjs-api-snapshot.toml")
+        expected_report = os.path.join(self.output)
+        completed = subprocess.run(
+            [
+                os.path.join(self.tools, "run.sh"),
+                "scan-mozjs-api-inventory",
+                "--baseline",
+                self.baseline,
+                "--output",
+                self.output,
+            ],
+            cwd=self.repository,
+            env={**os.environ, "QJS_DIR": self.qjs},
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(os.path.exists(expected_run))
+        self.assertTrue(os.path.exists(expected_report))
+
+    def test_scan_mozjs_surface_updates_the_snapshot_and_servo_usage_together(self):
+        bin_dir = os.path.join(self.root, "bin")
+        os.makedirs(bin_dir)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        with open(fake_cargo, "w", encoding="utf-8") as file:
+            file.write(
+                "#!/usr/bin/env bash\n"
+                "set -eu\n"
+                "python3 - \"$@\" <<'PY'\n"
+                "import json, os, sys\n"
+                "root = os.environ['FAKE_CARGO_ROOT']\n"
+                "print(json.dumps({'packages': [\n"
+                "    {'name': 'mozjs', 'manifest_path': os.path.join(root, 'mozjs', 'Cargo.toml')},\n"
+                "    {'name': 'mozjs_sys', 'manifest_path': os.path.join(root, 'mozjs_sys', 'Cargo.toml')},\n"
+                "]}))\n"
+                "PY\n"
+            )
+        os.chmod(fake_cargo, 0o755)
+        completed = subprocess.run(
+            [
+                os.path.join(self.tools, "run.sh"),
+                "scan-mozjs-surface",
+                "--baseline",
+                self.baseline,
+                "--output",
+                self.output,
+            ],
+            cwd=self.repository,
+            env={
+                **os.environ,
+                "QJS_DIR": self.qjs,
+                "FAKE_CARGO_ROOT": self.root,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("wrote tests/unit/engine_contract/mozjs-api-snapshot.toml", completed.stdout)
+        self.assertIn("servo-mozjs-api-usage.toml", completed.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.contract, "mozjs-api-snapshot.toml")))
+        usage = os.path.join(self.contract, "servo-mozjs-api-usage.toml")
+        self.assertTrue(os.path.exists(usage))
+        with open(usage, encoding="utf-8") as file:
+            self.assertIn('name = "Existing"', file.read())
 
 
 if __name__ == "__main__":

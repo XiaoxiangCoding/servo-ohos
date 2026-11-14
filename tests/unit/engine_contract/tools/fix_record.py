@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Audit the QuickJS shim fix record against known-differences.toml.
+"""Audit the QuickJS shim fix records against quickjs-difference-allowlist.toml.
 
 Usage:
-  fix_record.py check [--baseline REV|FILE] [--differences FILE] [--record FILE]
+  fix_record.py check [--baseline REV|FILE] [--allowlist FILE] [--record FILE]
                       [--cases CASES.json]
 
-A difference that disappeared from ``known-differences.toml`` must have a matching record in
-``fix-record.md``. Records are Markdown sections headed by a contract case id. Each record must
+A difference that disappeared from ``quickjs-difference-allowlist.toml`` must have a matching record in
+``quickjs-shim-fix-records.md``. Records are Markdown sections headed by a contract case id. Each record must
 carry the fields in ``REQUIRED_FIELDS`` and its case id must exist in the runtime case inventory
 when ``--cases`` is supplied. A selected run writes an inventory with ``complete = false``; in
 that case records outside the selection are not treated as unknown. Code fences (including the
@@ -53,17 +53,32 @@ def difference_ids(path):
 
 def read_baseline(source):
     if ":" in source and not source.startswith("/") and not source.startswith("."):
-        try:
-            return subprocess.run(
-                ["git", "show", source],
-                check=True,
+        revision, path = source.split(":", 1)
+        candidates = [path]
+        # The allowlist was called known-differences.toml before this rename. A branch that has
+        # not committed the rename must still produce a usable baseline for the A4 audit.
+        if path.endswith("quickjs-difference-allowlist.toml"):
+            candidates.append(
+                path.replace(
+                    "quickjs-difference-allowlist.toml", "known-differences.toml"
+                )
+            )
+        for candidate in candidates:
+            completed = subprocess.run(
+                ["git", "show", f"{revision}:{candidate}"],
                 text=True,
                 capture_output=True,
-            ).stdout
-        except subprocess.CalledProcessError as error:
-            raise SystemExit(
-                f"could not read baseline {source!r}: {error.stderr.strip()}"
-            ) from error
+            )
+            if completed.returncode == 0:
+                if candidate != path:
+                    print(
+                        f"using pre-rename baseline {revision}:{candidate}",
+                        file=sys.stderr,
+                    )
+                return completed.stdout
+        raise SystemExit(
+            f"could not read baseline {source!r}: {completed.stderr.strip()}"
+        )
     with open(source, encoding="utf-8") as file:
         return file.read()
 
@@ -169,7 +184,7 @@ def validate_record(record, path):
 
 
 def check(args):
-    current = difference_ids(args.differences)
+    current = difference_ids(args.allowlist)
     previous = baseline_ids(args.baseline)
     removed = previous - current
     records = parse_records(args.record)
@@ -205,9 +220,18 @@ def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     check_parser = subparsers.add_parser("check")
-    check_parser.add_argument("--baseline", default="HEAD:tests/unit/engine_contract/known-differences.toml")
-    check_parser.add_argument("--differences", default="tests/unit/engine_contract/known-differences.toml")
-    check_parser.add_argument("--record", default="tests/unit/engine_contract/fix-record.md")
+    check_parser.add_argument(
+        "--baseline",
+        default="HEAD:tests/unit/engine_contract/quickjs-difference-allowlist.toml",
+    )
+    check_parser.add_argument(
+        "--allowlist",
+        default="tests/unit/engine_contract/quickjs-difference-allowlist.toml",
+    )
+    check_parser.add_argument(
+        "--record",
+        default="tests/unit/engine_contract/quickjs-shim-fix-records.md",
+    )
     check_parser.add_argument("--cases")
     args = parser.parse_args(argv)
     if args.command == "check":

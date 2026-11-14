@@ -5,7 +5,7 @@
 # the run. Never add an entry merely to silence a failure, and remove it when the shim is fixed.
 #
 # status:   pending | bug | accepted | wontfix. Only accepted and wontfix are released by
-#           `run.sh diff`; pending and bug still fail the comparison.
+#           `run.sh compare-engine-results`; pending and bug still fail the comparison.
 # severity: P0 | P1 | P2 | P3. P0 and P1 cannot be released as accepted/wontfix.
 #
 # Optional: `issue` links the tracking issue for a difference that is still present. `pending`
@@ -13,7 +13,8 @@
 #
 # Optional: `panic` is an exact QuickJS panic fingerprint. Use it instead of relying on
 # `fields = ["fields"]` for a case that aborts: panic text that changes, or a panic where none is
-# listed, fails the comparison. When a difference is fixed, add a record to `fix-record.md`, then
+# listed, fails the comparison. When a difference is fixed, add a record to
+# `quickjs-shim-fix-records.md`, then
 # delete the entry here.
 
 [[difference]]

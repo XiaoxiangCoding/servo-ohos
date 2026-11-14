@@ -21,7 +21,7 @@ back as an actual call.
 has no provenance that the scanner can reproduce, or when the scanner finds an `implemented`
 entry that the scope omits. It also reports entries whose provenance is now stale.
 
-`export` writes Servo's `contract-scope.toml` from a deterministic scan. Entries whose contracts
+`export` writes Servo's `servo-mozjs-api-usage.toml` from a deterministic scan. Entries whose contracts
 appear in the supplied coverage JSONL are marked `coverage = "covered"`; every other reachable
 entry is `coverage = "pending"`. The output is sorted, so rerunning it produces no diff unless
 Servo's reachable surface changed.
@@ -629,8 +629,9 @@ HEADER = """# The mozjs surface Servo can actually reach.
 #
 # Regenerate with:
 #   python3 tests/unit/engine_contract/tools/scan_scope.py export \\
-#     --servo-dir . --manifest tests/unit/engine_contract/api-manifest.toml \\
-#     --covered /path/to/qjs.jsonl --output tests/unit/engine_contract/contract-scope.toml
+#     --servo-dir . --manifest tests/unit/engine_contract/mozjs-api-snapshot.toml \\
+#     --covered /path/to/quickjs-contract-results.jsonl \\
+#     --output tests/unit/engine_contract/servo-mozjs-api-usage.toml
 """
 
 

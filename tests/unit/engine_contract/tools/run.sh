@@ -1,26 +1,48 @@
 #!/usr/bin/env bash
 # Run the engine contract suite against SpiderMonkey (the reference) or QuickJS, then compare.
 #
+# Naming:
+#   Commands: `<verb>-<object>` -- the verb says what happens, the object names the input.
+#   Checked-in files: `<object>-<role>` -- the object says what it describes, the role says how
+#   it is used (snapshot, usage, allowlist, records, results, cases).
+#   Run outputs: `<producer>-<role>` -- the producer is an engine or scan, the role is `results`
+#   or `changes`.
+#
 # Usage:
-#   tools/run.sh sm       [--case ID]... [--cases ID[,ID...]]... [cargo test args...]
-#   tools/run.sh qjs      [--case ID]... [--cases ID[,ID...]]... [cargo test args...]
-#   tools/run.sh diff
-#   tools/run.sh generate   regenerate api-manifest.toml from the current mozjs bindgen and shim
-#   tools/run.sh manifest   check api-manifest.toml against the current mozjs bindgen and shim
-#   tools/run.sh coverage   check the coverage of api-manifest.toml in sm.jsonl
-#   tools/run.sh scope      regenerate api-scope.toml from Servo's actual usage
-#   tools/run.sh scope-check  verify api-scope.toml is fresh
-#   tools/run.sh report     compare HEAD's api-manifest.toml with the working tree
-#                           [--baseline REV:PATH|FILE] [--manifest FILE] [--output FILE] [--format toml|tsv]
-#   tools/run.sh fix-check  verify removed differences have fix-record.md entries
-#   tools/run.sh all       [--case ID]... [--cases ID[,ID...]]...
+#   tools/run.sh run-spidermonkey-contract [--case ID]... [--cases ID[,ID...]]... [cargo args...]
+#                               -> spidermonkey-contract-results.jsonl
+#   tools/run.sh run-quickjs-contract      [--case ID]... [--cases ID[,ID...]]... [cargo args...]
+#                               -> quickjs-contract-results.jsonl
+#   tools/run.sh compare-engine-results
+#                               compare both results against quickjs-difference-allowlist.toml
+#   tools/run.sh scan-mozjs-surface [--baseline REV:PATH|FILE] [--output FILE] [--format toml|tsv]
+#                               one public scan entry: writes mozjs-api-snapshot.toml,
+#                               mozjs-api-changes.{toml,tsv}, and servo-mozjs-api-usage.toml
+#   tools/run.sh check-contract-case-coverage
+#                               check inventory + usage + contract case coverage
+#   tools/run.sh check-quickjs-shim-fixes
+#                               verify removed allowlist entries have fix records
+#   tools/run.sh run-contract-gate
+#                               run both engines, compare, check fixes and coverage
+#
+# Internal commands (kept for troubleshooting and compatibility):
+#   scan-mozjs-api, scan-servo-mozjs-api-usage, generate-mozjs-api-snapshot,
+#   check-mozjs-api-snapshot, report-mozjs-api-changes
+#
+# Legacy aliases (compatibility only):
+#   sm qjs diff api-scan generate manifest scope scope-check coverage report fix-check
+#   run-sm run-qjs compare-engines scan-mozjs-api-inventory scan-servo-usage check-servo-usage
+#   check-contract-coverage check-quickjs-fixes all
+#   generate-mozjs-inventory check-mozjs-inventory report-mozjs-changes
+#   generate-mozjs-api-inventory check-mozjs-api-inventory report-mozjs-api-inventory-changes
 #
 # Environment:
 #   QJS_DIR         local servo-quickjs checkout (default: ../servo-quickjs)
 #   OUT_DIR         output directory (default: target/contract)
 #   CONTRACT_CASES  comma/space separated case ids; normally set by --case/--cases
 #   CONTRACT_CASES_OUT  runtime case inventory written by the test harness
-#   FIX_CHECK_BASELINE  baseline known-differences.toml for fix-record checks (default: HEAD)
+#   FIX_CHECK_BASELINE  baseline quickjs-difference-allowlist.toml for fix-record checks
+#                       (default: HEAD)
 
 set -euo pipefail
 
@@ -54,7 +76,8 @@ protect_lockfile() {
 }
 
 # Resolve a caller-supplied relative OUT_DIR against the invoking directory, not the repository
-# root or the crate directory that `cargo test` runs from. `sm`, `qjs` and `diff` must agree on it.
+# root or the crate directory that `cargo test` runs from. Both engine runs and the comparison
+# must agree on it.
 case "$out_dir" in
     /*) ;;
     *) out_dir="$(pwd)/$out_dir" ;;
@@ -131,11 +154,35 @@ parse_contract_args() {
     PARSED_CARGO_ARGS=("${parsed_cargo[@]}")
 }
 
-sm_case_inventory_path() {
+spidermonkey_results_path() {
+    echo "$out_dir/spidermonkey-contract-results.jsonl"
+}
+
+quickjs_results_path() {
+    echo "$out_dir/quickjs-contract-results.jsonl"
+}
+
+spidermonkey_case_inventory_path() {
+    echo "$out_dir/spidermonkey-contract-cases.json"
+}
+
+quickjs_case_inventory_path() {
+    echo "$out_dir/quickjs-contract-cases.json"
+}
+
+legacy_spidermonkey_results_path() {
+    echo "$out_dir/sm.jsonl"
+}
+
+legacy_quickjs_results_path() {
+    echo "$out_dir/qjs.jsonl"
+}
+
+legacy_spidermonkey_case_inventory_path() {
     echo "$out_dir/sm-cases.json"
 }
 
-qjs_case_inventory_path() {
+legacy_quickjs_case_inventory_path() {
     echo "$out_dir/qjs-cases.json"
 }
 
@@ -149,22 +196,23 @@ with_case_selection() {
     fi
 }
 
-run_sm() {
+run_spidermonkey_contract() {
     local -a cargo_args=()
     parse_contract_args "$@" || return
     cargo_args=("${PARSED_CARGO_ARGS[@]}")
     local selection="$CASE_SELECTION"
     mkdir -p "$out_dir"
     cd "$repo_root"
-    rm -f "$out_dir/sm.jsonl" "$(sm_case_inventory_path)"
+    rm -f "$(spidermonkey_results_path)" "$(spidermonkey_case_inventory_path)" \
+        "$(legacy_spidermonkey_results_path)" "$(legacy_spidermonkey_case_inventory_path)"
     with_case_selection "$selection" env \
         CONTRACT_ENGINE=spidermonkey \
-        CONTRACT_OUT="$out_dir/sm.jsonl" \
-        CONTRACT_CASES_OUT="$(sm_case_inventory_path)" \
+        CONTRACT_OUT="$(spidermonkey_results_path)" \
+        CONTRACT_CASES_OUT="$(spidermonkey_case_inventory_path)" \
         cargo test --locked --offline --release -p engine_contract_tests "${cargo_args[@]}"
 }
 
-run_qjs() {
+run_quickjs_contract() {
     local -a cargo_args=()
     parse_contract_args "$@" || return
     cargo_args=("${PARSED_CARGO_ARGS[@]}")
@@ -172,11 +220,12 @@ run_qjs() {
     protect_lockfile || return
     mkdir -p "$out_dir"
     cd "$repo_root"
-    rm -f "$out_dir/qjs.jsonl" "$(qjs_case_inventory_path)"
+    rm -f "$(quickjs_results_path)" "$(quickjs_case_inventory_path)" \
+        "$(legacy_quickjs_results_path)" "$(legacy_quickjs_case_inventory_path)"
     with_case_selection "$selection" env \
         CONTRACT_ENGINE=quickjs \
-        CONTRACT_OUT="$out_dir/qjs.jsonl" \
-        CONTRACT_CASES_OUT="$(qjs_case_inventory_path)" \
+        CONTRACT_OUT="$(quickjs_results_path)" \
+        CONTRACT_CASES_OUT="$(quickjs_case_inventory_path)" \
         cargo test --offline --release -p engine_contract_tests --features js-quickjs \
         --config "patch.crates-io.mozjs.path=\"$qjs_dir/mozjs\"" "${cargo_args[@]}"
     local status=$?
@@ -184,34 +233,54 @@ run_qjs() {
     return "$status"
 }
 
-run_diff() {
-    [[ -f "$out_dir/sm.jsonl" && -f "$out_dir/qjs.jsonl" ]] || {
-        echo "missing $out_dir/sm.jsonl or $out_dir/qjs.jsonl; run '$0 sm' and '$0 qjs' first" >&2
+run_compare_engine_results() {
+    local spidermonkey_results quickjs_results
+    spidermonkey_results=$(spidermonkey_results_path)
+    quickjs_results=$(quickjs_results_path)
+    local spidermonkey_cases quickjs_cases
+    spidermonkey_cases=$(spidermonkey_case_inventory_path)
+    quickjs_cases=$(quickjs_case_inventory_path)
+
+    # Accept the pre-rename outputs once, so an already completed run can still be compared.
+    if [[ ! -f "$spidermonkey_results" && -f "$(legacy_spidermonkey_results_path)" ]]; then
+        spidermonkey_results=$(legacy_spidermonkey_results_path)
+    fi
+    if [[ ! -f "$quickjs_results" && -f "$(legacy_quickjs_results_path)" ]]; then
+        quickjs_results=$(legacy_quickjs_results_path)
+    fi
+    if [[ ! -f "$spidermonkey_cases" && -f "$(legacy_spidermonkey_case_inventory_path)" ]]; then
+        spidermonkey_cases=$(legacy_spidermonkey_case_inventory_path)
+    fi
+    if [[ ! -f "$quickjs_cases" && -f "$(legacy_quickjs_case_inventory_path)" ]]; then
+        quickjs_cases=$(legacy_quickjs_case_inventory_path)
+    fi
+
+    [[ -f "$spidermonkey_results" && -f "$quickjs_results" ]] || {
+        echo "missing engine contract results: run '$0 run-spidermonkey-contract' and '$0 run-quickjs-contract' first" >&2
         return 1
     }
-    local sm_inventory qjs_inventory
-    sm_inventory=$(sm_case_inventory_path)
-    qjs_inventory=$(qjs_case_inventory_path)
-    [[ -f "$sm_inventory" && -f "$qjs_inventory" ]] || {
-        echo "missing $sm_inventory or $qjs_inventory; run '$0 sm' and '$0 qjs' first" >&2
+    [[ -f "$spidermonkey_cases" && -f "$quickjs_cases" ]] || {
+        echo "missing runtime case inventory files: $spidermonkey_cases, $quickjs_cases" >&2
         return 1
     }
-    echo "using runtime case inventories: $sm_inventory, $qjs_inventory"
+    echo "using Spidermonkey results: $spidermonkey_results"
+    echo "using QuickJS results:      $quickjs_results"
+    echo "using runtime case inventories: $spidermonkey_cases, $quickjs_cases"
     cd "$repo_root"
     python3 tests/unit/engine_contract/tools/compare.py \
-        "$out_dir/sm.jsonl" "$out_dir/qjs.jsonl" \
-        tests/unit/engine_contract/known-differences.toml \
-        --sm-cases "$sm_inventory" \
-        --qjs-cases "$qjs_inventory"
+        "$spidermonkey_results" "$quickjs_results" \
+        tests/unit/engine_contract/quickjs-difference-allowlist.toml \
+        --sm-cases "$spidermonkey_cases" \
+        --qjs-cases "$quickjs_cases"
 }
 
-run_fix_check_after_diff() {
+check_quickjs_shim_fixes_after_diff() {
     local inventory
-    inventory=$(sm_case_inventory_path)
+    inventory=$(spidermonkey_case_inventory_path)
     if [[ -f "$inventory" ]]; then
-        run_fix_check --cases "$inventory" ${FIX_CHECK_BASELINE:+--baseline "$FIX_CHECK_BASELINE"}
+        check_quickjs_shim_fixes --cases "$inventory" ${FIX_CHECK_BASELINE:+--baseline "$FIX_CHECK_BASELINE"}
     else
-        run_fix_check ${FIX_CHECK_BASELINE:+--baseline "$FIX_CHECK_BASELINE"}
+        check_quickjs_shim_fixes ${FIX_CHECK_BASELINE:+--baseline "$FIX_CHECK_BASELINE"}
     fi
 }
 
@@ -224,22 +293,34 @@ run_all() {
     fi
     local -a failures=()
     local step
-    for step in sm qjs diff fix-check coverage; do
-        if [[ "$step" == "coverage" && -n "$selection" ]]; then
-            echo "==> coverage (skipped: coverage requires the full case set)"
+    for step in run-spidermonkey-contract run-quickjs-contract compare-engine-results \
+        check-quickjs-shim-fixes check-contract-case-coverage; do
+        if [[ "$step" == "check-contract-case-coverage" && -n "$selection" ]]; then
+            echo "==> check-contract-case-coverage (skipped: coverage requires the full case set)"
             continue
         fi
-        if [[ "$step" == "fix-check" && ! -f "$(sm_case_inventory_path)" ]]; then
-            echo "==> fix-check (no runtime inventory; checking records only)"
+        if [[ "$step" == "check-quickjs-shim-fixes" \
+            && ! -f "$(spidermonkey_case_inventory_path)" \
+            && ! -f "$(legacy_spidermonkey_case_inventory_path)" ]]; then
+            echo "==> check-quickjs-shim-fixes (no runtime inventory; checking records only)"
         fi
-        echo "==> $step"
-        if [[ "$step" == "fix-check" ]]; then
-            if ! run_fix_check_after_diff; then
+        if [[ "$step" != "check-quickjs-shim-fixes" ]]; then
+            echo "==> $step"
+        fi
+        if [[ "$step" == "check-quickjs-shim-fixes" ]]; then
+            if ! check_quickjs_shim_fixes_after_diff; then
                 failures+=("$step")
             fi
             continue
         fi
-        if ! "run_$step" "${step_args[@]}"; then
+        local runner
+        case "$step" in
+            run-spidermonkey-contract) runner=run_spidermonkey_contract ;;
+            run-quickjs-contract) runner=run_quickjs_contract ;;
+            compare-engine-results) runner=run_compare_engine_results ;;
+            check-contract-case-coverage) runner=check_contract_case_coverage ;;
+        esac
+        if ! "$runner" "${step_args[@]}"; then
             failures+=("$step")
         fi
     done
@@ -249,20 +330,20 @@ run_all() {
     fi
 }
 
-run_manifest() {
+check_mozjs_api_snapshot() {
     [[ -f "$qjs_dir/mozjs/upstream-bindgen/jsapi.rs" ]] || {
         echo "missing $qjs_dir/mozjs/upstream-bindgen; set QJS_DIR to a servo-quickjs checkout" >&2
         return 1
     }
     cd "$repo_root"
     python3 tests/unit/engine_contract/tools/api_inventory.py verify \
-        --manifest tests/unit/engine_contract/api-manifest.toml \
+        --inventory tests/unit/engine_contract/mozjs-api-snapshot.toml \
         --bindgen-dir "$qjs_dir/mozjs/upstream-bindgen" \
         --engine-src "$qjs_dir/mozjs/src/engine" \
         --stub-bindings "$qjs_dir/mozjs/stub_bindings.py"
 }
 
-run_generate() {
+generate_mozjs_api_snapshot() {
     [[ -f "$qjs_dir/mozjs/upstream-bindgen/jsapi.rs" ]] || {
         echo "missing $qjs_dir/mozjs/upstream-bindgen; set QJS_DIR to a servo-quickjs checkout" >&2
         return 1
@@ -275,22 +356,27 @@ run_generate() {
         --bindgen-dir "$qjs_dir/mozjs/upstream-bindgen" \
         --engine-src "$qjs_dir/mozjs/src/engine" \
         --stub-bindings "$qjs_dir/mozjs/stub_bindings.py" \
-        --output tests/unit/engine_contract/api-manifest.toml \
+        --output tests/unit/engine_contract/mozjs-api-snapshot.toml \
         --mozjs-version "$mozjs_version" \
         --quickjs-revision "$quickjs_revision"
 }
 
-run_coverage() {
-    run_manifest
-    run_scope_check
-    [[ -f "$out_dir/sm.jsonl" ]] || {
-        echo "missing $out_dir/sm.jsonl; run '$0 sm' first" >&2
+check_contract_case_coverage() {
+    check_mozjs_api_snapshot
+    check_servo_mozjs_api_usage
+    local results
+    results=$(spidermonkey_results_path)
+    if [[ ! -f "$results" ]]; then
+        results=$(legacy_spidermonkey_results_path)
+    fi
+    [[ -f "$results" ]] || {
+        echo "missing SpiderMonkey contract results; run '$0 run-spidermonkey-contract' first" >&2
         return 1
     }
     cd "$repo_root"
     python3 tests/unit/engine_contract/tools/check_api_coverage.py \
-        "$out_dir/sm.jsonl" tests/unit/engine_contract/api-manifest.toml \
-        tests/unit/engine_contract/api-scope.toml
+        "$results" tests/unit/engine_contract/mozjs-api-snapshot.toml \
+        tests/unit/engine_contract/servo-mozjs-api-usage.toml
 }
 
 locate_mozjs() {
@@ -310,30 +396,30 @@ for package in json.load(sys.stdin)["packages"]:
     }
 }
 
-run_scope() {
+scan_servo_mozjs_api_usage() {
     locate_mozjs || return 1
     python3 tests/unit/engine_contract/tools/scope_manifest.py \
         --servo-dir . \
-        --manifest tests/unit/engine_contract/api-manifest.toml \
-        --scope tests/unit/engine_contract/api-scope.toml \
+        --inventory tests/unit/engine_contract/mozjs-api-snapshot.toml \
+        --usage tests/unit/engine_contract/servo-mozjs-api-usage.toml \
         --mozjs-root "$(dirname "$mozjs_manifest")/src" \
         --mozjs-sys-root "$(dirname "$mozjs_sys_manifest")/src"
 }
 
-run_scope_check() {
+check_servo_mozjs_api_usage() {
     locate_mozjs || return 1
     python3 tests/unit/engine_contract/tools/scope_manifest.py \
         --servo-dir . \
-        --manifest tests/unit/engine_contract/api-manifest.toml \
-        --scope tests/unit/engine_contract/api-scope.toml \
+        --inventory tests/unit/engine_contract/mozjs-api-snapshot.toml \
+        --usage tests/unit/engine_contract/servo-mozjs-api-usage.toml \
         --mozjs-root "$(dirname "$mozjs_manifest")/src" \
         --mozjs-sys-root "$(dirname "$mozjs_sys_manifest")/src" \
         --check
 }
 
-run_report() {
-    local baseline="HEAD:tests/unit/engine_contract/api-manifest.toml"
-    local manifest="$repo_root/tests/unit/engine_contract/api-manifest.toml"
+report_mozjs_api_changes() {
+    local baseline="HEAD:tests/unit/engine_contract/mozjs-api-snapshot.toml"
+    local manifest="$repo_root/tests/unit/engine_contract/mozjs-api-snapshot.toml"
     local output=""
     local format="toml"
     local invoke_dir="$PWD"
@@ -358,20 +444,20 @@ run_report() {
                 baseline="${1#--baseline=}"
                 shift
                 ;;
-            --manifest)
+            --inventory)
                 [[ $# -ge 2 && -n "$2" ]] || {
-                    echo "--manifest requires a file" >&2
+                    echo "--inventory requires a file" >&2
                     return 2
                 }
                 manifest="$2"
                 shift 2
                 ;;
-            --manifest=*)
-                [[ -n "${1#--manifest=}" ]] || {
-                    echo "--manifest requires a file" >&2
+            --inventory=*)
+                [[ -n "${1#--inventory=}" ]] || {
+                    echo "--inventory requires a file" >&2
                     return 2
                 }
-                manifest="${1#--manifest=}"
+                manifest="${1#--inventory=}"
                 shift
                 ;;
             --output)
@@ -407,7 +493,7 @@ run_report() {
                 shift
                 ;;
             *)
-                echo "report: unknown argument: $1" >&2
+                echo "report-mozjs-api-changes: unknown argument: $1" >&2
                 return 2
                 ;;
         esac
@@ -422,14 +508,22 @@ run_report() {
     esac
 
     if [[ -z "$output" ]]; then
-        output="$out_dir/api-changes.$format"
+        output="$out_dir/mozjs-api-changes.$format"
     fi
 
     cd "$repo_root"
     if [[ "$baseline" == *:* ]]; then
         temporary_baseline=$(mktemp "${TMPDIR:-/tmp}/engine-contract-baseline.XXXXXX")
-        if ! git show "$baseline" >"$temporary_baseline"; then
-            echo "could not read baseline '$baseline'" >&2
+        if git show "$baseline" >"$temporary_baseline" 2>/dev/null; then
+            :
+        elif [[ "$baseline" == "HEAD:tests/unit/engine_contract/mozjs-api-snapshot.toml" ]] \
+            && git show HEAD:tests/unit/engine_contract/mozjs-api-inventory.toml >"$temporary_baseline" 2>/dev/null; then
+            echo "using pre-rename baseline HEAD:tests/unit/engine_contract/mozjs-api-inventory.toml" >&2
+        elif [[ "$baseline" == "HEAD:tests/unit/engine_contract/mozjs-api-snapshot.toml" ]] \
+            && git show HEAD:tests/unit/engine_contract/api-manifest.toml >"$temporary_baseline" 2>/dev/null; then
+            echo "using pre-rename baseline HEAD:tests/unit/engine_contract/api-manifest.toml" >&2
+        else
+            echo "could not read baseline inventory '$baseline'" >&2
             rm -f "$temporary_baseline"
             return 1
         fi
@@ -438,7 +532,7 @@ run_report() {
         baseline_path="$baseline"
         [[ "$baseline_path" == /* ]] || baseline_path="$invoke_dir/$baseline_path"
         [[ -f "$baseline_path" ]] || {
-            echo "missing baseline manifest: $baseline_path" >&2
+            echo "missing baseline mozjs API inventory: $baseline_path" >&2
             return 1
         }
     fi
@@ -448,7 +542,7 @@ run_report() {
     mkdir -p "$(dirname "$output")"
     if python3 tests/unit/engine_contract/tools/api_inventory.py report \
         --baseline "$baseline_path" \
-        --manifest "$manifest" \
+        --inventory "$manifest" \
         --output "$output" \
         --format "$format"; then
         status=0
@@ -459,8 +553,34 @@ run_report() {
     return "$status"
 }
 
-run_fix_check() {
-    local baseline="HEAD:tests/unit/engine_contract/known-differences.toml"
+# The internal mozjs stage of the public surface scan: refresh the full inventory snapshot, verify it
+# against the current bindgen/shim, and emit the changes relative to a baseline inventory. The
+# underlying generate/check/report commands stay available for debugging individual stages.
+scan_mozjs_api() {
+    local argument
+    for argument in "$@"; do
+        case "$argument" in
+            --inventory|--inventory=*)
+                echo "scan-mozjs-api always regenerates tests/unit/engine_contract/mozjs-api-snapshot.toml; use report-mozjs-api-changes separately to compare another snapshot" >&2
+                return 2
+                ;;
+        esac
+    done
+    local -a report_args=("$@")
+    generate_mozjs_api_snapshot || return
+    check_mozjs_api_snapshot || return
+    report_mozjs_api_changes "${report_args[@]}"
+}
+
+# The only public scan entry. Scan both sides of the interface surface in dependency order: the
+# mozjs snapshot first, then the Servo usage that is classified against it.
+scan_mozjs_surface() {
+    scan_mozjs_api "$@" || return
+    scan_servo_mozjs_api_usage
+}
+
+check_quickjs_shim_fixes() {
+    local baseline="HEAD:tests/unit/engine_contract/quickjs-difference-allowlist.toml"
     local cases=""
     local invoke_dir="$PWD"
     while [[ $# -gt 0 ]]; do
@@ -498,7 +618,7 @@ run_fix_check() {
                 shift
                 ;;
             *)
-                echo "fix-check: unknown argument: $1" >&2
+                echo "check-quickjs-shim-fixes: unknown argument: $1" >&2
                 return 2
                 ;;
         esac
@@ -507,14 +627,16 @@ run_fix_check() {
     if [[ -n "$cases" ]]; then
         [[ "$cases" == /* ]] || cases="$invoke_dir/$cases"
         case_args=(--cases "$cases")
-    elif [[ -f "$(sm_case_inventory_path)" ]]; then
-        case_args=(--cases "$(sm_case_inventory_path)")
+    elif [[ -f "$(spidermonkey_case_inventory_path)" ]]; then
+        case_args=(--cases "$(spidermonkey_case_inventory_path)")
+    elif [[ -f "$(legacy_spidermonkey_case_inventory_path)" ]]; then
+        case_args=(--cases "$(legacy_spidermonkey_case_inventory_path)")
     fi
     cd "$repo_root"
     python3 tests/unit/engine_contract/tools/fix_record.py check \
         --baseline "$baseline" \
-        --differences tests/unit/engine_contract/known-differences.toml \
-        --record tests/unit/engine_contract/fix-record.md \
+        --allowlist tests/unit/engine_contract/quickjs-difference-allowlist.toml \
+        --record tests/unit/engine_contract/quickjs-shim-fix-records.md \
         "${case_args[@]}"
 }
 
@@ -524,21 +646,47 @@ if [[ $# -gt 0 ]]; then
 fi
 
 case "$command" in
-    sm) run_sm "$@" ;;
-    qjs) run_qjs "$@" ;;
-    diff) run_diff ;;
-    generate) run_generate ;;
-    manifest) run_manifest ;;
-    coverage) run_coverage ;;
-    scope) run_scope ;;
-    scope-check) run_scope_check ;;
-    report) run_report "$@" ;;
-    fix-check) run_fix_check "$@" ;;
-    all)
-        run_all "$@"
-        ;;
+    run-spidermonkey-contract) run_spidermonkey_contract "$@" ;;
+    run-quickjs-contract) run_quickjs_contract "$@" ;;
+    compare-engine-results) run_compare_engine_results ;;
+    scan-mozjs-api) scan_mozjs_api "$@" ;;
+    scan-mozjs-surface) scan_mozjs_surface "$@" ;;
+    generate-mozjs-api-snapshot) generate_mozjs_api_snapshot ;;
+    check-mozjs-api-snapshot) check_mozjs_api_snapshot ;;
+    report-mozjs-api-changes) report_mozjs_api_changes "$@" ;;
+    scan-servo-mozjs-api-usage) scan_servo_mozjs_api_usage ;;
+    check-servo-mozjs-api-usage) check_servo_mozjs_api_usage ;;
+    check-contract-case-coverage) check_contract_case_coverage ;;
+    check-quickjs-shim-fixes) check_quickjs_shim_fixes "$@" ;;
+    run-contract-gate) run_all "$@" ;;
+    # Compatibility aliases. Keep them until all callers migrate.
+    run-sm) run_spidermonkey_contract "$@" ;;
+    run-qjs) run_quickjs_contract "$@" ;;
+    compare-engines) run_compare_engine_results ;;
+    scan-mozjs-api-inventory) scan_mozjs_api "$@" ;;
+    generate-mozjs-inventory|generate-mozjs-api-inventory) generate_mozjs_api_snapshot ;;
+    check-mozjs-inventory|check-mozjs-api-inventory) check_mozjs_api_snapshot ;;
+    report-mozjs-changes|report-mozjs-api-inventory-changes) report_mozjs_api_changes "$@" ;;
+    scan-servo-usage) scan_servo_mozjs_api_usage ;;
+    check-servo-usage) check_servo_mozjs_api_usage ;;
+    check-contract-coverage) check_contract_case_coverage ;;
+    check-quickjs-fixes) check_quickjs_shim_fixes "$@" ;;
+    sm) run_spidermonkey_contract "$@" ;;
+    qjs) run_quickjs_contract "$@" ;;
+    diff) run_compare_engine_results ;;
+    api-scan) scan_mozjs_api "$@" ;;
+    generate) generate_mozjs_api_snapshot ;;
+    manifest) check_mozjs_api_snapshot ;;
+    coverage) check_contract_case_coverage ;;
+    scope) scan_servo_mozjs_api_usage ;;
+    scope-check) check_servo_mozjs_api_usage ;;
+    report) report_mozjs_api_changes "$@" ;;
+    fix-check) check_quickjs_shim_fixes "$@" ;;
+    all) run_all "$@" ;;
     *)
-        echo "usage: $0 {sm|qjs|diff|generate|manifest|coverage|scope|scope-check|report|fix-check|all} [--case ID|--cases ID[,ID...]] [cargo test args...]" >&2
+        echo "usage: $0 {run-spidermonkey-contract|run-quickjs-contract|compare-engine-results|scan-mozjs-surface|check-servo-mozjs-api-usage|check-contract-case-coverage|check-quickjs-shim-fixes|run-contract-gate} [--case ID|--cases ID[,ID...]] [cargo test args...]" >&2
+        echo "internal commands: scan-mozjs-api scan-servo-mozjs-api-usage generate-mozjs-api-snapshot check-mozjs-api-snapshot report-mozjs-api-changes" >&2
+        echo "legacy aliases: sm qjs diff api-scan generate manifest scope scope-check coverage report fix-check run-sm run-qjs compare-engines scan-mozjs-api-inventory scan-servo-usage check-servo-usage check-contract-coverage check-quickjs-fixes generate-mozjs-inventory check-mozjs-inventory report-mozjs-changes generate-mozjs-api-inventory check-mozjs-api-inventory report-mozjs-api-inventory-changes all" >&2
         exit 2
         ;;
 esac
