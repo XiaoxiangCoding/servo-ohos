@@ -23,7 +23,17 @@ reason = "QuickJS does not invoke CustomAutoRooter trace callbacks during an exp
 owner = "servo-quickjs"
 status = "accepted"
 severity = "P3"
-issue = "servo-quickjs#16"
+
+[[difference]]
+id = "eval.environment_chain"
+fields = ["fields", "apis"]
+panic = """assertion `left == right` failed
+  left: 12
+ right: 13"""
+reason = "QuickJS wraps environment-chain scopes in append order, so a later appended outer scope shadows an earlier inner scope; SpiderMonkey gives earlier appends precedence"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P2"
 
 [[difference]]
 id = "objects.core"
