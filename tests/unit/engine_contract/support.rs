@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+use std::collections::{BTreeSet, HashSet};
 use std::ffi::CStr;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::ptr;
-use std::sync::{Mutex, Once};
+use std::sync::{Mutex, Once, OnceLock};
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
@@ -273,6 +274,12 @@ pub unsafe fn remove_job_queue(cx: &mut JSContext, queue: *mut std::ffi::c_void)
 pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     static RESET: Once = Once::new();
 
+    register_case(case);
+    if !case_selected(case) {
+        return;
+    }
+    mark_observed(case);
+
     let Ok(path) = std::env::var("CONTRACT_OUT") else {
         return;
     };
@@ -300,6 +307,79 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
 }
 
 static CASE_FAILURES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static SELECTED_CASES: OnceLock<Option<HashSet<String>>> = OnceLock::new();
+static OBSERVED_CASES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+static REGISTERED_CASES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+fn selected_cases() -> &'static Option<HashSet<String>> {
+    SELECTED_CASES.get_or_init(|| {
+        let Ok(value) = std::env::var("CONTRACT_CASES") else {
+            return None;
+        };
+        let cases = value
+            .split([',', ' ', '\t', '\n'])
+            .filter(|case| !case.is_empty())
+            .map(str::to_owned)
+            .collect::<HashSet<_>>();
+        assert!(
+            !cases.is_empty(),
+            "CONTRACT_CASES is set but does not name any case"
+        );
+        Some(cases)
+    })
+}
+
+/// Returns whether `case` should run in this invocation.
+///
+/// Without `CONTRACT_CASES`, every case runs. When it is set, only the listed cases run, so a
+/// single-case QJS investigation does not pay for the full suite.
+pub fn case_selected(case: &str) -> bool {
+    selected_cases()
+        .as_ref()
+        .is_none_or(|cases| cases.contains(case))
+}
+
+fn register_case(case: &str) {
+    REGISTERED_CASES
+        .lock()
+        .expect("registered case list")
+        .insert(case.to_owned());
+}
+
+/// Writes the cases that actually reached the harness. This is the gate's source of truth: unlike
+/// a source scan it also sees case ids computed at runtime. With `CONTRACT_CASES`, write the
+/// selected set so a single-case run remains diffable; a selected case that never runs is reported
+/// separately by `assert_no_case_failures`.
+fn flush_case_inventory() {
+    let Ok(path) = std::env::var("CONTRACT_CASES_OUT") else {
+        return;
+    };
+    let cases = match selected_cases() {
+        Some(selected) => selected.iter().cloned().collect::<BTreeSet<_>>(),
+        None => REGISTERED_CASES
+            .lock()
+            .expect("registered case list")
+            .clone(),
+    };
+    let document = serde_json::json!({
+        "version": 1,
+        "cases": cases.into_iter().collect::<Vec<_>>(),
+    });
+    if let Some(parent) = Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).expect("creating CONTRACT_CASES_OUT parent directory");
+    }
+    std::fs::write(path, format!("{document}\n").as_bytes()).expect("writing CONTRACT_CASES_OUT");
+}
+
+fn mark_observed(case: &str) {
+    if selected_cases().is_some() {
+        OBSERVED_CASES
+            .lock()
+            .expect("observed case list")
+            .get_or_insert_with(HashSet::new)
+            .insert(case.to_owned());
+    }
+}
 
 fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     if let Some(message) = payload.downcast_ref::<&str>() {
@@ -314,6 +394,10 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
 /// Runs one case in isolation. A panic is recorded as that case's observation and collected for
 /// the final test failure, so every later case still runs on the same engine.
 pub fn run_case(case: &str, apis: &[&str], f: impl FnOnce() -> Observation) {
+    register_case(case);
+    if !case_selected(case) {
+        return;
+    }
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(observation) => record(case, &observation, apis),
         Err(payload) => {
@@ -332,6 +416,10 @@ pub fn run_case(case: &str, apis: &[&str], f: impl FnOnce() -> Observation) {
 /// under the same case id with no API list; the failed run is therefore never silently compared
 /// as a match, and later cases still execute.
 pub fn isolate_case(case: &str, f: impl FnOnce()) {
+    register_case(case);
+    if !case_selected(case) {
+        return;
+    }
     if let Err(payload) = catch_unwind(AssertUnwindSafe(f)) {
         let message = panic_message(payload);
         eprintln!("case {case} failed: {message}");
@@ -345,6 +433,25 @@ pub fn isolate_case(case: &str, f: impl FnOnce()) {
 
 /// Fails the enclosing test after every case has had a chance to run.
 pub fn assert_no_case_failures() {
+    flush_case_inventory();
+
+    if let Some(selected) = selected_cases() {
+        let observed = OBSERVED_CASES
+            .lock()
+            .expect("observed case list")
+            .clone()
+            .unwrap_or_default();
+        let mut missing = selected.difference(&observed).cloned().collect::<Vec<_>>();
+        missing.sort();
+        if !missing.is_empty() {
+            panic!(
+                "{} selected engine contract case(s) did not run:\n{}",
+                missing.len(),
+                missing.join("\n")
+            );
+        }
+    }
+
     let failures = CASE_FAILURES.lock().expect("case failure list");
     if !failures.is_empty() {
         panic!(
@@ -368,37 +475,10 @@ pub fn run_module(name: &str, f: impl FnOnce()) {
     }
 }
 
-/// Runs a case for a scoped entry that `api-manifest.toml` reports as `empty` or `todo`.
-///
-/// The case still asserts SpiderMonkey semantics, so the reference run stays strict. On QuickJS a
-/// `qjs_todo!` panic is recorded as `fields.panic` but does not fail the run: whether the recorded
-/// divergence is acceptable is decided by `known-differences.toml` in `run.sh diff`, not by the
-/// test binary. That keeps the QJS run going so `qjs.jsonl` stays complete and comparable.
-pub fn run_case_for_unimplemented_entry(
-    case: &str,
-    apis: &[&str],
-    f: impl FnOnce() -> Observation,
-) {
-    match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(observation) => record(case, &observation, apis),
-        Err(payload) => {
-            let message = panic_message(payload);
-            eprintln!("case {case} recorded a shim failure: {message}");
-            record(case, &Observation::failure(&message), apis);
-            if !cfg!(feature = "js-quickjs") {
-                CASE_FAILURES
-                    .lock()
-                    .expect("case failure list")
-                    .push(format!("{case}: {message}"));
-            }
-        },
-    }
-}
-
 /// Runs a case in a fresh runtime and records its observation together with the entries it
 /// exercises. The `apis` list is the coverage evidence: every named entry must be classified as
-/// implemented in `api-manifest.toml`, and every implemented entry in `api-scope.toml` must appear
-/// in at least one case.
+/// implemented in `api-manifest.toml`, or as `empty`/`todo` in both the manifest and
+/// `api-scope.toml`. Every scoped entry must appear in at least one case.
 pub fn record_case(
     engine: &JSEngine,
     case: &str,

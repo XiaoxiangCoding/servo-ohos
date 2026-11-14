@@ -76,7 +76,7 @@ unsafe fn id_for(cx: &mut JSContext, global: HandleObject, source: &str) -> jsid
 fn rooted_vectors(engine: &JSEngine) {
     record_case(
         engine,
-        "objects.extra_rooted_vectors",
+        "objects.rooted_vectors",
         &[
             "AppendToIdVector",
             "AppendToRootedObjectVector",
@@ -115,7 +115,7 @@ fn rooted_vectors(engine: &JSEngine) {
 fn identity_and_functions(engine: &JSEngine) {
     record_case(
         engine,
-        "objects.extra_identity_and_functions",
+        "objects.identity_and_functions",
         &[
             "Construct1",
             "DefineFunctionWithReserved",
@@ -280,7 +280,7 @@ unsafe extern "C" fn read_reserved(_cx: *mut RawJSContext, argc: u32, vp: *mut V
 fn descriptors_and_forwarding(engine: &JSEngine) {
     record_case(
         engine,
-        "objects.extra_descriptors_and_forwarding",
+        "objects.descriptors_and_forwarding",
         &[
             "FromPropertyDescriptor",
             "JS_DefineProperty2",
@@ -414,7 +414,7 @@ fn descriptors_and_forwarding(engine: &JSEngine) {
 fn jit_getters_and_setters(engine: &JSEngine) {
     record_case(
         engine,
-        "objects.extra_jit_accessors",
+        "objects.jit_accessors",
         &["CallJitGetterOp", "CallJitSetterOp"],
         |cx, global| unsafe {
             rooted!(&in(cx) let this = JS_NewPlainObject(cx));
@@ -550,7 +550,7 @@ fn stack_gc_vectors_and_for_of(engine: &JSEngine) {
         let _ = SetDataPropertyDescriptor;
     });
     crate::support::record(
-        "objects.extra_stack_vectors_for_of",
+        "objects.stack_vectors_for_of",
         &Observation::ok(Observed::Boolean(true)),
         &[
             "JS_ForOfIteratorInit",
@@ -585,17 +585,17 @@ fn with_global_with_callbacks(
 }
 
 pub fn run(engine: &JSEngine) {
-    crate::support::isolate_case("objects.extra_rooted_vectors", || rooted_vectors(engine));
-    crate::support::isolate_case("objects.extra_identity_and_functions", || {
+    crate::support::isolate_case("objects.rooted_vectors", || rooted_vectors(engine));
+    crate::support::isolate_case("objects.identity_and_functions", || {
         identity_and_functions(engine)
     });
-    crate::support::isolate_case("objects.extra_descriptors_and_forwarding", || {
+    crate::support::isolate_case("objects.descriptors_and_forwarding", || {
         descriptors_and_forwarding(engine)
     });
-    crate::support::isolate_case("objects.extra_jit_accessors", || {
+    crate::support::isolate_case("objects.jit_accessors", || {
         jit_getters_and_setters(engine)
     });
-    crate::support::isolate_case("objects.extra_stack_vectors_for_of", || {
+    crate::support::isolate_case("objects.stack_vectors_for_of", || {
         stack_gc_vectors_and_for_of(engine)
     });
 }

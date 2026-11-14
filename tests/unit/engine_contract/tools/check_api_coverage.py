@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that every implemented mozjs entry in Servo's usage scope has a contract case.
+"""Check that every mozjs entry in Servo's usage scope has a contract case.
 
 Usage: check_api_coverage.py COVERAGE.jsonl MANIFEST.toml SCOPE.toml
 
@@ -9,9 +9,9 @@ case: that is the surface Servo actually uses. Entries outside the scope are val
 the manifest but do not affect coverage. Every case must still exercise at least one scoped
 entry: the suite only keeps cases for Servo's usage surface.
 
-Every `implemented` scoped entry must be exercised by a case. `empty` and `todo` scoped entries
-must also have a case, but they are counted separately: the case records what the shim does today
-(silent no-op or a `qjs_todo!` panic), and any behavioural difference is settled by
+Every scoped entry must be exercised by a case. `implemented` entries count as normal coverage;
+`empty` and `todo` entries are counted separately because their case records what the shim does
+today (silent no-op or a `qjs_todo!` panic), and any behavioural difference is settled by
 `known-differences.toml` during the QuickJS diff. A case may only claim an entry with the status
 the manifest gives it, so a case cannot pass an unimplemented entry off as working.
 """
@@ -51,6 +51,7 @@ def load_scope(path):
 def load_coverage(path):
     covered = set()
     cases = []
+    case_ids = set()
     with open(path, encoding="utf-8") as file:
         for line_number, line in enumerate(file, 1):
             line = line.strip()
@@ -58,6 +59,9 @@ def load_coverage(path):
                 continue
             case = json.loads(line)
             case_id = case["id"]
+            if case_id in case_ids:
+                raise SystemExit(f"{path}:{line_number}: duplicate case id {case_id!r}")
+            case_ids.add(case_id)
             apis = case.get("apis")
             if not isinstance(apis, list) or not apis:
                 raise SystemExit(f"{path}:{line_number}: case {case_id!r} has no apis")
@@ -155,16 +159,16 @@ def main(argv):
         return 1
 
     print(
-        f"API coverage ok: {len(covered_eligible)}/{len(eligible)} scoped implemented entries "
-        f"covered by {len(cases)} cases"
+        f"API coverage ok: {len(covered_eligible) + len(covered_unimplemented)}/{len(scope)} "
+        f"scoped entries covered by {len(cases)} cases"
+    )
+    print(
+        f"  implemented {len(covered_eligible)}/{len(eligible)}, "
+        f"empty/todo {len(covered_unimplemented)}/{len(unimplemented)}"
     )
     print(
         f"scope: {len(scope)} entries; "
         f"{len(covered_outside_scope)} out-of-scope entries exercised and ignored"
-    )
-    print(
-        f"unimplemented coverage ok: {len(covered_unimplemented)}/{len(unimplemented)} "
-        f"scoped empty/todo entries exercised (differences must be registered)"
     )
     return 0
 

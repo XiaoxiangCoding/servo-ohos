@@ -99,7 +99,8 @@ class CoverageTest(unittest.TestCase):
             self.scope([("Scoped", "implemented")]),
         )
         self.assertEqual(result, 0, output)
-        self.assertIn("1/1 scoped implemented entries", output)
+        self.assertIn("1/1 scoped entries covered", output)
+        self.assertIn("implemented 1/1, empty/todo 0/0", output)
         self.assertIn("1 out-of-scope entries exercised and ignored", output)
 
     def test_requires_every_case_to_exercise_a_scoped_entry(self):
@@ -110,13 +111,21 @@ class CoverageTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("outside-only: case has no entry in api-scope.toml", output)
 
+    def test_rejects_duplicate_case_ids(self):
+        coverage = self.coverage([("case", ["Scoped"]), ("case", ["Scoped"])])
+        scope = self.scope([("Scoped", "implemented")])
+        with self.assertRaisesRegex(SystemExit, "duplicate case id 'case'"):
+            check_api_coverage.main(
+                ["check_api_coverage.py", coverage, self.manifest, scope]
+            )
+
     def test_accepts_empty_scope_entry_as_unimplemented(self):
         result, output = self.run_check(
             self.coverage([("case", ["Empty"])]),
             self.scope([("Empty", "empty")]),
         )
         self.assertEqual(result, 0, output)
-        self.assertIn("unimplemented coverage ok: 1/1", output)
+        self.assertIn("implemented 0/0, empty/todo 1/1", output)
 
     def test_requires_a_case_for_an_empty_scope_entry(self):
         result, output = self.run_check(

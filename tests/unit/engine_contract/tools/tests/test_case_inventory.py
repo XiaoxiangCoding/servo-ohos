@@ -1,0 +1,322 @@
+import contextlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
+import unittest
+
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import case_inventory
+
+
+class CaseInventoryTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.tests_dir = os.path.join(self.temporary.name, "engine_contract")
+        os.makedirs(self.tests_dir)
+        self.output = os.path.join(self.temporary.name, "cases.json")
+
+    def write(self, name, source):
+        path = os.path.join(self.tests_dir, name)
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(textwrap.dedent(source))
+
+    def run_scan(self, *args):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = case_inventory.main(
+                [
+                    "scan",
+                    "--tests-dir",
+                    self.tests_dir,
+                    "--output",
+                    self.output,
+                    *args,
+                ]
+            )
+        return result, output.getvalue()
+
+    def load(self):
+        with open(self.output, encoding="utf-8") as file:
+            return json.load(file)
+
+    def test_scans_direct_and_wrapped_calls(self):
+        self.write(
+            "sample_test.rs",
+            """
+            pub fn run(engine: &JSEngine) {
+                record_case(engine, "module.direct", APIS, |cx, global| {});
+                run_group(engine, "module.wrapped", each_type);
+                isolate_case("module.isolated", || {});
+                run_case("module.manual", &[], || Observation::ok(Value::Boolean(true)));
+                record("module.recorded", &observation, &[]);
+            }
+            """,
+        )
+        result, output = self.run_scan()
+        self.assertEqual(result, 0, output)
+        self.assertEqual(
+            self.load(),
+            {
+                "version": 1,
+                "cases": [
+                    "module.direct",
+                    "module.isolated",
+                    "module.manual",
+                    "module.recorded",
+                    "module.wrapped",
+                ],
+            },
+        )
+
+    def test_ignores_non_case_strings(self):
+        self.write(
+            "sample_test.rs",
+            """
+            pub fn run(engine: &JSEngine) {
+                let filename = "test.js";
+                record_case(engine, "module.real", APIS, |cx, global| {});
+            }
+            """,
+        )
+        result, output = self.run_scan()
+        self.assertEqual(result, 0, output)
+        self.assertEqual(self.load()["cases"], ["module.real"])
+
+    def test_filters_to_selected_cases(self):
+        self.write(
+            "sample_test.rs",
+            """
+            pub fn run(engine: &JSEngine) {
+                record_case(engine, "module.one", APIS, |cx, global| {});
+                record_case(engine, "module.two", APIS, |cx, global| {});
+            }
+            """,
+        )
+        result, output = self.run_scan("--case", "module.two")
+        self.assertEqual(result, 0, output)
+        self.assertEqual(self.load()["cases"], ["module.two"])
+
+    def test_rejects_an_unknown_selected_case(self):
+        self.write(
+            "sample_test.rs",
+            'record_case(engine, "module.real", APIS, |cx, global| {});\n',
+        )
+        result, output = self.run_scan("--cases", "module.missing")
+        self.assertEqual(result, 1)
+        self.assertIn("module.missing", output)
+
+    def test_rejects_a_directory_without_cases(self):
+        self.write("sample_test.rs", "pub fn run(engine: &JSEngine) {}\n")
+        result, output = self.run_scan()
+        self.assertEqual(result, 1)
+        self.assertIn("no contract cases found", output)
+
+    def write_run_sh_repo(self, name):
+        tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        repository = os.path.join(self.temporary.name, name)
+        contract = os.path.join(repository, "tests", "unit", "engine_contract")
+        os.makedirs(os.path.join(contract, "tools"))
+        shutil.copy(os.path.join(tools, "run.sh"), os.path.join(contract, "tools", "run.sh"))
+        shutil.copy(
+            os.path.join(tools, "compare.py"),
+            os.path.join(contract, "tools", "compare.py"),
+        )
+        shutil.copy(
+            os.path.join(tools, "fix_record.py"),
+            os.path.join(contract, "tools", "fix_record.py"),
+        )
+        with open(os.path.join(contract, "known-differences.toml"), "w", encoding="utf-8"):
+            pass
+        with open(os.path.join(contract, "fix-record.md"), "w", encoding="utf-8") as file:
+            file.write("## Records\n")
+        with open(os.path.join(contract, "baseline-known-differences.toml"), "w", encoding="utf-8") as file:
+            file.write("")
+        return repository, contract
+
+    def run_diff(self, repository, output_dir):
+        return subprocess.run(
+            [os.path.join(repository, "tests", "unit", "engine_contract", "tools", "run.sh"), "diff"],
+            cwd=repository,
+            env={**os.environ, "OUT_DIR": output_dir},
+            text=True,
+            capture_output=True,
+        )
+
+    def write_observations(self, output_dir, cases):
+        for name in ("sm.jsonl", "qjs.jsonl"):
+            with open(os.path.join(output_dir, name), "w", encoding="utf-8") as file:
+                for case_id in cases:
+                    file.write(
+                        json.dumps(
+                            {
+                                "id": case_id,
+                                "fields": {"value": True},
+                                "exception": None,
+                                "apis": ["JS_Test"],
+                            }
+                        )
+                        + "\n"
+                    )
+
+    def test_run_sh_diff_uses_runtime_case_inventories(self):
+        repository, _ = self.write_run_sh_repo("repo-runtime")
+        output_dir = os.path.join(self.temporary.name, "out-runtime")
+        os.makedirs(output_dir)
+        with open(os.path.join(output_dir, "sm-cases.json"), "w", encoding="utf-8") as file:
+            json.dump({"version": 1, "cases": ["module.real", "module.stale"]}, file)
+        with open(os.path.join(output_dir, "qjs-cases.json"), "w", encoding="utf-8") as file:
+            json.dump({"version": 1, "cases": ["module.real", "module.stale"]}, file)
+        self.write_observations(output_dir, ["module.real"])
+        completed = self.run_diff(repository, output_dir)
+        self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+        self.assertIn("missing from SpiderMonkey case inventory: module.stale", completed.stdout)
+        self.assertIn("using runtime case inventories:", completed.stdout)
+
+    def test_run_sh_diff_accepts_a_selected_run(self):
+        repository, _ = self.write_run_sh_repo("repo-selected")
+        output_dir = os.path.join(self.temporary.name, "out-selected")
+        os.makedirs(output_dir)
+        for name in ("sm-cases.json", "qjs-cases.json"):
+            with open(os.path.join(output_dir, name), "w", encoding="utf-8") as file:
+                json.dump({"version": 1, "cases": ["module.one"]}, file)
+        self.write_observations(output_dir, ["module.one"])
+        completed = self.run_diff(repository, output_dir)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("compared 1 cases", completed.stdout)
+        self.assertIn("0 missing from SpiderMonkey case inventory", completed.stdout)
+        self.assertIn("0 unexpected in SpiderMonkey case inventory", completed.stdout)
+
+    def test_run_sh_diff_rejects_different_engine_inventories(self):
+        repository, _ = self.write_run_sh_repo("repo-inventory-mismatch")
+        output_dir = os.path.join(self.temporary.name, "out-inventory-mismatch")
+        os.makedirs(output_dir)
+        with open(os.path.join(output_dir, "sm-cases.json"), "w", encoding="utf-8") as file:
+            json.dump({"version": 1, "cases": ["module.one"]}, file)
+        with open(os.path.join(output_dir, "qjs-cases.json"), "w", encoding="utf-8") as file:
+            json.dump({"version": 1, "cases": ["module.two"]}, file)
+        self.write_observations(output_dir, ["module.one", "module.two"])
+        completed = self.run_diff(repository, output_dir)
+        self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+        self.assertIn("case inventory mismatch between engines: module.one", completed.stdout)
+        self.assertIn("case inventory mismatch between engines: module.two", completed.stdout)
+
+    def write_fake_cargo(self, path, fail_on):
+        script = f"""#!/usr/bin/env bash
+set -eu
+if [[ "$*" == *"{fail_on}"* ]]; then
+    exit 1
+fi
+cat >"${{CONTRACT_CASES_OUT:?}}" <<'JSON'
+{{"version": 1, "cases": ["module.one"]}}
+JSON
+cat >"${{CONTRACT_OUT:?}}" <<'JSONL'
+{{"id": "module.one", "fields": {{"value": true}}, "exception": null, "apis": ["JS_Test"]}}
+JSONL
+"""
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(script)
+        os.chmod(path, 0o755)
+
+    def test_run_sh_all_checks_records_when_sm_writes_no_inventory(self):
+        repository, contract = self.write_run_sh_repo("repo-no-inventory")
+        bin_dir = os.path.join(self.temporary.name, "bin-no-inventory")
+        os.makedirs(bin_dir)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        self.write_fake_cargo(fake_cargo, "--locked")
+        output_dir = os.path.join(self.temporary.name, "out-no-inventory")
+        os.makedirs(output_dir)
+        completed = subprocess.run(
+            [os.path.join(contract, "tools", "run.sh"), "all"],
+            cwd=repository,
+            env={
+                **os.environ,
+                "OUT_DIR": output_dir,
+                "QJS_DIR": self.temporary.name,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                "FIX_CHECK_BASELINE": os.path.join(contract, "baseline-known-differences.toml"),
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+        self.assertIn("fix-check (no runtime inventory; checking records only)", completed.stdout)
+        self.assertIn(
+            "fix record: 0 removed difference(s), 0 record(s), 0 problems",
+            completed.stdout,
+        )
+        self.assertNotIn("No such file or directory", completed.stderr)
+        self.assertIn("engine contract steps failed: sm diff coverage", completed.stderr)
+
+    def test_run_sh_all_with_case_skips_coverage(self):
+        repository, contract = self.write_run_sh_repo("repo-all")
+        bin_dir = os.path.join(self.temporary.name, "bin")
+        os.makedirs(bin_dir)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        self.write_fake_cargo(fake_cargo, "__never__")
+        output_dir = os.path.join(self.temporary.name, "out-all")
+        os.makedirs(output_dir)
+        completed = subprocess.run(
+            [
+                os.path.join(contract, "tools", "run.sh"),
+                "all",
+                "--case",
+                "module.one",
+            ],
+            cwd=repository,
+            env={
+                **os.environ,
+                "OUT_DIR": output_dir,
+                "QJS_DIR": self.temporary.name,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                "FIX_CHECK_BASELINE": os.path.join(contract, "baseline-known-differences.toml"),
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("coverage (skipped: coverage requires the full case set)", completed.stdout)
+        self.assertIn("=> sm", completed.stdout)
+        self.assertIn("=> qjs", completed.stdout)
+        self.assertIn("=> diff", completed.stdout)
+        for name in ("sm-cases.json", "qjs-cases.json"):
+            with open(os.path.join(output_dir, name), encoding="utf-8") as file:
+                self.assertEqual(json.load(file)["cases"], ["module.one"])
+
+    def test_run_sh_all_continues_after_a_failed_step(self):
+        repository, contract = self.write_run_sh_repo("repo-aggregate")
+        bin_dir = os.path.join(self.temporary.name, "bin-failing")
+        os.makedirs(bin_dir)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        self.write_fake_cargo(fake_cargo, "js-quickjs")
+        output_dir = os.path.join(self.temporary.name, "out-aggregate")
+        os.makedirs(output_dir)
+        completed = subprocess.run(
+            [os.path.join(contract, "tools", "run.sh"), "all"],
+            cwd=repository,
+            env={
+                **os.environ,
+                "OUT_DIR": output_dir,
+                "QJS_DIR": self.temporary.name,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                "FIX_CHECK_BASELINE": os.path.join(contract, "baseline-known-differences.toml"),
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+        self.assertIn("==> sm", completed.stdout)
+        self.assertIn("==> qjs", completed.stdout)
+        self.assertIn("==> diff", completed.stdout)
+        self.assertIn("==> coverage", completed.stdout)
+        self.assertIn("engine contract steps failed:", completed.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

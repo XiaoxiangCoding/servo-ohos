@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -278,6 +279,171 @@ class ManifestVerifyTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("recorded:  (i32, i32) -> i32", output)
         self.assertIn("generated: (i32, u64) -> i32", output)
+
+
+class ManifestReportTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = self.temporary.name
+        self.baseline = os.path.join(self.root, "baseline.toml")
+        self.current = os.path.join(self.root, "current.toml")
+        self.output = os.path.join(self.root, "reports", "nested", "api-changes.toml")
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    @staticmethod
+    def metadata(revision):
+        return {
+            "mozjs_version": "0.26.14",
+            "bindgen_sha256": "abc123",
+            "quickjs_revision": revision,
+            "bindgen_definitions": 3,
+            "unique_names": 3,
+            "variadic": 0,
+            "implemented": 1,
+            "empty": 1,
+            "todo": 1,
+            "eligible": 1,
+        }
+
+    @staticmethod
+    def entry(name, arity, source, status, signature):
+        return {
+            "name": name,
+            "arity": arity,
+            "source": source,
+            "status": status,
+            "signature": signature,
+        }
+
+    def write_fixtures(self):
+        api_inventory.write_manifest(
+            self.baseline,
+            [
+                self.entry("RemovedFn", 0, "jsapi", "todo", "() -> ()"),
+                self.entry("SignatureFn", 1, "jsapi", "implemented", "(i32) -> i32"),
+                self.entry("StatusFn", 1, "jsapi", "todo", "(i32) -> i32"),
+            ],
+            self.metadata("baseline-rev"),
+        )
+        api_inventory.write_manifest(
+            self.current,
+            [
+                self.entry("AddedFn", 1, "gluebindings", "empty", "(u8) -> bool"),
+                self.entry("SignatureFn", 1, "jsapi", "implemented", "(u64) -> i32"),
+                self.entry("StatusFn", 1, "jsapi", "implemented", "(i32) -> i32"),
+            ],
+            self.metadata("current-rev"),
+        )
+
+    def run_report(self, *extra_args):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = api_inventory.main(
+                [
+                    "report",
+                    "--baseline",
+                    self.baseline,
+                    "--manifest",
+                    self.current,
+                    "--output",
+                    self.output,
+                    *extra_args,
+                ]
+            )
+        return result, output.getvalue()
+
+    def test_report_subcommand_writes_toml_by_default(self):
+        self.write_fixtures()
+        result, output = self.run_report()
+        self.assertEqual(result, 0, output)
+        self.assertIn("4 changes", output)
+        with open(self.output, encoding="utf-8") as file:
+            report = file.read()
+        self.assertIn('baseline_quickjs_revision = "baseline-rev"', report)
+        self.assertIn('current_quickjs_revision = "current-rev"', report)
+        self.assertIn("changes = 4", report)
+        self.assertIn('kind = "added"', report)
+        self.assertIn('kind = "removed"', report)
+        self.assertIn('kind = "signature"', report)
+        self.assertIn('kind = "status"', report)
+        self.assertIn('name = "AddedFn"', report)
+        self.assertIn('source = "gluebindings"', report)
+        self.assertIn('signature = "(u64) -> i32"', report)
+        self.assertIn('before = "todo"', report)
+        self.assertIn('after = "implemented"', report)
+
+    def test_report_subcommand_writes_tsv(self):
+        self.write_fixtures()
+        result, output = self.run_report("--format", "tsv")
+        self.assertEqual(result, 0, output)
+        with open(self.output, encoding="utf-8") as file:
+            lines = file.read().splitlines()
+        self.assertEqual(lines[0], "change\tname\tarity\tsource\tstatus\tbefore\tafter")
+        self.assertIn("added\tAddedFn\t1\tgluebindings\tempty\t\tempty", lines)
+        self.assertIn("removed\tRemovedFn\t0\tjsapi\ttodo\ttodo\t", lines)
+        self.assertIn(
+            "signature\tSignatureFn\t1\tjsapi\timplemented\t(i32) -> i32\t(u64) -> i32",
+            lines,
+        )
+        self.assertIn("status\tStatusFn\t1\tjsapi\timplemented\ttodo\timplemented", lines)
+        self.assertEqual(len(lines), 5)
+
+    def test_run_sh_report_entry_point(self):
+        self.write_fixtures()
+        script = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run.sh"
+        )
+        completed = subprocess.run(
+            [
+                script,
+                "report",
+                "--baseline",
+                self.baseline,
+                "--manifest",
+                self.current,
+                "--output",
+                self.output,
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("4 changes", completed.stdout)
+        self.assertTrue(os.path.exists(self.output))
+
+    def test_run_sh_report_defaults_to_tsv_extension(self):
+        self.write_fixtures()
+        script = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "run.sh"
+        )
+        report_dir = os.path.join(self.root, "tsv-report")
+        completed = subprocess.run(
+            [
+                script,
+                "report",
+                "--baseline",
+                self.baseline,
+                "--manifest",
+                self.current,
+                "--format",
+                "tsv",
+            ],
+            cwd=self.root,
+            env={**os.environ, "OUT_DIR": report_dir},
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertTrue(os.path.exists(os.path.join(report_dir, "api-changes.tsv")))
+
+    def test_report_rejects_an_unknown_format(self):
+        self.write_fixtures()
+        with self.assertRaises(SystemExit) as raised:
+            self.run_report("--format", "json")
+        self.assertEqual(raised.exception.code, 2)
 
 
 if __name__ == "__main__":
