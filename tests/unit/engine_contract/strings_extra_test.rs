@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-//! The remaining string, atom, id, JSON and memory entry points.
+//! String, atom, id, JSON and memory entry points.
 
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::NonNull;
@@ -319,7 +319,7 @@ const APIS: &[&str] = &[
 ];
 
 pub fn run(engine: &JSEngine) {
-    record_case(engine, "strings.remaining", APIS, |cx, global| unsafe {
+    record_case(engine, "strings.atoms_ids_json_and_memory", APIS, |cx, global| unsafe {
         let mut utf8 = *b"a\xe2\x82\xac";
         let utf8_chars = js::jsapi::JS::UTF8Chars {
             _base: range(utf8.as_mut_ptr(), utf8.len()),

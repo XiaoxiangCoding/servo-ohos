@@ -497,6 +497,7 @@ def report(args):
     baseline_metadata, baseline_entries = load_manifest(args.baseline)
     current_metadata, current_entries = load_manifest(args.manifest)
     rows = change_rows(inventory(baseline_entries), inventory(current_entries))
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     write_report(args.output, baseline_metadata, current_metadata, rows, args.format)
     counts = {}
     for change, *_rest in rows:
@@ -556,6 +557,13 @@ def main(argv):
     verify_parser.add_argument("--engine-src", required=True)
     verify_parser.add_argument("--stub-bindings", required=True)
     verify_parser.set_defaults(func=verify)
+
+    report_parser = subparsers.add_parser("report")
+    report_parser.add_argument("--baseline", required=True)
+    report_parser.add_argument("--manifest", required=True)
+    report_parser.add_argument("--output", required=True)
+    report_parser.add_argument("--format", choices=("toml", "tsv"), default="toml")
+    report_parser.set_defaults(func=report)
 
     args = parser.parse_args(argv)
     return args.func(args)

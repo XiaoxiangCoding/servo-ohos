@@ -16,11 +16,20 @@ use js::rust::{CustomAutoRooter, CustomTrace, JSEngine};
 use crate::support::{Observation, Value, eval, get_property, observe, run_case, with_global};
 
 pub fn run(engine: &JSEngine) {
-    call_cases(engine);
-    rooter_cases(engine);
+    if crate::support::case_selected("call.throw_pending_exception")
+        || crate::support::case_selected("rooter.trace_on_gc")
+    {
+        call_cases(engine);
+    }
+    if crate::support::case_selected("rooter.trace_on_gc") {
+        rooter_cases(engine);
+    }
 }
 
 fn call_cases(engine: &JSEngine) {
+    if !crate::support::case_selected("call.throw_pending_exception") {
+        return;
+    }
     with_global(engine, |cx, global| unsafe {
         let function = eval(cx, global, "(function (a, b) { return a + b; })");
         rooted!(&in(cx) let function = function);
