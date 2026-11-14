@@ -292,6 +292,8 @@ run_all() {
         step_args=(--cases "$selection")
     fi
     local -a failures=()
+    local quickjs_failed=0
+    local compare_failed=0
     local step
     for step in run-spidermonkey-contract run-quickjs-contract compare-engine-results \
         check-quickjs-shim-fixes check-contract-case-coverage; do
@@ -321,9 +323,30 @@ run_all() {
             check-contract-case-coverage) runner=check_contract_case_coverage ;;
         esac
         if ! "$runner" "${step_args[@]}"; then
-            failures+=("$step")
+            case "$step" in
+                run-quickjs-contract)
+                    # A QuickJS assertion failure is the expected way to record a difference; only
+                    # `compare-engine-results` can decide whether that difference is accepted.
+                    quickjs_failed=1
+                    ;;
+                compare-engine-results)
+                    compare_failed=1
+                    failures+=("$step")
+                    ;;
+                *)
+                    failures+=("$step")
+                    ;;
+            esac
         fi
     done
+    if [[ "$quickjs_failed" -eq 1 ]]; then
+        if [[ "$compare_failed" -eq 1 ]]; then
+            failures+=(run-quickjs-contract)
+        else
+            echo "note: run-quickjs-contract exited non-zero; every difference is settled by" >&2
+            echo "      compare-engine-results, which passed" >&2
+        fi
+    fi
     if [[ ${#failures[@]} -gt 0 ]]; then
         echo "engine contract steps failed: ${failures[*]}" >&2
         return 1
