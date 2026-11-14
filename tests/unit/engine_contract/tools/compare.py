@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Compare the contract observations of the SpiderMonkey and QuickJS runs.
+"""Compare the contract results of the SpiderMonkey and QuickJS runs.
 
-Usage: compare.py SM.jsonl QJS.jsonl [known-differences.toml] [--cases CASES.json]
-       [--sm-cases SM-CASES.json] [--qjs-cases QJS-CASES.json]
+Usage: compare.py SPIDERMONKEY-RESULTS.jsonl QUICKJS-RESULTS.jsonl \
+           [quickjs-difference-allowlist.toml] [--cases CASES.json] \
+           [--sm-cases SPIDERMONKEY-CASES.json] [--qjs-cases QUICKJS-CASES.json]
 
 Both inputs are JSON Lines produced by `engine_contract_tests`. Cases are matched by `id`; the
 `engine` field is ignored. SpiderMonkey is the reference: a difference listed in
-`known-differences.toml` with status `accepted` or `wontfix` is reported as a known QuickJS
+`quickjs-difference-allowlist.toml` with status `accepted` or `wontfix` is reported as a known QuickJS
 defect and does not fail the run. A listed difference with status `pending` or `bug` still fails,
 as does an unlisted difference. When ``CASES.json`` is supplied, both engine runs must contain
 exactly those case ids; a truncated or stale run therefore fails instead of comparing a subset.

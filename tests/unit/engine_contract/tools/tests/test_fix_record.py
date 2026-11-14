@@ -2,6 +2,8 @@ import contextlib
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -60,7 +62,7 @@ RECORD = """# Fixes
 - Previous severity: P3
 - Fixed in: abc1234
 - Shim change: implemented the missing entry point
-- Regression: `run.sh sm --case module.one && run.sh qjs --case module.one && run.sh diff`
+- Regression: `run.sh run-spidermonkey-contract --case module.one && run.sh run-quickjs-contract --case module.one && run.sh compare-engine-results`
 - Result: `0 mismatches, 0 unaccepted, 0 missing`
 - Follow-up: none
 """
@@ -79,13 +81,13 @@ class FixRecordTest(unittest.TestCase):
 
     def run_check(self, baseline=BASE, current=CURRENT, record=RECORD, cases=None, complete=True):
         baseline_path = self.write("baseline.toml", baseline)
-        current_path = self.write("known-differences.toml", current)
-        record_path = self.write("fix-record.md", record)
+        current_path = self.write("quickjs-difference-allowlist.toml", current)
+        record_path = self.write("quickjs-shim-fix-records.md", record)
         arguments = [
             "check",
             "--baseline",
             baseline_path,
-            "--differences",
+            "--allowlist",
             current_path,
             "--record",
             record_path,
@@ -144,8 +146,8 @@ class FixRecordTest(unittest.TestCase):
 
     def test_rejects_a_non_boolean_inventory_complete_flag(self):
         baseline_path = self.write("baseline.toml", BASE)
-        current_path = self.write("known-differences.toml", CURRENT)
-        record_path = self.write("fix-record.md", RECORD)
+        current_path = self.write("quickjs-difference-allowlist.toml", CURRENT)
+        record_path = self.write("quickjs-shim-fix-records.md", RECORD)
         cases_path = os.path.join(self.temporary.name, "cases.json")
         with open(cases_path, "w", encoding="utf-8") as file:
             json.dump({"version": 1, "cases": ["module.one"], "complete": "yes"}, file)
@@ -155,7 +157,7 @@ class FixRecordTest(unittest.TestCase):
                     "check",
                     "--baseline",
                     baseline_path,
-                    "--differences",
+                    "--allowlist",
                     current_path,
                     "--record",
                     record_path,
@@ -167,6 +169,52 @@ class FixRecordTest(unittest.TestCase):
     def test_rejects_a_missing_records_section(self):
         with self.assertRaisesRegex(SystemExit, "missing '## Records' section"):
             self.run_check(record="# Fixes\n")
+
+    def test_reads_the_pre_rename_allowlist_from_git(self):
+        repository = os.path.join(self.temporary.name, "repo")
+        contract = os.path.join(repository, "tests", "unit", "engine_contract")
+        os.makedirs(contract)
+        old_path = os.path.join(contract, "known-differences.toml")
+        new_path = os.path.join(contract, "quickjs-difference-allowlist.toml")
+        with open(old_path, "w", encoding="utf-8") as file:
+            file.write(BASE)
+        for command in (
+            ["git", "init", "--quiet"],
+            ["git", "config", "user.email", "test@example.invalid"],
+            ["git", "config", "user.name", "test"],
+            ["git", "add", "tests/unit/engine_contract/known-differences.toml"],
+            ["git", "commit", "--quiet", "-m", "old allowlist"],
+        ):
+            subprocess.run(command, cwd=repository, check=True, capture_output=True)
+        os.rename(old_path, new_path)
+        with open(new_path, "w", encoding="utf-8") as file:
+            file.write(CURRENT)
+
+        current_path = self.write("current.toml", CURRENT)
+        record_path = self.write("record.md", RECORD)
+        cases_path = self.write("cases.json", '{"version": 1, "cases": ["module.one", "module.two"]}')
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            previous = os.getcwd()
+            os.chdir(repository)
+            try:
+                result = fix_record.main(
+                    [
+                        "check",
+                        "--baseline",
+                        "HEAD:tests/unit/engine_contract/quickjs-difference-allowlist.toml",
+                        "--allowlist",
+                        current_path,
+                        "--record",
+                        record_path,
+                        "--cases",
+                        cases_path,
+                    ]
+                )
+            finally:
+                os.chdir(previous)
+        self.assertEqual(result, 0, output)
+        self.assertIn("using pre-rename baseline", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Generate or check the mozjs C API manifest used by the engine contract suite.
+"""Generate or check the mozjs C API snapshot used by the engine contract suite.
 
-The manifest is derived from the same bindgen output and the same name/arity rule as
+The snapshot is derived from the same bindgen output and the same name/arity rule as
 servo-quickjs/mozjs/stub_bindings.py. It deliberately does not try to implement that rule a second
 time: when a servo-quickjs checkout is supplied, its parser is imported and reused.
 
 Usage:
   api_inventory.py generate --bindgen-dir DIR --engine-src DIR --output FILE \
       [--quickjs-revision REV] [--stub-bindings FILE]
-  api_inventory.py check --manifest FILE
-  api_inventory.py verify --manifest FILE --bindgen-dir DIR --engine-src DIR \
+  api_inventory.py check --snapshot FILE
+  api_inventory.py verify --snapshot FILE --bindgen-dir DIR --engine-src DIR \
       [--stub-bindings FILE]
-  api_inventory.py report --baseline FILE --manifest FILE --output FILE [--format toml|tsv]
+  api_inventory.py report --baseline FILE --snapshot FILE --output FILE [--format toml|tsv]
+
+``--inventory`` is accepted as a compatibility alias for ``--snapshot``.
 
 ``--engine-src`` normally points at ``servo-quickjs/mozjs/src/engine``. A function whose body is
 empty, only ignores arguments, or only writes a constant to a scalar out parameter is classified
@@ -212,7 +214,7 @@ def quote(value):
     return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def write_manifest(path, entries, metadata):
+def write_inventory(path, entries, metadata):
     lines = ["[manifest]"]
     for key in (
         "mozjs_version",
@@ -318,7 +320,7 @@ def generate(args):
         "quickjs_revision": args.quickjs_revision,
         **counts,
     }
-    write_manifest(args.output, entries, metadata)
+    write_inventory(args.output, entries, metadata)
     print(
         f"wrote {args.output}: {counts['bindgen_definitions']} definitions, "
         f"{counts['eligible']} eligible, {counts['empty']} empty, {counts['todo']} todo, "
@@ -326,23 +328,23 @@ def generate(args):
     )
 
 
-def load_manifest(path):
+def load_inventory(path):
     with open(path, "rb") as file:
         document = tomllib.load(file)
     metadata = document.get("manifest")
     entries = document.get("api", [])
     if not metadata or not entries:
-        raise SystemExit(f"{path}: manifest is missing [manifest] or [[api]]")
+        raise SystemExit(f"{path}: inventory is missing [manifest] or [[api]]")
     missing_signatures = [entry for entry in entries if "signature" not in entry]
     if missing_signatures:
         raise SystemExit(
-            f"{path}: manifest has no signatures; regenerate it with api_inventory.py generate"
+            f"{path}: inventory has no signatures; regenerate it with api_inventory.py generate"
         )
     return metadata, entries
 
 
 def inventory(entries):
-    """The part of the manifest that coverage depends on: which entries exist and how they are
+    """The part of the inventory that coverage depends on: which entries exist and how they are
     classified. Line numbers and reasons may move without changing coverage."""
     return {
         (entry["name"], entry["arity"], entry["source"]): (
@@ -354,7 +356,7 @@ def inventory(entries):
 
 
 def check(args):
-    metadata, entries = load_manifest(args.manifest)
+    metadata, entries = load_inventory(args.snapshot)
     problems = []
     ids = set()
     for entry in entries:
@@ -376,7 +378,7 @@ def check(args):
     }
     for key, value in counts.items():
         if metadata.get(key) != value:
-            problems.append(f"{key}: manifest says {metadata.get(key)}, entries say {value}")
+            problems.append(f"{key}: inventory says {metadata.get(key)}, entries say {value}")
     if metadata.get("eligible") != counts["implemented"]:
         problems.append("eligible must equal implemented")
     if problems:
@@ -384,7 +386,7 @@ def check(args):
             print("error:", problem, file=sys.stderr)
         return 1
     print(
-        f"manifest ok: {counts['bindgen_definitions']} definitions, "
+        f"mozjs API inventory ok: {counts['bindgen_definitions']} definitions, "
         f"{counts['implemented']} eligible, {counts['empty']} empty, {counts['todo']} todo"
     )
     return 0
@@ -494,8 +496,8 @@ def write_report(path, baseline_metadata, current_metadata, rows, fmt):
 
 
 def report(args):
-    baseline_metadata, baseline_entries = load_manifest(args.baseline)
-    current_metadata, current_entries = load_manifest(args.manifest)
+    baseline_metadata, baseline_entries = load_inventory(args.baseline)
+    current_metadata, current_entries = load_inventory(args.snapshot)
     rows = change_rows(inventory(baseline_entries), inventory(current_entries))
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     write_report(args.output, baseline_metadata, current_metadata, rows, args.format)
@@ -508,8 +510,8 @@ def report(args):
 
 
 def verify(args):
-    """Fail when the checked-in manifest no longer describes the bindgen and shim inputs."""
-    _, recorded_entries = load_manifest(args.manifest)
+    """Fail when the checked-in inventory no longer describes the bindgen and shim inputs."""
+    _, recorded_entries = load_inventory(args.snapshot)
     stub = load_stub_module(args.stub_bindings)
     recorded = inventory(recorded_entries)
     generated_entries = generate_entries(
@@ -518,18 +520,18 @@ def verify(args):
     generated = inventory(generated_entries)
     if recorded == generated:
         print(
-            f"manifest ok: {len(recorded)} entries match "
+            f"mozjs API inventory ok: {len(recorded)} entries match "
             f"{args.bindgen_dir} and {args.engine_src}"
         )
         return 0
     print(
-        f"error: {args.manifest} is stale for the current mozjs bindgen or QuickJS shim",
+        f"error: {args.snapshot} is stale for the current mozjs bindgen or QuickJS shim",
         file=sys.stderr,
     )
     for line in diff_inventory(recorded, generated):
         print(line, file=sys.stderr)
     print(
-        "Regenerate the manifest, add or update contract cases, then rerun coverage.",
+        "Regenerate the inventory, add or update contract cases, then rerun coverage.",
         file=sys.stderr,
     )
     return 1
@@ -538,6 +540,15 @@ def verify(args):
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
+    def add_snapshot_argument(subparser):
+        subparser.add_argument(
+            "--snapshot",
+            "--inventory",
+            dest="snapshot",
+            required=True,
+            help="mozjs API snapshot to read (--inventory is a compatibility alias)",
+        )
+
     generate_parser = subparsers.add_parser("generate")
     generate_parser.add_argument("--bindgen-dir", required=True)
     generate_parser.add_argument("--engine-src", required=True)
@@ -548,11 +559,11 @@ def main(argv):
     generate_parser.set_defaults(func=generate)
 
     check_parser = subparsers.add_parser("check")
-    check_parser.add_argument("--manifest", required=True)
+    add_snapshot_argument(check_parser)
     check_parser.set_defaults(func=check)
 
     verify_parser = subparsers.add_parser("verify")
-    verify_parser.add_argument("--manifest", required=True)
+    add_snapshot_argument(verify_parser)
     verify_parser.add_argument("--bindgen-dir", required=True)
     verify_parser.add_argument("--engine-src", required=True)
     verify_parser.add_argument("--stub-bindings", required=True)
@@ -560,7 +571,7 @@ def main(argv):
 
     report_parser = subparsers.add_parser("report")
     report_parser.add_argument("--baseline", required=True)
-    report_parser.add_argument("--manifest", required=True)
+    add_snapshot_argument(report_parser)
     report_parser.add_argument("--output", required=True)
     report_parser.add_argument("--format", choices=("toml", "tsv"), default="toml")
     report_parser.set_defaults(func=report)

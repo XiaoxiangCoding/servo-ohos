@@ -4,10 +4,10 @@
 
 //! Engine-independent contract tests for the `mozjs` API served by SpiderMonkey or QuickJS.
 //!
-//! Every case declares the C entry points it exercises in `apis`. `api-scope.toml` records the
+//! Every case declares the C entry points it exercises in `apis`. `servo-mozjs-api-usage.toml` records the
 //! entries Servo actually uses, and the coverage gate requires a case for every scoped entry:
 //! `implemented` entries count as normal coverage, while `empty`/`todo` entries also need a case
-//! whose QuickJS divergence must be registered in `known-differences.toml`.
+//! whose QuickJS divergence must be registered in `quickjs-difference-allowlist.toml`.
 #![allow(unsafe_op_in_unsafe_fn)]
 
 #[cfg(test)]

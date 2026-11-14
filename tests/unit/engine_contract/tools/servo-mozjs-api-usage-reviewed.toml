@@ -4,7 +4,7 @@
 # through method calls on mozjs wrapper types, generic TypedArray helpers, generated
 # bindings, or callback registrations rather than a direct `js::` call, so scan_scope.py
 # deliberately skips them. Each entry still has a contract case; `scope_manifest.py` merges
-# this review list into api-scope.toml so coverage and scope-check stay in sync.
+# this review list into servo-mozjs-api-usage.toml so coverage and usage checks stay in sync.
 
 [[entry]]
 name = "AppendToEnvironmentChain"

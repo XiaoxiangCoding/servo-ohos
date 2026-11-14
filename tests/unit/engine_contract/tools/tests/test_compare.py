@@ -61,11 +61,11 @@ class CompareTest(unittest.TestCase):
         )
 
     def run_compare(self, status, severity, qjs_fields=None):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", qjs_fields or {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", qjs_fields or {"value": False})
         issue = 'issue = "servo-quickjs#1"\n' if status in ("pending", "bug") else ""
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + issue
             + f'status = "{status}"\n'
@@ -102,10 +102,10 @@ class CompareTest(unittest.TestCase):
                     self.run_compare("accepted", severity)
 
     def test_difference_requires_reason_owner_status_and_severity(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             """
             [[difference]]
             id = "case.one"
@@ -124,10 +124,10 @@ class CompareTest(unittest.TestCase):
             self.run_compare("accepted", "major")
 
     def test_pending_difference_requires_an_issue(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + 'status = "pending"\n'
             + 'severity = "P3"\n',
@@ -136,10 +136,10 @@ class CompareTest(unittest.TestCase):
             compare.main(["compare.py", sm, qjs, differences])
 
     def test_rejects_an_empty_issue(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + 'issue = ""\n'
             + 'status = "accepted"\n'
@@ -149,10 +149,10 @@ class CompareTest(unittest.TestCase):
             compare.main(["compare.py", sm, qjs, differences])
 
     def test_accepts_an_issue_reference(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + 'issue = "servo-quickjs#123"\n'
             + 'status = "accepted"\n'
@@ -165,25 +165,25 @@ class CompareTest(unittest.TestCase):
         self.assertIn("issue: servo-quickjs#123", output.getvalue())
 
     def test_rejects_duplicate_difference_ids(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
         entry = (
             DIFFERENCES_HEADER
             + 'status = "accepted"\n'
             + 'severity = "P3"\n'
         )
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             entry + entry,
         )
         with self.assertRaisesRegex(SystemExit, "duplicate difference id 'case.one'"):
             compare.main(["compare.py", sm, qjs, differences])
 
     def test_rejects_a_difference_that_no_longer_differs(self):
-        sm = self.observation("sm.jsonl")
-        qjs = self.observation("qjs.jsonl")
+        sm = self.observation("spidermonkey-contract-results.jsonl")
+        qjs = self.observation("quickjs-contract-results.jsonl")
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + 'status = "accepted"\n'
             + 'severity = "P3"\n',
@@ -196,10 +196,10 @@ class CompareTest(unittest.TestCase):
         self.assertIn("listed case no longer differs", output.getvalue())
 
     def test_rejects_a_difference_when_only_listed_fields_match(self):
-        sm = self.observation("sm.jsonl", fields={"value": True, "extra": 1})
-        qjs = self.observation("qjs.jsonl", fields={"value": False, "extra": 2})
+        sm = self.observation("spidermonkey-contract-results.jsonl", fields={"value": True, "extra": 1})
+        qjs = self.observation("quickjs-contract-results.jsonl", fields={"value": False, "extra": 2})
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             .replace('fields = ["fields"]', 'fields = ["value"]')
             + 'status = "accepted"\n'
@@ -219,8 +219,8 @@ class CompareTest(unittest.TestCase):
         return path
 
     def test_requires_every_inventoried_case_in_both_runs(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": True})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": True})
         cases = self.inventory(["case.one", "case.two"])
         output = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
@@ -230,8 +230,8 @@ class CompareTest(unittest.TestCase):
         self.assertIn("missing from QuickJS case inventory: case.two", output.getvalue())
 
     def test_rejects_cases_outside_the_inventory(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": True})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": True})
         cases = self.inventory(["case.two"])
         output = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
@@ -240,11 +240,11 @@ class CompareTest(unittest.TestCase):
         self.assertIn("unexpected in SpiderMonkey case inventory: case.one", output.getvalue())
 
     def test_rejects_a_difference_for_a_case_missing_from_complete_inventories(self):
-        sm = self.observation("sm.jsonl", case_id="case.two")
-        qjs = self.observation("qjs.jsonl", case_id="case.two")
+        sm = self.observation("spidermonkey-contract-results.jsonl", case_id="case.two")
+        qjs = self.observation("quickjs-contract-results.jsonl", case_id="case.two")
         cases = self.inventory(["case.two"])
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + 'status = "accepted"\n'
             + 'severity = "P3"\n',
@@ -259,8 +259,8 @@ class CompareTest(unittest.TestCase):
         self.assertIn("listed case no longer exists", output.getvalue())
 
     def test_does_not_report_a_difference_for_a_case_outside_a_selected_run(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": False})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
         selected_path = os.path.join(self.temporary.name, "selected-cases.json")
         with open(selected_path, "w", encoding="utf-8") as file:
             json.dump(
@@ -268,7 +268,7 @@ class CompareTest(unittest.TestCase):
                 file,
             )
         differences = self.write(
-            "known-differences.toml",
+            "quickjs-difference-allowlist.toml",
             DIFFERENCES_HEADER
             + 'status = "accepted"\n'
             + 'severity = "P3"\n'
@@ -298,8 +298,8 @@ class CompareTest(unittest.TestCase):
         self.assertNotIn("stale known QuickJS defect: case.two", output.getvalue())
 
     def test_rejects_an_unsupported_case_inventory(self):
-        sm = self.coverage("sm.jsonl", {"value": True})
-        qjs = self.coverage("qjs.jsonl", {"value": True})
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": True})
         path = os.path.join(self.temporary.name, "cases.json")
         with open(path, "w", encoding="utf-8") as file:
             json.dump({"version": 2, "cases": ["case.one"]}, file)
