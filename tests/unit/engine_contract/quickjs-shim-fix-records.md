@@ -37,4 +37,16 @@ Copy this block for each fix. Keep newest records first.
 
 ## Records
 
-_No fixes recorded yet._
+## debugger.global_object
+
+- Date: 2026-11-16
+- Owner: servo-ohos engine contract
+- Issue: none
+- Previous status: accepted
+- Previous severity: P3
+- Fixed in: servo-quickjs 6ac4a17
+- Shim change: `JS_DefineDebuggerObject` emulates SpiderMonkey's `Debugger` API instead of panicking from a `qjs_todo!` stub. The shim builds that emulation behind its `debugger` feature; the contract runner now builds the QuickJS target with `SERVO_QUICKJS_DEBUGGER=1` so the case exercises the real entry point.
+- Regression: `run.sh run-spidermonkey-contract --case debugger.global_object && run.sh run-quickjs-contract --case debugger.global_object && run.sh compare-engine-results`
+- Result: `1 compared, 0 mismatches, 0 unaccepted, 0 missing`; both engines record `{"ran":true}`
+- Follow-up: none
+

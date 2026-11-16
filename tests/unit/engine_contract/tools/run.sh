@@ -233,7 +233,8 @@ run_quickjs_contract() {
         CONTRACT_OUT="$(quickjs_results_path)" \
         CONTRACT_CASES_OUT="$(quickjs_case_inventory_path)" \
         cargo test --offline --release -p engine_contract_tests --features js-quickjs \
-        --config "patch.crates-io.mozjs.path=\"$qjs_dir/mozjs\"" "${cargo_args[@]}"
+        --config "patch.crates-io.mozjs.path=\"$qjs_dir/mozjs\"" \
+        --config 'env.SERVO_QUICKJS_DEBUGGER="1"' "${cargo_args[@]}"
     local status=$?
     restore_lockfile
     return "$status"

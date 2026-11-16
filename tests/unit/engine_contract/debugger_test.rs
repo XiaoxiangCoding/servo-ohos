@@ -14,34 +14,19 @@ fn ran() -> Observation {
     Observation::new(vec![("ran", Value::Boolean(true))])
 }
 
-#[cfg(feature = "js-quickjs")]
-fn precondition(text: impl Into<String>) -> Observation {
-    Observation::new(vec![("precondition", Value::String(text.into()))])
-}
-
-/// `JS_DefineDebuggerObject` installs the `Debugger` constructor on a global. Servo only
-/// compiles the call for non-QuickJS builds. The QuickJS binding is a `qjs_todo!` stub inside an
-/// `extern "C"` function, so calling it aborts instead of unwinding through `catch_unwind`;
-/// record the precondition there instead.
+/// `JS_DefineDebuggerObject` installs the `Debugger` constructor on a global, and returns whether
+/// the global was one. Servo calls it from the debugger global scope to hand `debugger.js` the
+/// same `Debugger` entry point on both engines.
 fn global_object(engine: &JSEngine) -> Observation {
-    #[cfg(not(feature = "js-quickjs"))]
-    {
-        with_global(engine, |cx, global| unsafe {
-            assert!(
-                js::rust::wrappers2::JS_DefineDebuggerObject(cx, global),
-                "JS_DefineDebuggerObject failed"
-            );
-            let value = eval(cx, global, "typeof Debugger");
-            assert_eq!(observe(cx, value), Value::String("function".to_owned()));
-        });
-        ran()
-    }
-
-    #[cfg(feature = "js-quickjs")]
-    {
-        let _ = engine;
-        precondition("a fresh global with self-hosting initialized")
-    }
+    with_global(engine, |cx, global| unsafe {
+        assert!(
+            js::rust::wrappers2::JS_DefineDebuggerObject(cx, global),
+            "JS_DefineDebuggerObject failed"
+        );
+        let value = eval(cx, global, "typeof Debugger");
+        assert_eq!(observe(cx, value), Value::String("function".to_owned()));
+    });
+    ran()
 }
 
 pub fn run(engine: &JSEngine) {
