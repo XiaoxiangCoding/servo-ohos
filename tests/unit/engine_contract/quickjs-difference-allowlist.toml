@@ -108,14 +108,6 @@ status = "accepted"
 severity = "P3"
 
 [[difference]]
-id = "debugger.global_object"
-fields = ["fields"]
-reason = "QuickJS binds JS_DefineDebuggerObject to a qjs_todo! stub that aborts across extern C; the case records the precondition and Servo does not compile the call for js-quickjs"
-owner = "servo-quickjs"
-status = "accepted"
-severity = "P3"
-
-[[difference]]
 id = "streaming.consume_callback"
 fields = ["fields"]
 reason = "QuickJS has no WebAssembly and binds the StreamConsumer glue entry points to qjs_todo!; the case records the unavailable streaming precondition and does not call them"
