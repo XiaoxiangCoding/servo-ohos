@@ -225,7 +225,8 @@ The command takes the version from `$QJS_DIR/mozjs/Cargo.toml`. It:
 2. runs `scan-mozjs-surface` (snapshot + change table + Servo usage);
 3. updates the `mozjs` pin in `Cargo.toml` and the shim `rev` in
    `support/quickjs/cargo-config.toml`;
-4. refreshes `Cargo.lock` with `cargo update -p mozjs` and rescans the usage surface;
+4. rescans the usage surface; it leaves `Cargo.lock` alone, because the shim is wired in through
+   `[patch.crates-io]` and a new `rev` never appears there;
 5. prints `engine versions ok` and a list of cases to `ADD` / `UPDATE`.
 
 Prerequisite: `servo-quickjs` already has a pushed commit for the new release. Without it the
@@ -265,7 +266,7 @@ commit it separately as `chore: run mach fmt`.
 Commit explicitly by path (the tree may contain unrelated local changes):
 
 ```bash
-git add Cargo.toml Cargo.lock support/quickjs/cargo-config.toml \
+git add Cargo.toml support/quickjs/cargo-config.toml \
   tests/unit/engine_contract/mozjs-api-snapshot.toml \
   tests/unit/engine_contract/servo-mozjs-api-usage.toml \
   tests/unit/engine_contract/quickjs-difference-allowlist.toml \
@@ -278,8 +279,8 @@ allowlist entry.
 
 Do not commit `.vscode/settings.json`; it is a personal editor configuration.
 
-`prepare-mozjs-upgrade --skip-cargo-update` stops before `cargo update` when the network is
-unavailable; rerun without it before committing.
+`prepare-mozjs-upgrade` does not update `Cargo.lock`. Only a change to the `mozjs` version number
+itself needs a lockfile update, which Cargo reports on the next build.
 
 ## Before submitting
 
