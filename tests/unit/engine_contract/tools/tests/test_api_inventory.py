@@ -426,6 +426,25 @@ class EngineVersionsTest(unittest.TestCase):
         self.assertEqual(result, 1, output)
         self.assertIn("does not use", output)
 
+    def test_accepts_a_sparse_checkout_without_git_metadata(self):
+        # The CI job sparse-checks-out only the bindgen, engine sources, stub and Cargo.toml.
+        revision = self.head()[:7]
+        shutil.rmtree(os.path.join(self.qjs, ".git"))
+        self.write_snapshot(revision=revision)
+        result, output = self.run_versions()
+        self.assertEqual(result, 0, output)
+        self.assertIn("not a git checkout", output)
+        self.assertIn("engine versions ok", output)
+
+    def test_rejects_a_sparse_checkout_that_omits_mozjs_cargo_toml(self):
+        revision = self.head()[:7]
+        shutil.rmtree(os.path.join(self.qjs, ".git"))
+        os.unlink(os.path.join(self.qjs, "mozjs", "Cargo.toml"))
+        self.write_snapshot(revision=revision)
+        result, output = self.run_versions()
+        self.assertEqual(result, 1, output)
+        self.assertIn("sparse CI checkout must list it", output)
+
 
 class ManifestReportTest(unittest.TestCase):
     def setUp(self):

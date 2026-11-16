@@ -225,6 +225,9 @@ testing a local shim is normal; set `CHECK_PINNED_QJS=1` to make it fatal. The `
 build also fails to compile when the patch did not apply, so a "QuickJS" run cannot silently be
 SpiderMonkey.
 
+The check reads `QJS_DIR/mozjs/Cargo.toml`; a sparse checkout needs that file in addition to
+`mozjs/upstream-bindgen`, `mozjs/src/engine` and `mozjs/stub_bindings.py`.
+
 After a version bump, run the same check directly:
 
 ```bash

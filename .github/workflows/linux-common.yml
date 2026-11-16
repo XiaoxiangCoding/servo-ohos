@@ -190,7 +190,7 @@ jobs:
           git clone --quiet --filter=blob:none --no-checkout \
             https://github.com/openharmony-rs/servo-quickjs "$qjs_dir"
           git -C "$qjs_dir" sparse-checkout set --no-cone \
-            mozjs/upstream-bindgen mozjs/src/engine mozjs/stub_bindings.py
+            mozjs/upstream-bindgen mozjs/src/engine mozjs/stub_bindings.py mozjs/Cargo.toml
           git -C "$qjs_dir" checkout --quiet "$rev"
           QJS_DIR="$qjs_dir" OUT_DIR="${{ github.workspace }}/target/contract" \
             tests/unit/engine_contract/tools/run.sh coverage
