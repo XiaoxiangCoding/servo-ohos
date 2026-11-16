@@ -24,7 +24,7 @@ The main commands and their files:
 | Command | Reads | Writes |
 | --- | --- | --- |
 | `scan-mozjs-surface` | bindgen + shim, then Servo source | `mozjs-api-snapshot.toml`, `mozjs-api-changes.toml`, `servo-mozjs-api-usage.toml` |
-| `prepare-mozjs-upgrade` | the shim checkout, both surfaces | the three files above, both mozjs pins, `Cargo.lock`, and a case list |
+| `prepare-mozjs-upgrade` | the shim checkout, both surfaces | the three files above, both mozjs pins, and a case list |
 | `check-servo-mozjs-api-usage` | Servo source + `servo-mozjs-api-usage.toml` | nothing (check only) |
 | `run-spidermonkey-contract` | contract cases | `spidermonkey-contract-results.jsonl` |
 | `run-quickjs-contract` | contract cases | `quickjs-contract-results.jsonl` |
@@ -161,9 +161,13 @@ does the mechanical work; only the affected cases are left to edit.
    ```
 
    It validates the shim checkout, runs `scan-mozjs-surface`, updates the `mozjs` pins in `Cargo.toml`
-   and `support/quickjs/cargo-config.toml`, refreshes `Cargo.lock`, rescans the usage surface, and
-   prints `engine versions ok` together with the cases to `ADD` or `UPDATE`. Pass `--baseline
-   REV:PATH` to compare against another snapshot.
+   and `support/quickjs/cargo-config.toml`, rescans the usage surface, and prints `engine versions ok`
+   together with the cases to `ADD` or `UPDATE`. Pass `--baseline REV:PATH` to compare against another
+   snapshot.
+
+   It does not touch `Cargo.lock`: the shim is wired in through `[patch.crates-io]`, so a new shim
+   `rev` never appears there. Only a change to the `mozjs` version number itself needs a lockfile
+   update, and Cargo reports that on the next build.
 
 3. **Edit only the listed cases.** Open the file printed next to each `UPDATE` or `ADD` line, keep
    the case id, declare the entry in `apis`, and assert what the entry actually does. If the output
@@ -184,11 +188,12 @@ does the mechanical work; only the affected cases are left to edit.
    and fails if they are reverted. Do not run plain `cargo fmt --check` as the gate; its output
    differs and does not describe the repository's format.
 
-   Commit the version pins, the lockfile, the regenerated snapshot/usage files, and the touched
-   cases together. If `./mach fmt` also reformatted unrelated files, commit that separately:
+   Commit the version pins, the regenerated snapshot/usage files, and the touched cases together
+   (add `Cargo.lock` only if a version bump changed it). If `./mach fmt` also reformatted unrelated
+   files, commit that separately:
 
    ```bash
-   git add Cargo.toml Cargo.lock support/quickjs/cargo-config.toml \
+   git add Cargo.toml support/quickjs/cargo-config.toml \
      tests/unit/engine_contract/mozjs-api-snapshot.toml \
      tests/unit/engine_contract/servo-mozjs-api-usage.toml \
      tests/unit/engine_contract/<touched>_test.rs
