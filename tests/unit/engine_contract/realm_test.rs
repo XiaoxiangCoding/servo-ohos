@@ -4,20 +4,28 @@
 
 //! Realm entry/exit, global lookup, private storage and trace-hook contract.
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::ptr;
 
 use js::glue::{CreateRustJSPrincipals, JSPrincipalsCallbacks};
 use js::jsapi::{
-    self, JS_InitDestroyPrincipalsCallback, JSPrincipals, JSTracer, OnNewGlobalHookOption,
+    self, GCReason, JS_InitDestroyPrincipalsCallback, JSPrincipals, JSTracer, OnNewGlobalHookOption,
 };
 use js::rooted;
-use js::rust::wrappers2::JS_NewGlobalObject;
+use js::rust::wrappers2::{JS_GC, JS_NewGlobalObject};
 use js::rust::{JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS};
 
 use crate::support::{Observation, Value, record};
 
-unsafe extern "C" fn trace_global(_trc: *mut JSTracer, _global: *mut jsapi::JSObject) {}
+thread_local! {
+    /// How many times the realm's global trace hook ran.
+    static GLOBAL_TRACE_HOOK_CALLS: Cell<u32> = const { Cell::new(0) };
+}
+
+unsafe extern "C" fn trace_global(_trc: *mut JSTracer, _global: *mut jsapi::JSObject) {
+    GLOBAL_TRACE_HOOK_CALLS.with(|calls| calls.set(calls.get() + 1));
+}
 
 // ---------------------------------------------------------------------------
 // Compartment iteration and flags.
@@ -130,10 +138,12 @@ pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("realm.enter_exit_and_private", || {
         let mut runtime = Runtime::new(engine.handle());
         let cx = runtime.cx();
+        let mut trace_hook_calls = 0;
         unsafe {
             let options = jsapi::JS_NewRealmOptions();
             assert!(!options.is_null());
             (*options).creationOptions_.traceGlobal_ = Some(trace_global);
+            GLOBAL_TRACE_HOOK_CALLS.with(|calls| calls.set(0));
 
             rooted!(&in(cx) let global = JS_NewGlobalObject(
                 cx,
@@ -172,6 +182,15 @@ pub fn run(engine: &JSEngine) {
             jsapi::SetRealmPrivate(global_realm, ptr::null_mut());
             assert!(jsapi::GetRealmPrivate(global_realm).is_null());
 
+            // The creation options install `trace_global` as the global's trace hook. An
+            // explicit collection must reach it, so the hook is observable, not just stored.
+            JS_GC(cx, GCReason::API);
+            trace_hook_calls = GLOBAL_TRACE_HOOK_CALLS.with(Cell::get);
+            assert!(
+                trace_hook_calls > 0,
+                "the global trace hook did not run during an explicit collection"
+            );
+
             jsapi::LeaveRealm(cx.raw_cx(), previous);
             assert!(jsapi::CurrentGlobalOrNull(cx.raw_cx()).is_null());
             assert!(jsapi::GetCurrentRealmOrNull(cx.raw_cx()).is_null());
@@ -181,7 +200,10 @@ pub fn run(engine: &JSEngine) {
 
         record(
             "realm.enter_exit_and_private",
-            &Observation::ok(Value::Boolean(true)),
+            &Observation::new(vec![(
+                "global_trace_hook_calls",
+                Value::Boolean(trace_hook_calls > 0),
+            )]),
             &[
                 "CurrentGlobal",
                 "CurrentGlobalOrNull",
