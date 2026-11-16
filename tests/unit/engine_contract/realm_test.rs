@@ -4,14 +4,18 @@
 
 //! Realm entry/exit, global lookup, private storage and trace-hook contract.
 
+use std::ffi::c_void;
 use std::ptr;
 
-use js::jsapi::{self, JSTracer, OnNewGlobalHookOption};
+use js::glue::{CreateRustJSPrincipals, JSPrincipalsCallbacks};
+use js::jsapi::{
+    self, JS_InitDestroyPrincipalsCallback, JSPrincipals, JSTracer, OnNewGlobalHookOption,
+};
 use js::rooted;
 use js::rust::wrappers2::JS_NewGlobalObject;
-use js::rust::{JSEngine, Runtime};
+use js::rust::{JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS};
 
-use crate::support::{Observation, Value, record, with_global};
+use crate::support::{Observation, Value, record};
 
 unsafe extern "C" fn trace_global(_trc: *mut JSTracer, _global: *mut jsapi::JSObject) {}
 
@@ -19,38 +23,96 @@ unsafe extern "C" fn trace_global(_trc: *mut JSTracer, _global: *mut jsapi::JSOb
 // Compartment iteration and flags.
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn visit_compartment(
-    _cx: *mut jsapi::JSContext,
-    data: *mut std::ffi::c_void,
-    comp: *mut jsapi::Compartment,
-) -> jsapi::CompartmentIterResult {
-    *(data as *mut *mut jsapi::Compartment) = comp;
-    jsapi::CompartmentIterResult::Stop
+/// One pass over every compartment of the context, counting the flags each one reports.
+///
+/// Only the system count is recorded: the shim iterates every realm of the process, so the total
+/// depends on which cases ran before this one, while a system compartment stays a property of the
+/// context that created it.
+#[derive(Default)]
+struct CompartmentFlags {
+    total: u32,
+    system: u32,
+    sharable: u32,
 }
 
+unsafe extern "C" fn count_compartment(
+    _cx: *mut jsapi::JSContext,
+    data: *mut c_void,
+    comp: *mut jsapi::Compartment,
+) -> jsapi::CompartmentIterResult {
+    let flags = &mut *(data as *mut CompartmentFlags);
+    flags.total += 1;
+    if jsapi::IsSystemCompartment(comp) {
+        flags.system += 1;
+    }
+    if jsapi::IsSharableCompartment(comp) {
+        flags.sharable += 1;
+    }
+    jsapi::CompartmentIterResult::KeepGoing
+}
+
+unsafe extern "C" fn is_system_principal(_principals: *mut JSPrincipals) -> bool {
+    true
+}
+
+unsafe extern "C" fn destroy_principal(_principals: *mut JSPrincipals) {}
+
+/// A system-zone realm is created with `JS_SetTrustedPrincipals` in effect, so
+/// `IsSystemCompartment` must report it. An ordinary realm in the same context must not.
 fn compartments(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, global| unsafe {
-        let mut compartment: *mut jsapi::Compartment = ptr::null_mut();
+    let mut runtime = Runtime::new(engine.handle());
+    let cx = runtime.cx();
+
+    let flags = unsafe {
+        rooted!(&in(cx) let ordinary = JS_NewGlobalObject(
+            cx,
+            &SIMPLE_GLOBAL_CLASS,
+            ptr::null_mut(),
+            OnNewGlobalHookOption::FireOnNewGlobalHook,
+            &*RealmOptions::default(),
+        ));
+        assert!(!ordinary.get().is_null(), "creating an ordinary global");
+
+        JS_InitDestroyPrincipalsCallback(cx.raw_cx(), Some(destroy_principal));
+        let callbacks = JSPrincipalsCallbacks {
+            write: None,
+            isSystemPrincipal: Some(is_system_principal),
+            isAddonPrincipal: None,
+        };
+        let principals = CreateRustJSPrincipals(&callbacks, ptr::null_mut());
+        assert!(!principals.is_null());
+        jsapi::JS_HoldPrincipals(principals);
+        jsapi::JS_SetTrustedPrincipals(cx.raw_cx(), principals);
+
+        let mut system_options = RealmOptions::default();
+        system_options.creationOptions_.compSpec_ =
+            jsapi::CompartmentSpecifier::NewCompartmentInSystemZone;
+        rooted!(&in(cx) let system = JS_NewGlobalObject(
+            cx,
+            &SIMPLE_GLOBAL_CLASS,
+            principals,
+            OnNewGlobalHookOption::FireOnNewGlobalHook,
+            &*system_options,
+        ));
+        assert!(!system.get().is_null(), "creating a system global");
+
+        let mut flags = CompartmentFlags::default();
         jsapi::JS_IterateCompartments(
             cx.raw_cx(),
-            &mut compartment as *mut _ as *mut std::ffi::c_void,
-            Some(visit_compartment),
+            &mut flags as *mut _ as *mut c_void,
+            Some(count_compartment),
         );
-        assert!(
-            !compartment.is_null(),
-            "JS_IterateCompartments found no compartment"
-        );
-        assert!(
-            !jsapi::IsSystemCompartment(compartment),
-            "an ordinary realm is not a system compartment"
-        );
-        assert!(jsapi::IsSharableCompartment(compartment));
 
-        jsapi::AssertSameCompartment(cx.raw_cx(), global.get());
-        jsapi::JS_FireOnNewGlobalObject(cx.raw_cx(), global.into());
-    });
+        jsapi::AssertSameCompartment(cx.raw_cx(), ordinary.get());
+        flags
+    };
 
-    Observation::new(vec![("ran", Value::Boolean(true))])
+    assert!(flags.total >= 2, "both realms are compartments");
+    assert_eq!(
+        flags.sharable, flags.total,
+        "every realm in this context is sharable"
+    );
+    Observation::new(vec![("system", Value::Number(flags.system as f64))])
 }
 
 pub fn run(engine: &JSEngine) {
@@ -60,8 +122,8 @@ pub fn run(engine: &JSEngine) {
             "AssertSameCompartment",
             "IsSharableCompartment",
             "IsSystemCompartment",
-            "JS_FireOnNewGlobalObject",
             "JS_IterateCompartments",
+            "JS_SetTrustedPrincipals",
         ],
         || compartments(engine),
     );

@@ -18,7 +18,7 @@ use js::jsapi::{
     self, GCReason, Heap, JSCLASS_RESERVED_SLOTS_MASK, JSCLASS_RESERVED_SLOTS_SHIFT, JSClass,
     JSClassOps, JSObject, JSTracer, jsid,
 };
-use js::jsval::{Int32Value, NullValue, ObjectValue, PrivateValue, UndefinedValue};
+use js::jsval::{NullValue, ObjectValue, PrivateValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{JS_GC, JS_NewObject, JS_NewStringCopyN};
 use js::rust::{CompileOptionsWrapper, JSEngine, transform_str_to_source_text};
@@ -234,6 +234,45 @@ fn write_barriers(engine: &JSEngine) {
 
 thread_local! {
     static TRACER_COUNT: Cell<u32> = const { Cell::new(0) };
+    /// Objects that only the trace hook above can keep alive.
+    static TRACED_CHILD_FINALIZED: Cell<u32> = const { Cell::new(0) };
+    /// Whether the trace hook follows its raw slots; the negative control turns this off.
+    static TRACE_RAW_SLOTS: Cell<bool> = const { Cell::new(true) };
+}
+
+unsafe extern "C" fn finalize_traced_child(_cx: *mut jsapi::GCContext, _obj: *mut JSObject) {
+    TRACED_CHILD_FINALIZED.with(|count| count.set(count.get() + 1));
+}
+
+static TRACED_CHILD_OPS: JSClassOps = JSClassOps {
+    addProperty: None,
+    delProperty: None,
+    enumerate: None,
+    newEnumerate: None,
+    resolve: None,
+    mayResolve: None,
+    finalize: Some(finalize_traced_child),
+    call: None,
+    construct: None,
+    trace: None,
+};
+
+static TRACED_CHILD_CLASS: JSClass = JSClass {
+    name: c"ContractTracedChild".as_ptr(),
+    flags: 0,
+    cOps: &TRACED_CHILD_OPS,
+    spec: ptr::null(),
+    ext: ptr::null(),
+    oOps: ptr::null(),
+};
+
+/// Raw, uncounted slots. Nothing but the class trace hook refers to the objects they hold, so a
+/// slot the hook does not follow is only stored here and the object is collected.
+struct RawEdges {
+    object: *mut JSObject,
+    value: jsapi::Value,
+    values: [jsapi::Value; 1],
+    descriptor: jsapi::PropertyDescriptor,
 }
 
 static TRACER_CLASS_OPS: JSClassOps = JSClassOps {
@@ -249,16 +288,27 @@ static TRACER_CLASS_OPS: JSClassOps = JSClassOps {
     trace: Some(trace_edge_kinds),
 };
 
-unsafe extern "C" fn trace_edge_kinds(trc: *mut JSTracer, _obj: *mut JSObject) {
-    let mut values = [Int32Value(1), Int32Value(2)];
-    jsapi::TraceValueArray(trc, values.len(), values.as_mut_ptr());
+const RAW_EDGES_SLOT: u32 = 0;
 
-    let mut object: *mut JSObject = ptr::null_mut();
-    js::glue::CallObjectRootTracer(trc, &mut object, c"object".as_ptr());
+unsafe extern "C" fn trace_edge_kinds(trc: *mut JSTracer, obj: *mut JSObject) {
+    TRACER_COUNT.with(|count| count.set(count.get() + 1));
 
-    let mut value = Int32Value(3);
-    js::glue::CallValueRootTracer(trc, &mut value, c"value".as_ptr());
+    let mut edges = UndefinedValue();
+    JS_GetReservedSlot(obj, RAW_EDGES_SLOT, &mut edges);
+    let edges = edges.to_private() as *mut RawEdges;
+    if !edges.is_null() && TRACE_RAW_SLOTS.with(Cell::get) {
+        let edges = &mut *edges;
+        js::glue::CallObjectRootTracer(trc, &mut edges.object, c"object".as_ptr());
+        js::glue::CallValueRootTracer(trc, &mut edges.value, c"value".as_ptr());
+        jsapi::TraceValueArray(trc, edges.values.len(), edges.values.as_mut_ptr());
+        js::glue::CallPropertyDescriptorTracer(trc, &mut edges.descriptor);
+    }
 
+    // `CallBigIntTracer` and `CallSymbolTracer` trace cell kinds that carry no object finalizer, so
+    // there is no counter to read survival from; proving they were marked needs the equivalent of
+    // `IsAboutToBeFinalized`, which bindgen does not export. `CallIdTracer` traces atoms, which are
+    // reference-counted rather than collected, so again no finalizer observes them. All three are
+    // therefore exercised for arity and calling convention only.
     let mut bigint: Heap<*mut jsapi::BigInt> = Heap::default();
     js::glue::CallBigIntTracer(trc, &mut bigint, c"bigint".as_ptr());
 
@@ -269,18 +319,42 @@ unsafe extern "C" fn trace_edge_kinds(trc: *mut JSTracer, _obj: *mut JSObject) {
 
     let mut symbol: Heap<*mut jsapi::Symbol> = Heap::default();
     js::glue::CallSymbolTracer(trc, &mut symbol, c"symbol".as_ptr());
-
-    let mut desc: jsapi::PropertyDescriptor = std::mem::zeroed();
-    js::glue::CallPropertyDescriptorTracer(trc, &mut desc);
-
-    TRACER_COUNT.with(|count| count.set(count.get() + 1));
 }
 
+fn raw_edges(cx: &mut js::context::JSContext) -> Box<RawEdges> {
+    unsafe {
+        let object = JS_NewObject(cx, &TRACED_CHILD_CLASS);
+        let value_object = JS_NewObject(cx, &TRACED_CHILD_CLASS);
+        let array_object = JS_NewObject(cx, &TRACED_CHILD_CLASS);
+        let getter_object = JS_NewObject(cx, &TRACED_CHILD_CLASS);
+        assert!(
+            !object.is_null()
+                && !value_object.is_null()
+                && !array_object.is_null()
+                && !getter_object.is_null(),
+            "creating traced children"
+        );
+        let mut descriptor: jsapi::PropertyDescriptor = std::mem::zeroed();
+        descriptor.getter_ = getter_object;
+        Box::new(RawEdges {
+            object,
+            value: ObjectValue(value_object),
+            values: [ObjectValue(array_object)],
+            descriptor,
+        })
+    }
+}
+
+/// The raw-slot tracers must keep their referents alive. The children (an object, a value, a value
+/// array element and a property descriptor's getter) are reachable only through the boxed
+/// `RawEdges`, so the trace hook is the only thing that can mark them. The second pass turns the
+/// tracing off and shows that all four are then collected, which is the control that makes the
+/// first number meaningful rather than "nothing was collected anyway".
 fn edge_tracers(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, _global| unsafe {
+    let (traced_finalized, untraced_finalized) = with_global(engine, |cx, _global| unsafe {
         let class = JSClass {
             name: c"ContractTracer".as_ptr(),
-            flags: 0,
+            flags: (1 & JSCLASS_RESERVED_SLOTS_MASK) << JSCLASS_RESERVED_SLOTS_SHIFT,
             cOps: &TRACER_CLASS_OPS,
             spec: ptr::null(),
             ext: ptr::null(),
@@ -290,15 +364,43 @@ fn edge_tracers(engine: &JSEngine) -> Observation {
         assert!(!object.is_null(), "creating the traced object");
         rooted!(&in(cx) let object = object);
 
+        let edges = Box::into_raw(raw_edges(cx));
+        jsapi::JS_SetReservedSlot(
+            object.get(),
+            RAW_EDGES_SLOT,
+            &PrivateValue(edges.cast::<c_void>()),
+        );
+
         TRACER_COUNT.with(|count| count.set(0));
+        TRACED_CHILD_FINALIZED.with(|count| count.set(0));
+        TRACE_RAW_SLOTS.with(|trace| trace.set(true));
         JS_GC(cx, GCReason::API);
         assert!(
             TRACER_COUNT.with(Cell::get) > 0,
             "the class trace hook did not run"
         );
+        let traced_finalized = TRACED_CHILD_FINALIZED.with(Cell::get);
+
+        TRACE_RAW_SLOTS.with(|trace| trace.set(false));
+        JS_GC(cx, GCReason::API);
+        let untraced_finalized = TRACED_CHILD_FINALIZED.with(Cell::get);
+        TRACE_RAW_SLOTS.with(|trace| trace.set(true));
+        jsapi::JS_SetReservedSlot(object.get(), RAW_EDGES_SLOT, &NullValue());
+
+        drop(Box::from_raw(edges));
+        (traced_finalized, untraced_finalized)
     });
 
-    Observation::new(vec![("ran", Value::Boolean(true))])
+    Observation::new(vec![
+        (
+            "traced_children_finalized",
+            Value::Number(traced_finalized as f64),
+        ),
+        (
+            "untraced_children_finalized",
+            Value::Number(untraced_finalized as f64),
+        ),
+    ])
 }
 
 pub fn run(engine: &JSEngine) {
