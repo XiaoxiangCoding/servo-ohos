@@ -208,33 +208,69 @@ unobservable and must say so.
 
 Never rewrite an assertion to make QuickJS pass, and never delete a case to remove a difference.
 
-## Version numbers after an upgrade
+## Upgrade the mozjs version
 
-1. `Cargo.toml`: `js = { package = "mozjs", version = "=<version>", ... }` is hand-edited.
-2. `support/quickjs/cargo-config.toml`: bump `rev` when the shim moves. The shim's
-   `mozjs/Cargo.toml` version must exactly equal Servo's `mozjs` pin or `[patch.crates-io]`
-   will not apply.
-3. `mozjs-api-snapshot.toml`'s `mozjs_version` and `quickjs_revision` are generated from
-   `QJS_DIR` by `scan-mozjs-surface`; never hand-edit them.
-
-You do not have to remember to compare these by hand: `run-quickjs-contract` and
-`check-contract-case-coverage` run the check first. It fails when the Servo requirement is not an
-exact `=x.y.z` pin, when the shim version differs from that pin, or when the snapshot records a
-different version or commit. A different checkout than the pinned `rev` is a warning, because
-testing a local shim is normal; set `CHECK_PINNED_QJS=1` to make it fatal. The `js-quickjs` test
-build also fails to compile when the patch did not apply, so a "QuickJS" run cannot silently be
-SpiderMonkey.
-
-The check reads `QJS_DIR/mozjs/Cargo.toml`; a sparse checkout needs that file in addition to
-`mozjs/upstream-bindgen`, `mozjs/src/engine` and `mozjs/stub_bindings.py`.
-
-After a version bump, run the same check directly:
+Use `prepare-mozjs-upgrade`; do not edit the version pins or scan by hand.
 
 ```bash
-python3 tests/unit/engine_contract/tools/api_inventory.py versions \
-  --servo-root . --qjs-dir ../servo-quickjs \
-  --snapshot tests/unit/engine_contract/mozjs-api-snapshot.toml
+cd /path/to/servo-ohos
+export QJS_DIR=/path/to/servo-quickjs
+RUN=tests/unit/engine_contract/tools/run.sh
+"$RUN" prepare-mozjs-upgrade
 ```
+
+The command takes the version from `$QJS_DIR/mozjs/Cargo.toml`. It:
+
+1. verifies the shim checkout has the new bindgen, shim sources and `stub_bindings.py`;
+2. runs `scan-mozjs-surface` (snapshot + change table + Servo usage);
+3. updates the `mozjs` pin in `Cargo.toml` and the shim `rev` in
+   `support/quickjs/cargo-config.toml`;
+4. refreshes `Cargo.lock` with `cargo update -p mozjs` and rescans the usage surface;
+5. prints `engine versions ok` and a list of cases to `ADD` / `UPDATE`.
+
+Prerequisite: `servo-quickjs` already has a pushed commit for the new release. Without it the
+command stops before changing anything. To check that by hand:
+
+```bash
+git -C "$QJS_DIR" log -1 --oneline
+sed -n '1,12p' "$QJS_DIR/mozjs/Cargo.toml"
+```
+
+If the checkout is on a different commit than the one to test, or you need another baseline, say
+so explicitly:
+
+```bash
+"$RUN" prepare-mozjs-upgrade \
+  --baseline origin/main:tests/unit/engine_contract/mozjs-api-snapshot.toml
+```
+
+Then edit only the `ADD` / `UPDATE` cases, following the rules above, and finish with:
+
+```bash
+"$RUN" run-contract-gate
+./mach fmt
+```
+
+A QuickJS difference that is fixed or explicitly allowlisted passes; never weaken a SpiderMonkey
+assertion. If the gate reports a new difference, put it in `quickjs-difference-allowlist.toml` or
+fix the shim; do not rerun `prepare-mozjs-upgrade`, which is idempotent but not a fix.
+
+Commit explicitly by path (the tree may contain unrelated local changes):
+
+```bash
+git add Cargo.toml Cargo.lock support/quickjs/cargo-config.toml \
+  tests/unit/engine_contract/mozjs-api-snapshot.toml \
+  tests/unit/engine_contract/servo-mozjs-api-usage.toml \
+  tests/unit/engine_contract/quickjs-difference-allowlist.toml \
+  tests/unit/engine_contract/<touched>_test.rs
+git commit -m "deps: Bump mozjs to $(python3 tests/unit/engine_contract/tools/mozjs_upgrade.py shim-version --qjs-dir "$QJS_DIR")"
+```
+
+Include `tests/unit/engine_contract/quickjs-shim-fix-records.md` only when a shim fix removed an
+allowlist entry.
+
+`prepare-mozjs-upgrade --skip-cargo-update` stops before `cargo update` when the network is
+unavailable; rerun without it before committing.
 
 ## Before submitting
 

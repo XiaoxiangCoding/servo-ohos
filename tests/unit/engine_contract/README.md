@@ -24,6 +24,7 @@ The main commands and their files:
 | Command | Reads | Writes |
 | --- | --- | --- |
 | `scan-mozjs-surface` | bindgen + shim, then Servo source | `mozjs-api-snapshot.toml`, `mozjs-api-changes.toml`, `servo-mozjs-api-usage.toml` |
+| `prepare-mozjs-upgrade` | the shim checkout, both surfaces | the three files above, both mozjs pins, `Cargo.lock`, and a case list |
 | `check-servo-mozjs-api-usage` | Servo source + `servo-mozjs-api-usage.toml` | nothing (check only) |
 | `run-spidermonkey-contract` | contract cases | `spidermonkey-contract-results.jsonl` |
 | `run-quickjs-contract` | contract cases | `quickjs-contract-results.jsonl` |
@@ -142,6 +143,42 @@ older baseline, a different output path, or a spreadsheet-friendly table.
 
 `generate-mozjs-api-snapshot`, `check-mozjs-api-snapshot`, and `report-mozjs-api-changes` remain available
 for debugging the individual stages.
+
+## Upgrading mozjs
+
+A developer upgrading the `mozjs` version needs four steps. The first one is a single command that
+does the mechanical work; only the affected cases are left to edit.
+
+1. **Confirm the shim supports the new version.** The `servo-quickjs` checkout in `QJS_DIR` must
+   have a commit whose `mozjs/Cargo.toml` says exactly the new `X.Y.Z`. Without it the
+   `[patch.crates-io]` cannot apply and the "QuickJS" run silently builds SpiderMonkey.
+
+2. **Prepare the upgrade.**
+
+   ```bash
+   export QJS_DIR=/path/to/servo-quickjs
+   tests/unit/engine_contract/tools/run.sh prepare-mozjs-upgrade
+   ```
+
+   It validates the shim checkout, runs `scan-mozjs-surface`, updates the `mozjs` pins in `Cargo.toml`
+   and `support/quickjs/cargo-config.toml`, refreshes `Cargo.lock`, rescans the usage surface, and
+   prints `engine versions ok` together with the cases to `ADD` or `UPDATE`. Pass `--baseline
+   REV:PATH` to compare against another snapshot.
+
+3. **Edit only the listed cases.** Open the file printed next to each `UPDATE` or `ADD` line, keep
+   the case id, declare the entry in `apis`, and assert what the entry actually does. If the output
+   says `no changes; no cases are affected`, skip this step. `empty` and `todo` entries still need a
+   case; the rules above apply.
+
+4. **Run the gate and commit.**
+
+   ```bash
+   tests/unit/engine_contract/tools/run.sh run-contract-gate
+   ./mach fmt
+   ```
+
+   Then commit the version pins, the lockfile, the regenerated snapshot/usage files, and the touched
+   cases together. Add the allowlist or fix records only when the gate required them.
 
 ## Tool tests
 
