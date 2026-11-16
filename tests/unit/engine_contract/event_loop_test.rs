@@ -20,8 +20,10 @@ fn precondition(text: impl Into<String>) -> Observation {
     Observation::new(vec![("precondition", Value::String(text.into()))])
 }
 
-/// The dispatch hook only fires for off-thread promise resolution. Registering it and dropping
-/// the runtime covers the registration and teardown path.
+/// The dispatch hook only fires for off-thread promise resolution, and the suite runs every case
+/// on one thread, so nothing here can make SpiderMonkey call it: with no second thread there is no
+/// dispatch to hand back. Registering the hook and dropping the runtime is the observable part of
+/// the contract that remains.
 fn dispatch_setup(engine: &JSEngine) -> Observation {
     let mut runtime = Runtime::new(engine.handle());
     unsafe {
@@ -32,8 +34,11 @@ fn dispatch_setup(engine: &JSEngine) -> Observation {
     ran()
 }
 
-/// `DispatchableRun` takes ownership of a `JS::Dispatchable` created by SpiderMonkey's event
-/// loop. There is no public constructor, so the case records the ownership contract.
+/// `DispatchableRun` takes ownership of a `JS::Dispatchable` created by SpiderMonkey's event loop.
+/// Bindgen exposes `Dispatchable` as an opaque C++ object with a private vtable and no public
+/// constructor, so there is nothing to hand it that it could legally `run` and `delete`; building
+/// a fake vtable would be undefined behaviour rather than a contract check. The case therefore
+/// records the precondition under which the ownership transfer would be exercised.
 fn dispatchable_run(_engine: &JSEngine) -> Observation {
     precondition("a DispatchablePointer handed to the event loop callback")
 }

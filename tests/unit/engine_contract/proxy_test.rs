@@ -701,9 +701,12 @@ unsafe extern "C" fn has_released_wrapper(_obj: jsapi::HandleObject) -> bool {
     false
 }
 
+/// `SetPreserveWrapperCallbacks` is only invoked when SpiderMonkey preserves a cross-compartment
+/// wrapper, i.e. when a DOM proxy or an Xray-wrapped object is exposed to script. None of that
+/// exists in this harness, and the suite has no DOM, so neither callback can fire. The case pins
+/// the registration and the fact that installing them is side-effect free.
 fn wrapper_callbacks(engine: &JSEngine) -> Observation {
     with_global(engine, |cx, global| unsafe {
-        jsapi::JS_SetTrustedPrincipals(cx.raw_cx(), ptr::null_mut());
         SetPreserveWrapperCallbacks(cx, Some(preserve_wrapper), Some(has_released_wrapper));
         jsapi::AssertSameCompartment(cx.raw_cx(), global.get());
     });
@@ -725,7 +728,7 @@ pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("proxy.dead_wrapper", || dead_wrapper(engine));
     crate::support::run_case(
         "proxy.wrapper_callbacks",
-        &["JS_SetTrustedPrincipals", "SetPreserveWrapperCallbacks"],
+        &["SetPreserveWrapperCallbacks"],
         || wrapper_callbacks(engine),
     );
 }

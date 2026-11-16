@@ -191,59 +191,92 @@ unsafe extern "C" fn gc_callback(
     }
 }
 
+thread_local! {
+    static SLICE_CALLBACKS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static EXTRA_ROOT_TRACES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 unsafe extern "C" fn gc_slice_callback(
     _cx: *mut jsapi::JSContext,
     _progress: GCProgress,
     _desc: *const jsapi::GCDescription,
 ) {
+    SLICE_CALLBACKS.with(|count| count.set(count.get() + 1));
 }
 
-unsafe extern "C" fn trace_data(_trc: *mut JSTracer, _data: *mut c_void) {}
+unsafe extern "C" fn trace_data(_trc: *mut JSTracer, _data: *mut c_void) {
+    EXTRA_ROOT_TRACES.with(|count| count.set(count.get() + 1));
+}
 
 fn gc_callbacks(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, _global| unsafe {
-        let mut count: u32 = 0;
-        jsapi::JS_SetGCCallback(
-            cx.raw_cx(),
-            Some(gc_callback),
-            &mut count as *mut u32 as *mut c_void,
-        );
-        JS_GC(cx, GCReason::API);
-        assert!(count > 0, "JS_SetGCCallback callback did not run");
-        jsapi::JS_SetGCCallback(cx.raw_cx(), None, ptr::null_mut());
+    let (gc_callback_calls, slice_callback_calls, extra_root_traces, gc_parameter) =
+        with_global(engine, |cx, _global| unsafe {
+            let mut count: u32 = 0;
+            jsapi::JS_SetGCCallback(
+                cx.raw_cx(),
+                Some(gc_callback),
+                &mut count as *mut u32 as *mut c_void,
+            );
+            JS_GC(cx, GCReason::API);
+            jsapi::JS_SetGCCallback(cx.raw_cx(), None, ptr::null_mut());
+            let gc_callback_calls = format!("{count}");
 
-        let previous = jsapi::SetGCSliceCallback(cx.raw_cx(), Some(gc_slice_callback));
-        jsapi::SetGCSliceCallback(cx.raw_cx(), previous);
+            SLICE_CALLBACKS.with(|value| value.set(0));
+            let previous = jsapi::SetGCSliceCallback(cx.raw_cx(), Some(gc_slice_callback));
+            let installed = previous.is_none();
+            JS_GC(cx, GCReason::API);
+            jsapi::SetGCSliceCallback(cx.raw_cx(), previous);
+            // `<calls>:<installed>`: installing the callback must replace an empty slot, and the
+            // collection must then report its slices to it.
+            let slice_callback_calls = format!(
+                "{}:{}",
+                SLICE_CALLBACKS.with(std::cell::Cell::get),
+                installed
+            );
 
-        jsapi::ClearKeptObjects(cx.raw_cx());
-        jsapi::JS_MaybeGC(cx.raw_cx());
+            EXTRA_ROOT_TRACES.with(|value| value.set(0));
+            let registered =
+                jsapi::JS_AddExtraGCRootsTracer(cx.raw_cx(), Some(trace_data), ptr::null_mut());
+            JS_GC(cx, GCReason::API);
+            let extra_root_traces = format!(
+                "{}:{}",
+                registered,
+                EXTRA_ROOT_TRACES.with(std::cell::Cell::get)
+            );
 
-        let previous_max = jsapi::JS_GetGCParameter(cx.raw_cx(), JSGCParamKey::JSGC_MAX_BYTES);
-        jsapi::JS_SetGCParameter(
-            cx.raw_cx(),
-            JSGCParamKey::JSGC_MAX_BYTES,
-            previous_max.saturating_sub(1).max(1),
-        );
-        let updated = jsapi::JS_GetGCParameter(cx.raw_cx(), JSGCParamKey::JSGC_MAX_BYTES);
-        jsapi::JS_SetGCParameter(cx.raw_cx(), JSGCParamKey::JSGC_MAX_BYTES, previous_max);
-        assert!(
-            updated <= previous_max,
-            "JS_GetGCParameter did not report the value that was set"
-        );
+            jsapi::ClearKeptObjects(cx.raw_cx());
+            jsapi::JS_MaybeGC(cx.raw_cx());
 
-        assert!(jsapi::JS_AddExtraGCRootsTracer(
-            cx.raw_cx(),
-            Some(trace_data),
-            ptr::null_mut(),
-        ));
+            let previous_max = jsapi::JS_GetGCParameter(cx.raw_cx(), JSGCParamKey::JSGC_MAX_BYTES);
+            jsapi::JS_SetGCParameter(
+                cx.raw_cx(),
+                JSGCParamKey::JSGC_MAX_BYTES,
+                previous_max.saturating_sub(1).max(1),
+            );
+            let updated = jsapi::JS_GetGCParameter(cx.raw_cx(), JSGCParamKey::JSGC_MAX_BYTES);
+            jsapi::JS_SetGCParameter(cx.raw_cx(), JSGCParamKey::JSGC_MAX_BYTES, previous_max);
+            // The value read back after the write; 0 means the shim stores no GC parameter.
+            let gc_parameter = format!("{updated}");
 
-        jsapi::JobQueueIsEmpty(cx.raw_cx());
-        jsapi::JobQueueMayNotBeEmpty(cx.raw_cx());
+            jsapi::JobQueueIsEmpty(cx.raw_cx());
+            jsapi::JobQueueMayNotBeEmpty(cx.raw_cx());
 
-        js::glue::InitializeMemoryReporter(Some(want_to_measure));
-    });
+            js::glue::InitializeMemoryReporter(Some(want_to_measure));
 
-    Observation::new(vec![("ran", Value::Boolean(true))])
+            (
+                gc_callback_calls,
+                slice_callback_calls,
+                extra_root_traces,
+                gc_parameter,
+            )
+        });
+
+    Observation::new(vec![
+        ("gc_callback_calls", Value::String(gc_callback_calls)),
+        ("slice_callback_calls", Value::String(slice_callback_calls)),
+        ("extra_root_traces", Value::String(extra_root_traces)),
+        ("gc_parameter", Value::String(gc_parameter)),
+    ])
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +393,11 @@ fn standard_classes(engine: &JSEngine) -> Observation {
 // ---------------------------------------------------------------------------
 
 fn engine_options(engine: &JSEngine) -> Observation {
+    // Neither setter has a getter in the bindings (`JS_SetGlobalJitCompilerOption` and
+    // `JS_SetOffthreadIonCompilationEnabled` return void), so the outcome cannot be read back. On
+    // SpiderMonkey both are global switches whose effect is a JIT behaviour change, not a value;
+    // with the suite running on one engine, enabling or disabling them would change how the rest
+    // of the cases execute. The case therefore pins the registration contract only.
     with_global(engine, |cx, _global| unsafe {
         jsapi::JS_SetGlobalJitCompilerOption(
             cx.raw_cx(),
@@ -403,8 +441,15 @@ fn process_lifecycle(_engine: &JSEngine) -> Observation {
 }
 
 /// `Runtime::new` initializes self-hosted code; the case confirms the result is usable.
+///
+/// No causal assertion is possible in this harness. All four attempts abort SpiderMonkey instead
+/// of producing an observation: a bare context that skips `InitSelfHostedCode` segfaults inside
+/// `JS_NewGlobalObject`, calling it a second time segfaults, and passing a `SelfHostedWriter`
+/// (meant to observe the generated cache) segfaults with the same signature. The cache is passed
+/// by value as an opaque array, so its contents cannot be read back either. QuickJS returns `true`
+/// unconditionally and builds its standard library natively.
 fn self_hosted_code(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, global| unsafe {
+    with_global(engine, |cx, global| {
         let value = eval(cx, global, "[].map(x => x + 1).length === 0");
         assert_eq!(observe(cx, value), Value::Boolean(true));
     });
@@ -421,6 +466,10 @@ unsafe extern "C" fn build_id(vector: *mut jsapi::BuildIdCharVector) -> bool {
     js::glue::SetBuildId(vector, bytes.as_ptr() as *const _, bytes.len())
 }
 
+/// Only registration is observable: `SetProcessBuildIdOp` stores the callback and SpiderMonkey
+/// invokes it while encoding a stencil for the off-thread compilation cache. That encoder is not
+/// exported by bindgen, `SetBuildId` appends to an opaque `BuildIdCharVector` with no length or
+/// content accessor, and SpiderMonkey has no `GetBuildId` to read the result back.
 fn build_ids(_engine: &JSEngine) -> Observation {
     unsafe {
         jsapi::SetProcessBuildIdOp(Some(build_id));
