@@ -18,6 +18,8 @@
 #   tools/run.sh scan-mozjs-surface [--baseline REV:PATH|FILE] [--output FILE] [--format toml|tsv]
 #                               one public scan entry: writes mozjs-api-snapshot.toml,
 #                               mozjs-api-changes.{toml,tsv}, and servo-mozjs-api-usage.toml
+#   tools/run.sh prepare-mozjs-upgrade [--version X.Y.Z] [--skip-cargo-update]
+#                               scan, update both pins and Cargo.lock, then list the cases to edit
 #   tools/run.sh check-contract-case-coverage
 #                               check inventory + usage + contract case coverage
 #   tools/run.sh check-quickjs-shim-fixes
@@ -625,6 +627,67 @@ scan_mozjs_surface() {
     scan_servo_mozjs_api_usage
 }
 
+prepare_mozjs_upgrade() {
+    cd "$repo_root"
+    local version=""
+    local skip_cargo_update=0
+    local -a scan_args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version)
+                [[ $# -ge 2 && -n "$2" ]] || {
+                    echo "--version requires X.Y.Z" >&2
+                    return 2
+                }
+                version="$2"
+                shift 2
+                ;;
+            --version=*)
+                version="${1#--version=}"
+                shift
+                ;;
+            --skip-cargo-update)
+                skip_cargo_update=1
+                shift
+                ;;
+            --baseline|--output|--format)
+                [[ $# -ge 2 ]] || {
+                    echo "$1 requires a value" >&2
+                    return 2
+                }
+                scan_args+=("$1" "$2")
+                shift 2
+                ;;
+            --baseline=*|--output=*|--format=*)
+                scan_args+=("$1")
+                shift
+                ;;
+            *)
+                echo "prepare-mozjs-upgrade: unknown argument: $1" >&2
+                return 2
+                ;;
+        esac
+    done
+    if [[ -z "$version" ]]; then
+        version=$(python3 tests/unit/engine_contract/tools/mozjs_upgrade.py \
+            shim-version --qjs-dir "$qjs_dir") || return
+    fi
+    python3 tests/unit/engine_contract/tools/mozjs_upgrade.py check \
+        --qjs-dir "$qjs_dir" --version "$version" || return
+    scan_mozjs_surface "${scan_args[@]}" || return
+    python3 tests/unit/engine_contract/tools/mozjs_upgrade.py apply \
+        --servo-root "$repo_root" --qjs-dir "$qjs_dir" --version "$version" \
+        ${skip_cargo_update:+--skip-cargo-update} || return
+    check_engine_versions || return
+    # The usage scan follows calls through the mozjs wrapper crate, so rerun it against the
+    # mozjs sources that the refreshed Cargo.lock selects. The interface snapshot is unchanged.
+    if [[ "$skip_cargo_update" == "0" ]]; then
+        scan_servo_mozjs_api_usage || return
+    fi
+    python3 tests/unit/engine_contract/tools/mozjs_upgrade.py report \
+        --servo-root "$repo_root" --qjs-dir "$qjs_dir"
+}
+
 check_quickjs_shim_fixes() {
     local baseline="HEAD:tests/unit/engine_contract/quickjs-difference-allowlist.toml"
     local cases=""
@@ -697,6 +760,7 @@ case "$command" in
     compare-engine-results) run_compare_engine_results ;;
     scan-mozjs-api) scan_mozjs_api "$@" ;;
     scan-mozjs-surface) scan_mozjs_surface "$@" ;;
+    prepare-mozjs-upgrade) prepare_mozjs_upgrade "$@" ;;
     generate-mozjs-api-snapshot) generate_mozjs_api_snapshot ;;
     check-mozjs-api-snapshot) check_mozjs_api_snapshot ;;
     report-mozjs-api-changes) report_mozjs_api_changes "$@" ;;
@@ -730,7 +794,7 @@ case "$command" in
     fix-check) check_quickjs_shim_fixes "$@" ;;
     all) run_all "$@" ;;
     *)
-        echo "usage: $0 {run-spidermonkey-contract|run-quickjs-contract|compare-engine-results|scan-mozjs-surface|check-servo-mozjs-api-usage|check-contract-case-coverage|check-quickjs-shim-fixes|run-contract-gate} [--case ID|--cases ID[,ID...]] [cargo test args...]" >&2
+        echo "usage: $0 {run-spidermonkey-contract|run-quickjs-contract|compare-engine-results|scan-mozjs-surface|prepare-mozjs-upgrade|check-servo-mozjs-api-usage|check-contract-case-coverage|check-quickjs-shim-fixes|run-contract-gate} [--case ID|--cases ID[,ID...]] [cargo test args...]" >&2
         echo "internal commands: scan-mozjs-api scan-servo-mozjs-api-usage generate-mozjs-api-snapshot check-mozjs-api-snapshot report-mozjs-api-changes" >&2
         echo "legacy aliases: sm qjs diff api-scan generate manifest scope scope-check coverage report fix-check run-sm run-qjs compare-engines scan-mozjs-api-inventory scan-servo-usage check-servo-usage check-contract-coverage check-quickjs-fixes generate-mozjs-inventory check-mozjs-inventory report-mozjs-changes generate-mozjs-api-inventory check-mozjs-api-inventory report-mozjs-api-inventory-changes all" >&2
         exit 2
