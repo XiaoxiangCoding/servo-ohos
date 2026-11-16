@@ -137,3 +137,63 @@ reason = "QuickJS has no WebAssembly and binds the StreamConsumer glue entry poi
 owner = "servo-quickjs"
 status = "accepted"
 severity = "P3"
+
+# ---------------------------------------------------------------------------
+# Cases that cannot yet prove anything about the entry points they name
+# ---------------------------------------------------------------------------
+# These are NOT differences. Do not copy them into [[difference]] entries: nothing here fails the
+# comparison today, because the case never observes a value that would change if the entry point
+# became a no-op. The list exists so the next person knows which coverage is real and which is
+# only nominal. Remove a line when its case gains a causal assertion.
+#
+# Recheck with the SpiderMonkey results: every case below either never calls the name it declares,
+# or reports a field that is identical on both engines by construction.
+#
+#   rg '"id": "(class.edge_tracers|event_loop.dispatchable_run|misc.build_ids|...)"' \
+#      target/contract/spidermonkey-contract-results.jsonl
+#
+# A. The entry point is never invoked by the case.
+#    event_loop.dispatchable_run        DispatchableRun
+#      JS::Dispatchable has no public constructor and a private vtable; a fake one would be UB.
+#      Needs C++ glue that hands the harness a real dispatchable.
+#    misc.jit_backend                   DisableJitBackend
+#      Must run before JS_Init and before any JSContext exists, but the suite shares one live
+#      engine. Needs a separate test binary.
+#    misc.process_lifecycle             JS_Init, JS_ShutDown
+#      Process-global and single-shot; JS_ShutDown would tear down the engine mid-run. The case
+#      only checks that a second JSEngine::init is rejected. Needs a separate test binary.
+#    stencil.offthread_compile_instantiate
+#                                       PrepareForInstantiate
+#      Reached only through the mozjs off-thread wrapper, and only its success value is observed
+#      (a false return would fail the case). An always-true shim cannot be told apart because no
+#      rejected (frontend context, stencil, storage) combination is constructible safely.
+#
+# B. The entry point is invoked, but the recorded field does not depend on it.
+#    realm.compartments                 AssertSameCompartment, IsSharableCompartment
+#      AssertSameCompartment is a debug-only assertion: in a release build it is compiled out, and
+#      a mismatched compartment aborts rather than producing a comparable observation.
+#      IsSharableCompartment is hard-coded true in the shim, and every realm this harness can
+#      create is sharable on SpiderMonkey too, so `sharable == total` passes on both engines.
+#    misc.engine_options                JS_SetGlobalJitCompilerOption,
+#                                       JS_SetOffthreadIonCompilationEnabled
+#      The setters return void. Reading back through JS_GetGlobalJitCompilerOption returns 0 for
+#      every option before and after the write on this build, including warmup triggers whose
+#      defaults are non-zero, so there is no value to compare.
+#    misc.self_hosted_code              InitSelfHostedCode
+#      The assertion is that [].map works, which does not depend on the call. No negative control
+#      exists in this harness: skipping, repeating or passing a SelfHostedWriter all segfault
+#      inside SpiderMonkey, and the cache is an opaque array passed by value.
+#    misc.build_ids                     SetBuildId, SetProcessBuildIdOp
+#      BuildIdCharVector is opaque with no accessor, SpiderMonkey has no GetBuildId, and the
+#      stencil encoder that would invoke the callback is not exported by bindgen.
+#    proxy.wrapper_callbacks            SetPreserveWrapperCallbacks
+#      The callbacks only fire when a cross-compartment wrapper is preserved, which needs a DOM
+#      proxy or an Xray wrapper. Neither exists in the suite.
+#    class.edge_tracers                 CallBigIntTracer, CallSymbolTracer, CallIdTracer
+#      BigInts and symbols have no object finalizer to count, atoms are reference-counted rather
+#      than collected, and proving they were marked needs IsAboutToBeFinalized, which bindgen
+#      does not export. CallPropertyDescriptorTracer is covered only in aggregate: the negative
+#      control disables the whole trace body, so it does not isolate that one call.
+#
+# Totals: 10 cases; 16 entry points with no causal check, plus CallPropertyDescriptorTracer
+# covered only in aggregate (17 names).
