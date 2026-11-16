@@ -125,6 +125,10 @@ class CaseInventoryTest(unittest.TestCase):
         os.makedirs(os.path.join(contract, "tools"))
         shutil.copy(os.path.join(tools, "run.sh"), os.path.join(contract, "tools", "run.sh"))
         shutil.copy(
+            os.path.join(tools, "api_inventory.py"),
+            os.path.join(contract, "tools", "api_inventory.py"),
+        )
+        shutil.copy(
             os.path.join(tools, "compare.py"),
             os.path.join(contract, "tools", "compare.py"),
         )
@@ -146,6 +150,29 @@ class CaseInventoryTest(unittest.TestCase):
             encoding="utf-8",
         ) as file:
             file.write("")
+        # The version check runs before every coverage check, so the fixture needs the pinned
+        # mozjs version in both repositories.
+        os.makedirs(os.path.join(repository, "support", "quickjs"), exist_ok=True)
+        with open(os.path.join(repository, "Cargo.toml"), "w", encoding="utf-8") as file:
+            file.write(
+                '[workspace.dependencies]\n'
+                'js = { package = "mozjs", version = "=0.26.14" }\n'
+            )
+        with open(
+            os.path.join(repository, "support", "quickjs", "cargo-config.toml"),
+            "w",
+            encoding="utf-8",
+        ) as file:
+            file.write(
+                '[patch.crates-io]\n'
+                'mozjs = { git = "https://example.invalid/servo-quickjs", '
+                'rev = "e' + "0" * 39 + '" }\n'
+            )
+        os.makedirs(os.path.join(self.temporary.name, "mozjs"), exist_ok=True)
+        with open(
+            os.path.join(self.temporary.name, "mozjs", "Cargo.toml"), "w", encoding="utf-8"
+        ) as file:
+            file.write('[package]\nname = "mozjs"\nversion = "0.26.14"\n')
         return repository, contract
 
     def run_diff(self, repository, output_dir):

@@ -12,6 +12,8 @@ Usage:
   api_inventory.py verify --snapshot FILE --bindgen-dir DIR --engine-src DIR \
       [--stub-bindings FILE]
   api_inventory.py report --baseline FILE --snapshot FILE --output FILE [--format toml|tsv]
+  api_inventory.py versions --servo-root DIR --qjs-dir DIR [--snapshot FILE] \
+      [--require-pinned-qjs]
 
 ``--inventory`` is accepted as a compatibility alias for ``--snapshot``.
 
@@ -28,6 +30,7 @@ import hashlib
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -509,6 +512,125 @@ def report(args):
     return 0
 
 
+def read_toml(path):
+    with open(path, "rb") as file:
+        return tomllib.load(file)
+
+
+def servo_mozjs_version(servo_root):
+    """Return the exact `mozjs` version that Servo's workspace requires."""
+    path = os.path.join(servo_root, "Cargo.toml")
+    if not os.path.isfile(path):
+        raise SystemExit(f"{path}: not found; --servo-root must point at a Servo checkout")
+    dependency = read_toml(path).get("workspace", {}).get("dependencies", {}).get("js")
+    if not isinstance(dependency, dict):
+        raise SystemExit(f"{path}: [workspace.dependencies] has no `js` entry")
+    if dependency.get("package") != "mozjs":
+        raise SystemExit(
+            f"{path}: the `js` dependency must select `package = \"mozjs\"`, "
+            f"not {dependency.get('package')!r}"
+        )
+    requirement = dependency.get("version")
+    if not isinstance(requirement, str) or not requirement.startswith("="):
+        raise SystemExit(
+            f"{path}: the `js` dependency must use an exact pin such as \"=0.26.14\", "
+            f"not {requirement!r}; a caret requirement lets `[patch.crates-io]` stop applying"
+        )
+    return requirement[1:]
+
+
+def shim_mozjs_version(qjs_dir):
+    path = os.path.join(qjs_dir, "mozjs", "Cargo.toml")
+    if not os.path.isfile(path):
+        raise SystemExit(f"{path}: not found; --qjs-dir must point at a servo-quickjs checkout")
+    version = read_toml(path).get("package", {}).get("version")
+    if not isinstance(version, str) or not version:
+        raise SystemExit(f"{path}: [package] has no version")
+    return version
+
+
+def pinned_quickjs_revision(servo_root):
+    """Return the servo-quickjs commit that `mach build --js-engine quickjs` patches in."""
+    path = os.path.join(servo_root, "support", "quickjs", "cargo-config.toml")
+    if not os.path.isfile(path):
+        raise SystemExit(f"{path}: not found; --servo-root must point at a Servo checkout")
+    revision = (
+        read_toml(path).get("patch", {}).get("crates-io", {}).get("mozjs", {}).get("rev")
+    )
+    if not isinstance(revision, str) or not revision:
+        raise SystemExit(f"{path}: [patch.crates-io] has no `mozjs` rev")
+    return revision
+
+
+def checkout_revision(qjs_dir):
+    """Return the full commit of the checkout, or None when it is not a git repository."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", qjs_dir, "rev-parse", "HEAD"],
+            text=True,
+            capture_output=True,
+        )
+    except OSError:
+        return None
+    revision = completed.stdout.strip()
+    return revision if completed.returncode == 0 and revision else None
+
+
+def versions(args):
+    """Check that the mozjs version and the QuickJS pin agree across all four places."""
+    servo_version = servo_mozjs_version(args.servo_root)
+    shim_version = shim_mozjs_version(args.qjs_dir)
+    pinned = pinned_quickjs_revision(args.servo_root)
+    head = checkout_revision(args.qjs_dir)
+    problems = []
+    warnings = []
+
+    if shim_version != servo_version:
+        problems.append(
+            f"servo-quickjs/mozjs/Cargo.toml is {shim_version}, but Servo pins mozjs "
+            f"= {servo_version}; Cargo leaves the [patch.crates-io] unused, so the "
+            f"\"QuickJS\" run would silently build SpiderMonkey"
+        )
+
+    if args.snapshot:
+        manifest = read_toml(args.snapshot).get("manifest", {})
+        recorded_version = manifest.get("mozjs_version")
+        if recorded_version != servo_version:
+            problems.append(
+                f"{args.snapshot} records mozjs_version {recorded_version!r}, but Servo pins "
+                f"{servo_version!r}; run scan-mozjs-surface"
+            )
+        recorded_revision = manifest.get("quickjs_revision")
+        if head and recorded_revision and not head.startswith(recorded_revision):
+            problems.append(
+                f"{args.snapshot} records quickjs_revision {recorded_revision!r}, but "
+                f"{args.qjs_dir} is at {head[:7]}; run scan-mozjs-surface"
+            )
+
+    if head is None:
+        warnings.append(f"{args.qjs_dir} is not a git checkout; cannot verify the pinned commit")
+    elif head != pinned:
+        message = (
+            f"{args.qjs_dir} is at {head[:7]}, but servo-ohos pins {pinned[:7]}; the contract run "
+            f"describes a shim the device build does not use"
+        )
+        if args.require_pinned_qjs:
+            problems.append(message)
+        else:
+            warnings.append(message)
+
+    print(f"mozjs version: Servo {servo_version}, servo-quickjs {shim_version}")
+    print(f"servo-quickjs pin: {pinned[:7]}, checkout: {head[:7] if head else 'unknown'}")
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    for problem in problems:
+        print(f"error: {problem}", file=sys.stderr)
+    if problems:
+        return 1
+    print("engine versions ok")
+    return 0
+
+
 def verify(args):
     """Fail when the checked-in inventory no longer describes the bindgen and shim inputs."""
     _, recorded_entries = load_inventory(args.snapshot)
@@ -575,6 +697,17 @@ def main(argv):
     report_parser.add_argument("--output", required=True)
     report_parser.add_argument("--format", choices=("toml", "tsv"), default="toml")
     report_parser.set_defaults(func=report)
+
+    versions_parser = subparsers.add_parser("versions")
+    versions_parser.add_argument("--servo-root", required=True)
+    versions_parser.add_argument("--qjs-dir", required=True)
+    versions_parser.add_argument("--snapshot")
+    versions_parser.add_argument(
+        "--require-pinned-qjs",
+        action="store_true",
+        help="fail when the checkout is not the pinned commit instead of only warning",
+    )
+    versions_parser.set_defaults(func=versions)
 
     args = parser.parse_args(argv)
     return args.func(args)

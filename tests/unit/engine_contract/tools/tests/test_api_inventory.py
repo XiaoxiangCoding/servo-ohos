@@ -282,6 +282,151 @@ class ManifestVerifyTest(unittest.TestCase):
         self.assertIn("generated: (i32, u64) -> i32", output)
 
 
+class EngineVersionsTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = self.temporary.name
+        self.servo = os.path.join(self.root, "servo")
+        self.qjs = os.path.join(self.root, "servo-quickjs")
+        self.snapshot = os.path.join(self.root, "mozjs-api-snapshot.toml")
+        self.write(
+            os.path.join(self.servo, "Cargo.toml"),
+            """
+            [workspace.dependencies]
+            js = { package = "mozjs", version = "=0.26.14", default-features = false }
+            """,
+        )
+        self.write(
+            os.path.join(self.servo, "support", "quickjs", "cargo-config.toml"),
+            """
+            [patch.crates-io]
+            mozjs = { git = "https://example.invalid/servo-quickjs", rev = "1111111111111111111111111111111111111111" }
+            """,
+        )
+        self.write(
+            os.path.join(self.qjs, "mozjs", "Cargo.toml"),
+            """
+            [package]
+            name = "mozjs"
+            version = "0.26.14"
+            """,
+        )
+        subprocess.run(["git", "init", "--quiet", self.qjs], check=True)
+        self.git("add", "mozjs/Cargo.toml")
+        self.git(
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "initial",
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def write(self, path, source):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as file:
+            file.write(textwrap.dedent(source))
+
+    def git(self, *args):
+        return subprocess.run(
+            ["git", "-C", self.qjs, *args], check=True, text=True, capture_output=True
+        )
+
+    def head(self):
+        return self.git("rev-parse", "HEAD").stdout.strip()
+
+    def write_snapshot(self, version="0.26.14", revision=None):
+        revision = revision if revision is not None else self.head()[:7]
+        self.write(
+            self.snapshot,
+            f"""
+            [manifest]
+            mozjs_version = "{version}"
+            quickjs_revision = "{revision}"
+            """,
+        )
+
+    def run_versions(self, require_pinned=False, snapshot=True):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            try:
+                result = api_inventory.versions(
+                    types.SimpleNamespace(
+                        servo_root=self.servo,
+                        qjs_dir=self.qjs,
+                        snapshot=self.snapshot if snapshot else None,
+                        require_pinned_qjs=require_pinned,
+                    )
+                )
+            except SystemExit as error:
+                output.write(str(error))
+                result = 1
+        return result, output.getvalue()
+
+    def test_accepts_matching_versions_and_pin(self):
+        self.write_snapshot()
+        result, output = self.run_versions()
+        self.assertEqual(result, 0, output)
+        self.assertIn("engine versions ok", output)
+
+    def test_rejects_a_shim_version_that_would_disable_the_patch(self):
+        self.write(
+            os.path.join(self.qjs, "mozjs", "Cargo.toml"),
+            '[package]\nname = "mozjs"\nversion = "0.26.15"\n',
+        )
+        self.write_snapshot()
+        result, output = self.run_versions()
+        self.assertEqual(result, 1, output)
+        self.assertIn("Cargo leaves the [patch.crates-io] unused", output)
+
+    def test_rejects_a_servo_requirement_that_is_not_an_exact_pin(self):
+        self.write(
+            os.path.join(self.servo, "Cargo.toml"),
+            """
+            [workspace.dependencies]
+            js = { package = "mozjs", version = "0.26.14" }
+            """,
+        )
+        self.write_snapshot()
+        result, output = self.run_versions()
+        self.assertEqual(result, 1, output)
+        self.assertIn("must use an exact pin", output)
+
+    def test_rejects_a_snapshot_from_another_mozjs_version(self):
+        self.write_snapshot(version="0.26.13")
+        result, output = self.run_versions()
+        self.assertEqual(result, 1, output)
+        self.assertIn("run scan-mozjs-surface", output)
+
+    def test_rejects_a_snapshot_from_another_shim_commit(self):
+        self.write_snapshot(revision="2222222")
+        result, output = self.run_versions()
+        self.assertEqual(result, 1, output)
+        self.assertIn("quickjs_revision", output)
+
+    def test_only_fails_on_an_unpinned_checkout_when_required(self):
+        self.write_snapshot()
+        self.write(
+            os.path.join(self.servo, "support", "quickjs", "cargo-config.toml"),
+            """
+            [patch.crates-io]
+            mozjs = { git = "https://example.invalid/servo-quickjs", rev = "3333333333333333333333333333333333333333" }
+            """,
+        )
+        result, output = self.run_versions()
+        self.assertEqual(result, 0, output)
+        self.assertIn("warning:", output)
+
+        result, output = self.run_versions(require_pinned=True)
+        self.assertEqual(result, 1, output)
+        self.assertIn("does not use", output)
+
+
 class ManifestReportTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

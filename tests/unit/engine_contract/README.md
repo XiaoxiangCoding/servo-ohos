@@ -93,7 +93,16 @@ its review evidence, and the generator merges that list into the scope. It is th
 that adds entries does not fail coverage unless Servo starts using them. If Servo gains a new
 call site, `check-servo-mozjs-api-usage` fails until the usage file and any newly required case are updated.
 
-`check-contract-case-coverage` first checks that `mozjs-api-snapshot.toml` still matches the bindgen and
+`check-contract-case-coverage` first checks the four version places: the exact `mozjs` pin in
+`Cargo.toml`, the version in `servo-quickjs/mozjs/Cargo.toml`, the `rev` in
+`support/quickjs/cargo-config.toml`, and `mozjs_version` / `quickjs_revision` in the snapshot. When
+the shim version drifts, Cargo stops applying `[patch.crates-io]` without an error and the
+"QuickJS" run silently builds SpiderMonkey, so a version mismatch is a hard failure. A checkout
+that is merely not the pinned commit is a warning, because testing a local shim is normal;
+`CHECK_PINNED_QJS=1` makes it fatal. The `js-quickjs` test build also fails to compile when the
+patch did not apply.
+
+It then checks that `mozjs-api-snapshot.toml` still matches the bindgen and
 QuickJS shim, then checks that `servo-mozjs-api-usage.toml` still matches Servo's usage, and finally
 checks cases against the scope. A bindgen addition, removal, status change, or signature change
 requires regenerating the inventory; it does not require a case by itself. The signature records the parameter and return

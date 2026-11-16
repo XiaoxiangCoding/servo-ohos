@@ -218,6 +218,10 @@ run_quickjs_contract() {
     cargo_args=("${PARSED_CARGO_ARGS[@]}")
     local selection="$CASE_SELECTION"
     protect_lockfile || return
+    check_engine_versions || {
+        restore_lockfile
+        return 1
+    }
     mkdir -p "$out_dir"
     cd "$repo_root"
     rm -f "$(quickjs_results_path)" "$(quickjs_case_inventory_path)" \
@@ -385,6 +389,7 @@ generate_mozjs_api_snapshot() {
 }
 
 check_contract_case_coverage() {
+    check_engine_versions
     check_mozjs_api_snapshot
     check_servo_mozjs_api_usage
     local results
@@ -400,6 +405,24 @@ check_contract_case_coverage() {
     python3 tests/unit/engine_contract/tools/check_api_coverage.py \
         "$results" tests/unit/engine_contract/mozjs-api-snapshot.toml \
         tests/unit/engine_contract/servo-mozjs-api-usage.toml
+}
+
+# The version numbers are hand-edited in four places. When they drift, Cargo silently stops
+# applying `[patch.crates-io]`, and a "QuickJS" run builds SpiderMonkey instead: every case passes
+# and the comparison is meaningless. Check the versions before trusting either result file.
+check_engine_versions() {
+    cd "$repo_root"
+    local -a version_args=()
+    if [[ "${CHECK_PINNED_QJS:-0}" == "1" ]]; then
+        version_args=(--require-pinned-qjs)
+    fi
+    if [[ -f tests/unit/engine_contract/mozjs-api-snapshot.toml ]]; then
+        version_args+=(--snapshot tests/unit/engine_contract/mozjs-api-snapshot.toml)
+    fi
+    python3 tests/unit/engine_contract/tools/api_inventory.py versions \
+        --servo-root "$repo_root" \
+        --qjs-dir "$qjs_dir" \
+        "${version_args[@]}"
 }
 
 locate_mozjs() {

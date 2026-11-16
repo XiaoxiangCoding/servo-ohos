@@ -10,6 +10,18 @@
 //! whose QuickJS divergence must be registered in `quickjs-difference-allowlist.toml`.
 #![allow(unsafe_op_in_unsafe_fn)]
 
+// `js::quickjs` only exists in the servo-quickjs shim, never in crates.io `mozjs`. Cargo ignores a
+// `[patch.crates-io]` whose version does not match the pinned requirement, so without this the
+// QuickJS run would quietly build SpiderMonkey and compare it against itself. Keep the check
+// compile-time so a mis-patched run cannot even start.
+#[cfg(feature = "js-quickjs")]
+const _: () = {
+    #[allow(dead_code)]
+    fn assert_quickjs_shim_is_linked() {
+        let _ = js::quickjs::runtime_alive;
+    }
+};
+
 #[cfg(test)]
 mod buffer_test;
 #[cfg(test)]
