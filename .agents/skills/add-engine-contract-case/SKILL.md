@@ -255,6 +255,13 @@ A QuickJS difference that is fixed or explicitly allowlisted passes; never weake
 assertion. If the gate reports a new difference, put it in `quickjs-difference-allowlist.toml` or
 fix the shim; do not rerun `prepare-mozjs-upgrade`, which is idempotent but not a fix.
 
+`./mach fmt` can rewrite files outside the upgrade. Keep those changes: the `lint` workflow runs
+`./mach test-tidy`, which formats with `binop_separator=Back`, `imports_granularity=Module` and
+`group_imports=StdExternalCrate`, and fails when they are reverted. Do not use plain
+`cargo fmt --check` as the gate; it applies a different configuration and reports differences the
+repository does not consider errors. If the formatting touches files unrelated to the upgrade,
+commit it separately as `chore: run mach fmt`.
+
 Commit explicitly by path (the tree may contain unrelated local changes):
 
 ```bash
@@ -268,6 +275,8 @@ git commit -m "deps: Bump mozjs to $(python3 tests/unit/engine_contract/tools/mo
 
 Include `tests/unit/engine_contract/quickjs-shim-fix-records.md` only when a shim fix removed an
 allowlist entry.
+
+Do not commit `.vscode/settings.json`; it is a personal editor configuration.
 
 `prepare-mozjs-upgrade --skip-cargo-update` stops before `cargo update` when the network is
 unavailable; rerun without it before committing.

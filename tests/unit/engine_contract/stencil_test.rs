@@ -13,7 +13,7 @@ use std::sync::Arc;
 use js::glue::CompileGlobalScriptToStencil_C;
 use js::jsapi::{self, HadFrontendErrors, OnNewGlobalHookOption, Value};
 use js::jsval::UndefinedValue;
-use js::offthread::{compile_to_stencil_offthread, CompilationResult, FrontendContext};
+use js::offthread::{CompilationResult, FrontendContext, compile_to_stencil_offthread};
 use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
@@ -21,11 +21,11 @@ use js::rust::wrappers2::{
     JS_ExecuteScript, JS_GetPendingException, JS_NewGlobalObject,
 };
 use js::rust::{
-    transform_str_to_source_text, CompileOptionsWrapper, HandleObject as SafeHandleObject,
-    JSEngine, OwningCompileOptionsWrapper, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
+    CompileOptionsWrapper, HandleObject as SafeHandleObject, JSEngine, OwningCompileOptionsWrapper,
+    RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS, transform_str_to_source_text,
 };
 
-use crate::support::{record, Observation, Value as Observed};
+use crate::support::{Observation, Value as Observed, record};
 
 fn with_global(engine: &JSEngine, f: impl FnOnce(&mut js::context::JSContext, SafeHandleObject)) {
     let mut runtime = Runtime::new(engine.handle());
@@ -67,13 +67,9 @@ unsafe fn take_exception(cx: &mut js::context::JSContext) -> Value {
 fn offthread_success(engine: &JSEngine) {
     with_global(engine, |cx, _global| unsafe {
         let options = CompileOptionsWrapper::new(cx, c"stencil.js".to_owned(), 1);
-        let result = compile_to_stencil_offthread(
-            options.ptr,
-            Arc::new("6 * 7".to_owned()),
-            Some,
-        )
-        .finish()
-        .expect("off-thread compilation failed");
+        let result = compile_to_stencil_offthread(options.ptr, Arc::new("6 * 7".to_owned()), Some)
+            .finish()
+            .expect("off-thread compilation failed");
         let CompilationResult {
             stencil,
             mut storage,
@@ -83,12 +79,8 @@ fn offthread_success(engine: &JSEngine) {
         assert!(!HadFrontendErrors(*fc));
         let stencil = stencil.expect("no stencil");
         let instantiate_options = (&compile_options).into();
-        let script = InstantiateGlobalStencil(
-            cx,
-            &instantiate_options,
-            *stencil,
-            storage.as_mut_ptr(),
-        );
+        let script =
+            InstantiateGlobalStencil(cx, &instantiate_options, *stencil, storage.as_mut_ptr());
         assert!(!script.is_null());
         assert_eq!(execute(cx, script).unwrap().to_int32(), 42);
 
@@ -105,13 +97,10 @@ fn offthread_success(engine: &JSEngine) {
 fn offthread_failure(engine: &JSEngine) {
     with_global(engine, |cx, _global| unsafe {
         let options = CompileOptionsWrapper::new(cx, c"bad-stencil.js".to_owned(), 1);
-        let result = compile_to_stencil_offthread(
-            options.ptr,
-            Arc::new("var = ;".to_owned()),
-            Some,
-        )
-        .finish()
-        .expect("off-thread compilation failed");
+        let result =
+            compile_to_stencil_offthread(options.ptr, Arc::new("var = ;".to_owned()), Some)
+                .finish()
+                .expect("off-thread compilation failed");
         let CompilationResult {
             stencil,
             fc,
@@ -137,12 +126,7 @@ fn explicit_stencil(engine: &JSEngine) {
         let owning = OwningCompileOptionsWrapper::new_for_fc(&fc, options.ptr);
         let mut stencil = MaybeUninit::uninit();
         let mut source = transform_str_to_source_text("21 + 21");
-        CompileGlobalScriptToStencil_C(
-            *fc,
-            owning.read_only(),
-            &mut source,
-            stencil.as_mut_ptr(),
-        );
+        CompileGlobalScriptToStencil_C(*fc, owning.read_only(), &mut source, stencil.as_mut_ptr());
         let stencil = stencil.assume_init();
         assert!(!HadFrontendErrors(*fc));
         assert!(!stencil.mRawPtr.is_null());
