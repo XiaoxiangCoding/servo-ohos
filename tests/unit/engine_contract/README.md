@@ -51,13 +51,15 @@ Legacy names are accepted as compatibility aliases: `sm`, `qjs`, `diff`, `api-sc
 
 ## Coverage scope
 
-The suite currently runs 58 cases. Coverage is measured against `servo-mozjs-api-usage.toml`: the mozjs
-entries Servo production code actually calls directly or reaches through the mozjs wrappers.
-The current scope has 410 unique names (313 marked direct, 97 marked indirect), of which 367 are
-`implemented`. Every scoped entry has a contract case: the 367 `implemented` entries are
-checked as normal coverage, and the remaining 43 (37 `empty`, 6 `todo`) are required cases whose
-shim behavior is reported separately. Such a case still asserts SpiderMonkey behavior; on QuickJS
-the silent no-op or `qjs_todo!` panic is recorded and must be settled by an entry in
+The case count and the scope distribution are not restated here, because they drift with every
+scan and every new case; `check-contract-case-coverage` prints them. Coverage is measured against
+`servo-mozjs-api-usage.toml`: the mozjs entries Servo production code actually calls directly or
+reaches through the mozjs wrappers. The current scope has 410 unique names (313 marked direct, 97
+marked indirect), of which 368 are `implemented`. Every scoped entry has a contract case: the 368
+`implemented` entries are checked as normal coverage, and the remaining 42 (37 `empty`, 5 `todo`)
+are required cases whose shim behavior is reported separately. Such a case still asserts
+SpiderMonkey behavior; on QuickJS the silent no-op or `qjs_todo!` panic is recorded and must be
+settled by an entry in
 `quickjs-difference-allowlist.toml`, so a missing capability can never silently drop its case.
 
 | Area | Cases | Source |
@@ -70,7 +72,7 @@ the silent no-op or `qjs_todo!` panic is recorded and must be settled by an entr
 | Class, misc and errors | 13 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
 | Calls and rooters | 2 | `contract_test.rs` |
 | Proxies, realms and principals | 8 | `proxy_test.rs` |
-| Debugger object | 1 | `debugger_test.rs` |
+| Debugger object and hooks | 2 | `debugger_test.rs` |
 | Event-loop dispatch | 2 | `event_loop_test.rs` |
 | Streaming callbacks | 1 | `streaming_test.rs` |
 
