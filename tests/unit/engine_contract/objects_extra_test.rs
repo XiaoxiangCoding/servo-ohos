@@ -16,11 +16,11 @@ use js::context::JSContext;
 use js::conversions::jsstr_to_string;
 use js::gc::StackGCVector;
 use js::jsapi::{
-    CompilationType, GetStaticPrototype, Handle, HandleString, HandleValue, JSContext as RawJSContext,
-    JSFunction, JSJitGetterCallArgs, JSJitInfo, JSJitSetterCallArgs, JSObject, JSString,
-    JS_ForOfIteratorValueIsIterable, JS_GetFunctionArity, JS_IsGlobalObject, JSSecurityCallbacks,
-    JSPROP_ENUMERATE, JSPROP_PERMANENT, JSPROP_READONLY, ObjectOpResult, RuntimeCode, Value,
-    jsid, PropertyDescriptor,
+    CompilationType, GetStaticPrototype, Handle, HandleString, HandleValue,
+    JS_ForOfIteratorValueIsIterable, JS_GetFunctionArity, JS_IsGlobalObject,
+    JSContext as RawJSContext, JSFunction, JSJitGetterCallArgs, JSJitInfo, JSJitSetterCallArgs,
+    JSObject, JSPROP_ENUMERATE, JSPROP_PERMANENT, JSPROP_READONLY, JSSecurityCallbacks, JSString,
+    ObjectOpResult, PropertyDescriptor, RuntimeCode, Value, jsid,
 };
 use js::jsval::{Int32Value, ObjectValue, StringValue, UndefinedValue};
 use js::rooted;
@@ -31,17 +31,15 @@ use js::rust::wrappers2::{
     GetRealmObjectPrototype, IsArgumentsObject, IsMapObject, IsSetObject, JS_DefineProperty,
     JS_DefineProperty2, JS_DefineUCProperty2, JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo,
     JS_GetFunctionDisplayId, JS_InitializePropertiesFromCompatibleNativeObject,
-    JS_LinkConstructorAndPrototype, JS_NewGlobalObject,
-    JS_NewObjectWithoutMetadata, JS_NewPlainObject,
-    JS_SetImmutablePrototype, JS_SetSecurityCallbacks, JS_ValueToFunction, MapClear, MapForEach,
-    MapKeys, MapValues, NewMapObject, NewSetObject, SetAdd, SetDataPropertyDescriptor, SetDelete,
-    SetEntries, SetForEach, SetHas, SetKeys,
+    JS_LinkConstructorAndPrototype, JS_NewGlobalObject, JS_NewObjectWithoutMetadata,
+    JS_NewPlainObject, JS_NewStringCopyN, JS_SetImmutablePrototype, JS_SetSecurityCallbacks,
+    JS_ValueToFunction, MapClear, MapForEach, MapKeys, MapValues, NewMapObject, NewSetObject,
+    SetAdd, SetDataPropertyDescriptor, SetDelete, SetEntries, SetForEach, SetHas, SetKeys,
     SetPropertyIgnoringNamedGetter, SetValues,
 };
-use js::rust::wrappers2::JS_NewStringCopyN;
 use js::rust::{
-    CompileOptionsWrapper, HandleObject, JSEngine, RealmOptions, RootedObjectVectorWrapper, Runtime,
-    SIMPLE_GLOBAL_CLASS, evaluate_script, for_of,
+    CompileOptionsWrapper, HandleObject, JSEngine, RealmOptions, RootedObjectVectorWrapper,
+    Runtime, SIMPLE_GLOBAL_CLASS, evaluate_script, for_of,
 };
 
 use crate::support::{Observation, Value as Observed, eval, record_case, set_global};
@@ -49,12 +47,7 @@ use crate::support::{Observation, Value as Observed, eval, record_case, set_glob
 const ATTRS: u32 = (JSPROP_ENUMERATE | JSPROP_PERMANENT) as u32;
 
 fn string_ptr_of(cx: &mut JSContext, string: *mut JSString) -> String {
-    unsafe {
-        jsstr_to_string(
-            cx,
-            NonNull::new(string).expect("non-null JS string"),
-        )
-    }
+    unsafe { jsstr_to_string(cx, NonNull::new(string).expect("non-null JS string")) }
 }
 
 fn string_of(cx: &mut JSContext, value: js::jsval::JSVal) -> String {
@@ -69,7 +62,11 @@ fn object_of(cx: &mut JSContext, global: HandleObject, source: &str) -> *mut JSO
 unsafe fn id_for(cx: &mut JSContext, global: HandleObject, source: &str) -> jsid {
     rooted!(&in(cx) let value = eval(cx, global, source));
     rooted!(&in(cx) let mut id = jsid::default());
-    assert!(js::rust::wrappers2::JS_ValueToId(cx, value.handle(), id.handle_mut()));
+    assert!(js::rust::wrappers2::JS_ValueToId(
+        cx,
+        value.handle(),
+        id.handle_mut()
+    ));
     id.get()
 }
 
@@ -92,7 +89,10 @@ fn rooted_vectors(engine: &JSEngine) {
             {
                 let mut ids = js::rust::IdVector::new(cx);
                 rooted!(&in(cx) let id = id_for(cx, global, "'rooted-id'"));
-                assert!(js::rust::wrappers2::AppendToIdVector(ids.handle_mut(), id.handle()));
+                assert!(js::rust::wrappers2::AppendToIdVector(
+                    ids.handle_mut(),
+                    id.handle()
+                ));
                 assert_eq!(ids.len(), 1);
                 assert!(ids[0].is_string());
                 assert_eq!(string_ptr_of(cx, ids[0].to_string()), "rooted-id");
@@ -166,15 +166,25 @@ fn identity_and_functions(engine: &JSEngine) {
             );
 
             let arguments = object_of(cx, global, "(function () { return arguments; })()");
-            assert!(IsArgumentsObject(js::rust::Handle::from_marked_location(&arguments).into()));
+            assert!(IsArgumentsObject(
+                js::rust::Handle::from_marked_location(&arguments).into()
+            ));
             assert!(!IsArgumentsObject(plain.handle().into()));
             let map = NewMapObject(cx);
             let set = NewSetObject(cx);
             let mut is_map = false;
-            assert!(IsMapObject(cx, js::rust::Handle::from_marked_location(&map).into(), &mut is_map));
+            assert!(IsMapObject(
+                cx,
+                js::rust::Handle::from_marked_location(&map).into(),
+                &mut is_map
+            ));
             assert!(is_map);
             let mut is_set = false;
-            assert!(IsSetObject(cx, js::rust::Handle::from_marked_location(&set).into(), &mut is_set));
+            assert!(IsSetObject(
+                cx,
+                js::rust::Handle::from_marked_location(&set).into(),
+                &mut is_set
+            ));
             assert!(is_set);
 
             rooted!(&in(cx) let ctor = object_of(cx, global, "(function C(v) { this.v = v; })"));
@@ -182,7 +192,12 @@ fn identity_and_functions(engine: &JSEngine) {
             rooted!(&in(cx) let args = vec![Int32Value(31)]);
             let args = js::jsapi::HandleValueArray::from(&args);
             rooted!(&in(cx) let mut instance = ptr::null_mut::<JSObject>());
-            assert!(Construct1(cx, ctor_value.handle(), &args, instance.handle_mut()));
+            assert!(Construct1(
+                cx,
+                ctor_value.handle(),
+                &args,
+                instance.handle_mut()
+            ));
             set_global(cx, global, c"instance", ObjectValue(instance.get()));
             set_global(cx, global, c"C", ctor_value.get());
             assert!(eval(cx, global, "instance.v === 31 && instance instanceof C").to_boolean());
@@ -203,7 +218,11 @@ fn identity_and_functions(engine: &JSEngine) {
             let realm = GetFunctionRealm(cx, ctor.handle().into());
             assert!(!realm.is_null());
             assert_eq!(realm, GetCurrentRealmOrNull(cx));
-            assert!(JS_LinkConstructorAndPrototype(cx, ctor.handle(), plain.handle()));
+            assert!(JS_LinkConstructorAndPrototype(
+                cx,
+                ctor.handle(),
+                plain.handle()
+            ));
             set_global(cx, global, c"linked_ctor", ObjectValue(ctor.get()));
             set_global(cx, global, c"linked_proto", ObjectValue(plain.get()));
             assert!(eval(
@@ -236,7 +255,11 @@ fn identity_and_functions(engine: &JSEngine) {
 
             rooted!(&in(cx) let immutable = JS_NewPlainObject(cx));
             let mut succeeded = false;
-            assert!(JS_SetImmutablePrototype(cx, immutable.handle(), &mut succeeded));
+            assert!(JS_SetImmutablePrototype(
+                cx,
+                immutable.handle(),
+                &mut succeeded
+            ));
             assert!(succeeded);
             set_global(cx, global, c"immutable", ObjectValue(immutable.get()));
             assert!(eval(
@@ -255,11 +278,7 @@ fn identity_and_functions(engine: &JSEngine) {
                 JSPROP_ENUMERATE as u32,
             );
             assert!(!native.is_null());
-            js::jsapi::SetFunctionNativeReserved(
-                native.cast(),
-                0,
-                &Int32Value(73),
-            );
+            js::jsapi::SetFunctionNativeReserved(native.cast(), 0, &Int32Value(73));
             set_global(cx, global, c"reservedNative", ObjectValue(native.cast()));
             assert!(eval(cx, global, "reservedNative() === 73").to_boolean());
 
@@ -270,10 +289,8 @@ fn identity_and_functions(engine: &JSEngine) {
 
 unsafe extern "C" fn read_reserved(_cx: *mut RawJSContext, argc: u32, vp: *mut Value) -> bool {
     let args = js::jsapi::CallArgs::from_vp(vp, argc);
-    args.rval().set(*js::jsapi::GetFunctionNativeReserved(
-        args.callee(),
-        0,
-    ));
+    args.rval()
+        .set(*js::jsapi::GetFunctionNativeReserved(args.callee(), 0));
     true
 }
 
@@ -300,7 +317,11 @@ fn descriptors_and_forwarding(engine: &JSEngine) {
             assert!(desc.hasValue_() && desc.hasWritable_() && desc.hasEnumerable_());
             assert!(desc.writable_() && desc.enumerable_() && !desc.configurable_());
             rooted!(&in(cx) let mut desc_object = UndefinedValue());
-            assert!(FromPropertyDescriptor(cx, desc.handle(), desc_object.handle_mut()));
+            assert!(FromPropertyDescriptor(
+                cx,
+                desc.handle(),
+                desc_object.handle_mut()
+            ));
             set_global(cx, global, c"desc_object", desc_object.get());
             assert!(eval(
                 cx,
@@ -510,14 +531,8 @@ unsafe extern "C" fn content_security_policy_allows(
     );
     let parameter_args = js::rust::Handle::from_raw(parameter_args);
     assert_eq!(parameter_args.len(), 2);
-    assert_eq!(
-        string_of(cx, parameter_args.at(0).unwrap().get()),
-        "a"
-    );
-    assert_eq!(
-        string_of(cx, parameter_args.at(1).unwrap().get()),
-        "b"
-    );
+    assert_eq!(string_of(cx, parameter_args.at(0).unwrap().get()), "a");
+    assert_eq!(string_of(cx, parameter_args.at(1).unwrap().get()), "b");
     *RAN_CSP_CALLBACK.lock().unwrap() = true;
     *can_compile_strings = true;
     true
@@ -536,17 +551,21 @@ fn stack_gc_vectors_and_for_of(engine: &JSEngine) {
         let value = ObjectValue(array.get());
         rooted!(&in(cx) let value = value);
         let mut sum = 0;
-        assert!(for_of::<_, _, ()>(cx, value.handle(), |_, item| {
-            sum += item.get().to_int32();
-            Ok(std::ops::ControlFlow::Continue(()))
-        })
-        .is_ok());
+        assert!(
+            for_of::<_, _, ()>(cx, value.handle(), |_, item| {
+                sum += item.get().to_int32();
+                Ok(std::ops::ControlFlow::Continue(()))
+            })
+            .is_ok()
+        );
         assert_eq!(sum, 6);
         rooted!(&in(cx) let not_iterable = Int32Value(1));
-        assert!(for_of::<_, _, ()>(cx, not_iterable.handle(), |_, _| {
-            Ok(std::ops::ControlFlow::Continue(()))
-        })
-        .is_err());
+        assert!(
+            for_of::<_, _, ()>(cx, not_iterable.handle(), |_, _| {
+                Ok(std::ops::ControlFlow::Continue(()))
+            })
+            .is_err()
+        );
         let _ = SetDataPropertyDescriptor;
     });
     crate::support::record(
@@ -564,10 +583,7 @@ fn stack_gc_vectors_and_for_of(engine: &JSEngine) {
     );
 }
 
-fn with_global_with_callbacks(
-    engine: &JSEngine,
-    f: impl FnOnce(&mut JSContext, HandleObject),
-) {
+fn with_global_with_callbacks(engine: &JSEngine, f: impl FnOnce(&mut JSContext, HandleObject)) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
     unsafe {
@@ -592,9 +608,7 @@ pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("objects.descriptors_and_forwarding", || {
         descriptors_and_forwarding(engine)
     });
-    crate::support::isolate_case("objects.jit_accessors", || {
-        jit_getters_and_setters(engine)
-    });
+    crate::support::isolate_case("objects.jit_accessors", || jit_getters_and_setters(engine));
     crate::support::isolate_case("objects.stack_vectors_for_of", || {
         stack_gc_vectors_and_for_of(engine)
     });

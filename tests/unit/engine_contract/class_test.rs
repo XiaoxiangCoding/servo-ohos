@@ -113,7 +113,8 @@ fn reserved_slots_and_tracing(engine: &JSEngine) {
                 .cast(),
         );
         held.string.set(JS_NewStringCopyN(cx, c"slot".as_ptr(), 4));
-        held.bigint.set(eval(cx, global, "123456789012345678901234567890n").to_bigint());
+        held.bigint
+            .set(eval(cx, global, "123456789012345678901234567890n").to_bigint());
         let options = CompileOptionsWrapper::new(cx, c"trace-script.js".to_owned(), 1);
         held.script.set(jsapi::Compile1(
             cx.raw_cx(),
@@ -226,7 +227,6 @@ fn write_barriers(engine: &JSEngine) {
         ],
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // Tracing every GC edge kind through a class trace hook.

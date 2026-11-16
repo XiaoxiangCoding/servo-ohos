@@ -36,13 +36,12 @@ use js::jsapi::{
 use js::jsval::{Int32Value, ObjectValue, PrivateValue, StringValue, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
-use js::rust::wrappers2::SetPreserveWrapperCallbacks;
 use js::rust::wrappers2::{
-    CheckedUnwrapDynamic, IterateRealms, IterateRealmsInCompartment, IterateRealmsWithPrincipals,
-    JS_NewDeadWrapper, JS_NewPlainObject, JS_NewStringCopyN, JS_ValueToId, NewProxyObject,
+    CheckedUnwrapDynamic, InvokeGetOwnPropertyDescriptor, InvokeHasOwn, IterateRealms,
+    IterateRealmsInCompartment, IterateRealmsWithPrincipals, JS_NewDeadWrapper, JS_NewPlainObject,
+    JS_NewStringCopyN, JS_ValueToId, NewProxyObject, SetPreserveWrapperCallbacks,
     UnwrapObjectDynamic, UnwrapOneCheckedDynamic, WrapperNew,
 };
-use js::rust::wrappers2::{InvokeGetOwnPropertyDescriptor, InvokeHasOwn};
 use js::rust::{JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS};
 
 use crate::support::{Observation, Value, eval, record, set_global, with_global};

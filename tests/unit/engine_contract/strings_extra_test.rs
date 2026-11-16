@@ -11,35 +11,33 @@ use std::slice;
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
 use js::glue::{
-    CreateJSExternalStringCallbacks, DeleteJSExternalStringCallbacks,
-    JSExternalStringCallbacksTraps, JS_ForgetStringLinearness,
-};
-use js::jsapi::mozilla::{MallocSizeOf, Range};
-use js::jsapi::{
-    AtomToLinearString, GetLinearStringCharAt, GetLinearStringLength, JSExternalStringCallbacks,
-    JSPropertySpec_Name, JS_GetStringLength, JS_IsIdentifier1, JS_LinearStringEqualsAscii,
-    JS_LinearStringEqualsAscii1, JS_PutEscapedLinearString, jsid, JSAtom,
+    CreateJSExternalStringCallbacks, DeleteJSExternalStringCallbacks, JS_ForgetStringLinearness,
+    JSExternalStringCallbacksTraps,
 };
 use js::jsapi::js::{StringIsArrayIndex, StringIsArrayIndex1};
+use js::jsapi::mozilla::{MallocSizeOf, Range};
+use js::jsapi::{
+    AtomToLinearString, GetLinearStringCharAt, GetLinearStringLength, JS_GetStringLength,
+    JS_IsIdentifier1, JS_LinearStringEqualsAscii, JS_LinearStringEqualsAscii1,
+    JS_PutEscapedLinearString, JSAtom, JSExternalStringCallbacks, JSPropertySpec_Name, jsid,
+};
 use js::jsval::{BooleanValue, Int32Value, NullValue, StringValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{
     JS_AtomizeAndPinStringN, JS_AtomizeString, JS_AtomizeStringN, JS_AtomizeUCString,
-    JS_AtomizeUCStringN, JS_CopyStringChars, JS_EncodeStringToBuffer,
-    JS_GetEmptyString, JS_GetEmptyStringValue,
-    JS_GetStringEncodingLength, JS_IsIdentifier, JS_NewExternalStringLatin1,
-    JS_NewExternalUCString, JS_NewMaybeExternalStringLatin1, JS_NewMaybeExternalStringUTF8,
-    JS_NewMaybeExternalUCString, JS_NewPlainObject, JS_NewStringCopyUTF8N, JS_NewStringCopyUTF8Z,
-    JS_NewStringCopyZ, JS_NewUCStringCopyN, JS_NewUCStringCopyZ, JS_PutEscapedString,
-    JS_StringEqualsAscii, JS_StringEqualsAscii1, JS_StringToId, JS_EnsureLinearString,
-    JS_ParseJSON1, JS_ParseJSON2, JS_ParseJSONWithReviver1, PropertySpecNameEqualsId,
-    PropertySpecNameToPermanentId, StringToLinearStringSlow, JS_StringifyWithLengthHint, JS_free,
-    JS_malloc, JS_realloc,
-    LossyTwoByteCharsToNewLatin1CharsZ, LossyUTF8CharsToNewTwoByteCharsZ,
+    JS_AtomizeUCStringN, JS_CopyStringChars, JS_EncodeStringToBuffer, JS_EnsureLinearString,
+    JS_GetEmptyString, JS_GetEmptyStringValue, JS_GetStringEncodingLength, JS_IsIdentifier,
+    JS_NewExternalStringLatin1, JS_NewExternalUCString, JS_NewMaybeExternalStringLatin1,
+    JS_NewMaybeExternalStringUTF8, JS_NewMaybeExternalUCString, JS_NewPlainObject,
+    JS_NewStringCopyUTF8N, JS_NewStringCopyUTF8Z, JS_NewStringCopyZ, JS_NewUCStringCopyN,
+    JS_NewUCStringCopyZ, JS_ParseJSON1, JS_ParseJSON2, JS_ParseJSONWithReviver1,
+    JS_PutEscapedString, JS_StringEqualsAscii, JS_StringEqualsAscii1, JS_StringToId,
+    JS_StringifyWithLengthHint, JS_free, JS_malloc, JS_realloc, LossyTwoByteCharsToNewLatin1CharsZ,
+    LossyUTF8CharsToNewTwoByteCharsZ, PropertySpecNameEqualsId, PropertySpecNameToPermanentId,
     RUST_JSID_IS_INT, RUST_JSID_IS_STRING, RUST_JSID_IS_VOID, RUST_JSID_TO_INT,
-    RUST_JSID_TO_STRING, ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToJSONMaybeSafely,
-    ToNumberSlow, ToObjectSlow, ToStringSlow, ToUint16Slow, ToUint32Slow, ToUint64Slow,
-    UTF8CharsToNewTwoByteCharsZ, int_to_jsid,
+    RUST_JSID_TO_STRING, StringToLinearStringSlow, ToBooleanSlow, ToInt32Slow, ToInt64Slow,
+    ToJSONMaybeSafely, ToNumberSlow, ToObjectSlow, ToStringSlow, ToUint16Slow, ToUint32Slow,
+    ToUint64Slow, UTF8CharsToNewTwoByteCharsZ, int_to_jsid,
 };
 use js::rust::{HandleObject, HandleValue, JSEngine, MutableHandle};
 
@@ -53,17 +51,13 @@ mod encode_abi {
     use js::context::JSContext;
     use js::jsapi::mozilla::Range;
     use js::jsapi::{
-        Handle, MutableHandle as RawMutableHandle, JSString, Latin1CharsZ, TwoByteChars,
+        Handle, JSString, Latin1CharsZ, MutableHandle as RawMutableHandle, TwoByteChars,
         TwoByteCharsZ, UTF8Chars, jsid,
     };
 
     unsafe extern "C" {
         #[link_name = "_Z22JS_EncodeStringToASCIIP9JSContextP8JSString"]
-        fn js_encode_string_to_ascii(
-            out: *mut *mut c_char,
-            cx: *mut c_void,
-            string: *mut JSString,
-        );
+        fn js_encode_string_to_ascii(out: *mut *mut c_char, cx: *mut c_void, string: *mut JSString);
         #[link_name = "_Z23JS_EncodeStringToLatin1P9JSContextP8JSString"]
         fn js_encode_string_to_latin1(
             out: *mut *mut c_char,
@@ -112,7 +106,10 @@ mod encode_abi {
         out
     }
 
-    pub unsafe fn encode_string_to_latin1(cx: &mut JSContext, string: *mut JSString) -> *mut c_char {
+    pub unsafe fn encode_string_to_latin1(
+        cx: &mut JSContext,
+        string: *mut JSString,
+    ) -> *mut c_char {
         let mut out = ptr::null_mut();
         js_encode_string_to_latin1(&mut out, cx.raw_cx().cast(), string);
         out
@@ -135,10 +132,7 @@ mod encode_abi {
         js_chars_to_id(cx.raw_cx().cast(), &chars, id)
     }
 
-    pub unsafe fn lossy_two_byte_to_latin1(
-        cx: &mut JSContext,
-        chars: &Range<u16>,
-    ) -> Latin1CharsZ {
+    pub unsafe fn lossy_two_byte_to_latin1(cx: &mut JSContext, chars: &Range<u16>) -> Latin1CharsZ {
         let mut out = std::mem::MaybeUninit::uninit();
         js_lossy_two_byte_to_latin1(out.as_mut_ptr(), cx.raw_cx().cast(), chars);
         out.assume_init()
@@ -150,13 +144,7 @@ mod encode_abi {
         out_len: &mut usize,
     ) -> TwoByteCharsZ {
         let mut out = std::mem::MaybeUninit::uninit();
-        js_utf8_to_two_byte(
-            out.as_mut_ptr(),
-            cx.raw_cx().cast(),
-            chars,
-            out_len,
-            0,
-        );
+        js_utf8_to_two_byte(out.as_mut_ptr(), cx.raw_cx().cast(), chars, out_len, 0);
         out.assume_init()
     }
 
@@ -166,13 +154,7 @@ mod encode_abi {
         out_len: &mut usize,
     ) -> TwoByteCharsZ {
         let mut out = std::mem::MaybeUninit::uninit();
-        js_lossy_utf8_to_two_byte(
-            out.as_mut_ptr(),
-            cx.raw_cx().cast(),
-            chars,
-            out_len,
-            0,
-        );
+        js_lossy_utf8_to_two_byte(out.as_mut_ptr(), cx.raw_cx().cast(), chars, out_len, 0);
         out.assume_init()
     }
 }
@@ -184,22 +166,24 @@ mod encode_abi {
     use js::context::JSContext;
     use js::jsapi::mozilla::Range;
     use js::jsapi::{
-        Handle, Latin1CharsZ, MutableHandle as RawMutableHandle, JSString, TwoByteChars,
+        Handle, JSString, Latin1CharsZ, MutableHandle as RawMutableHandle, TwoByteChars,
         TwoByteCharsZ, UTF8Chars, jsid,
     };
-    use js::rust::Handle as SafeHandle;
-    use js::rust::MutableHandle as SafeMutableHandle;
     use js::rust::wrappers2::{
         JS_CharsToId, JS_EncodeStringToASCII, JS_EncodeStringToLatin1, JS_EncodeStringToUTF8,
         LossyTwoByteCharsToNewLatin1CharsZ, LossyUTF8CharsToNewTwoByteCharsZ,
         UTF8CharsToNewTwoByteCharsZ,
     };
+    use js::rust::{Handle as SafeHandle, MutableHandle as SafeMutableHandle};
 
     pub unsafe fn encode_string_to_ascii(cx: &mut JSContext, string: *mut JSString) -> *mut c_char {
         JS_EncodeStringToASCII(cx, string) as *mut c_char
     }
 
-    pub unsafe fn encode_string_to_latin1(cx: &mut JSContext, string: *mut JSString) -> *mut c_char {
+    pub unsafe fn encode_string_to_latin1(
+        cx: &mut JSContext,
+        string: *mut JSString,
+    ) -> *mut c_char {
         JS_EncodeStringToLatin1(cx, string) as *mut c_char
     }
 
@@ -220,10 +204,7 @@ mod encode_abi {
         JS_CharsToId(cx, chars, id)
     }
 
-    pub unsafe fn lossy_two_byte_to_latin1(
-        cx: &mut JSContext,
-        chars: &Range<u16>,
-    ) -> Latin1CharsZ {
+    pub unsafe fn lossy_two_byte_to_latin1(cx: &mut JSContext, chars: &Range<u16>) -> Latin1CharsZ {
         LossyTwoByteCharsToNewLatin1CharsZ(cx, chars)
     }
 
@@ -319,110 +300,115 @@ const APIS: &[&str] = &[
 ];
 
 pub fn run(engine: &JSEngine) {
-    record_case(engine, "strings.atoms_ids_json_and_memory", APIS, |cx, global| unsafe {
-        let mut utf8 = *b"a\xe2\x82\xac";
-        let utf8_chars = js::jsapi::JS::UTF8Chars {
-            _base: range(utf8.as_mut_ptr(), utf8.len()),
-        };
+    record_case(
+        engine,
+        "strings.atoms_ids_json_and_memory",
+        APIS,
+        |cx, global| unsafe {
+            let mut utf8 = *b"a\xe2\x82\xac";
+            let utf8_chars = js::jsapi::JS::UTF8Chars {
+                _base: range(utf8.as_mut_ptr(), utf8.len()),
+            };
 
-        rooted!(&in(cx) let ascii = JS_NewStringCopyZ(cx, c"abc".as_ptr()));
-        rooted!(&in(cx) let wide = JS_NewUCStringCopyZ(cx, [0x20ac, 0].as_ptr()));
-        rooted!(&in(cx) let utf8z = JS_NewStringCopyUTF8Z(
-            cx,
-            js::jsapi::JS::ConstUTF8CharsZ {
-                data_: b"caf\xc3\xa9\0".as_ptr().cast(),
-            },
-        ));
-        rooted!(&in(cx) let utf8n = JS_NewStringCopyUTF8N(cx, &utf8_chars));
-        assert_eq!(to_rust(cx, ascii.get()), "abc");
-        assert_eq!(to_rust(cx, wide.get()), "€");
-        assert_eq!(to_rust(cx, utf8z.get()), "café");
-        assert_eq!(to_rust(cx, utf8n.get()), "a€");
-        assert_eq!(JS_GetStringLength(ascii.get()), 3);
-        assert_eq!(JS_GetStringEncodingLength(cx, ascii.get()), 3);
-        let encoded = encode_abi::encode_string_to_ascii(cx, ascii.get());
-        assert_eq!(encode(cx, encoded), b"abc".to_vec());
-        let encoded = encode_abi::encode_string_to_latin1(cx, wide.get());
-        assert_eq!(encode(cx, encoded), [0xac]);
-        let encoded = encode_abi::encode_string_to_utf8(cx, ascii.handle().into());
-        assert_eq!(encode(cx, encoded), b"abc".to_vec());
-        let mut buffer = [0i8; 4];
-        assert!(JS_EncodeStringToBuffer(
-            cx,
-            ascii.get(),
-            buffer.as_mut_ptr(),
-            buffer.len()
-        ));
-        assert_eq!(&buffer[..3], &[b'a' as i8, b'b' as i8, b'c' as i8]);
+            rooted!(&in(cx) let ascii = JS_NewStringCopyZ(cx, c"abc".as_ptr()));
+            rooted!(&in(cx) let wide = JS_NewUCStringCopyZ(cx, [0x20ac, 0].as_ptr()));
+            rooted!(&in(cx) let utf8z = JS_NewStringCopyUTF8Z(
+                cx,
+                js::jsapi::JS::ConstUTF8CharsZ {
+                    data_: b"caf\xc3\xa9\0".as_ptr().cast(),
+                },
+            ));
+            rooted!(&in(cx) let utf8n = JS_NewStringCopyUTF8N(cx, &utf8_chars));
+            assert_eq!(to_rust(cx, ascii.get()), "abc");
+            assert_eq!(to_rust(cx, wide.get()), "€");
+            assert_eq!(to_rust(cx, utf8z.get()), "café");
+            assert_eq!(to_rust(cx, utf8n.get()), "a€");
+            assert_eq!(JS_GetStringLength(ascii.get()), 3);
+            assert_eq!(JS_GetStringEncodingLength(cx, ascii.get()), 3);
+            let encoded = encode_abi::encode_string_to_ascii(cx, ascii.get());
+            assert_eq!(encode(cx, encoded), b"abc".to_vec());
+            let encoded = encode_abi::encode_string_to_latin1(cx, wide.get());
+            assert_eq!(encode(cx, encoded), [0xac]);
+            let encoded = encode_abi::encode_string_to_utf8(cx, ascii.handle().into());
+            assert_eq!(encode(cx, encoded), b"abc".to_vec());
+            let mut buffer = [0i8; 4];
+            assert!(JS_EncodeStringToBuffer(
+                cx,
+                ascii.get(),
+                buffer.as_mut_ptr(),
+                buffer.len()
+            ));
+            assert_eq!(&buffer[..3], &[b'a' as i8, b'b' as i8, b'c' as i8]);
 
-        let mut escaped = [0i8; 8];
-        let n = JS_PutEscapedString(
-            cx,
-            escaped.as_mut_ptr(),
-            escaped.len(),
-            wide.get(),
-            b'"' as c_char,
-        );
-        assert_eq!(CStr::from_ptr(escaped.as_ptr()).to_bytes(), br#""\u20AC"#);
-        assert_eq!(n, 8);
-        let linear = StringToLinearStringSlow(cx, wide.get());
-        let n = JS_PutEscapedLinearString(
-            escaped.as_mut_ptr(),
-            escaped.len(),
-            linear,
-            b'"' as c_char,
-        );
-        assert_eq!(n, 8);
+            let mut escaped = [0i8; 8];
+            let n = JS_PutEscapedString(
+                cx,
+                escaped.as_mut_ptr(),
+                escaped.len(),
+                wide.get(),
+                b'"' as c_char,
+            );
+            assert_eq!(CStr::from_ptr(escaped.as_ptr()).to_bytes(), br#""\u20AC"#);
+            assert_eq!(n, 8);
+            let linear = StringToLinearStringSlow(cx, wide.get());
+            let n = JS_PutEscapedLinearString(
+                escaped.as_mut_ptr(),
+                escaped.len(),
+                linear,
+                b'"' as c_char,
+            );
+            assert_eq!(n, 8);
 
-        let empty = JS_GetEmptyString(cx);
-        assert_eq!(JS_GetStringLength(empty), 0);
-        let mut empty_value = UndefinedValue();
-        JS_GetEmptyStringValue(cx, &mut empty_value);
-        assert_eq!(empty_value.to_string(), empty);
+            let empty = JS_GetEmptyString(cx);
+            assert_eq!(JS_GetStringLength(empty), 0);
+            let mut empty_value = UndefinedValue();
+            JS_GetEmptyStringValue(cx, &mut empty_value);
+            assert_eq!(empty_value.to_string(), empty);
 
-        let ext1 = external_callbacks(3);
-        let p = Box::into_raw(b"abc".to_vec().into_boxed_slice());
-        let latin1 = JS_NewExternalStringLatin1(cx, p.cast(), 3, ext1);
-        let ext2 = external_callbacks(1);
-        let p = Box::into_raw(Box::new(0x20acu16));
-        let utf16 = JS_NewExternalUCString(cx, p, 1, ext2);
-        rooted!(&in(cx) let latin1 = latin1);
-        rooted!(&in(cx) let utf16 = utf16);
-        assert_eq!(to_rust(cx, latin1.get()), "abc");
-        assert_eq!(to_rust(cx, utf16.get()), "€");
+            let ext1 = external_callbacks(3);
+            let p = Box::into_raw(b"abc".to_vec().into_boxed_slice());
+            let latin1 = JS_NewExternalStringLatin1(cx, p.cast(), 3, ext1);
+            let ext2 = external_callbacks(1);
+            let p = Box::into_raw(Box::new(0x20acu16));
+            let utf16 = JS_NewExternalUCString(cx, p, 1, ext2);
+            rooted!(&in(cx) let latin1 = latin1);
+            rooted!(&in(cx) let utf16 = utf16);
+            assert_eq!(to_rust(cx, latin1.get()), "abc");
+            assert_eq!(to_rust(cx, utf16.get()), "€");
 
-        let ext3 = external_callbacks(3);
-        let p = Box::into_raw(b"xyz".to_vec().into_boxed_slice());
-        let mut allocated = false;
-        rooted!(&in(cx) let maybe_latin1 =
+            let ext3 = external_callbacks(3);
+            let p = Box::into_raw(b"xyz".to_vec().into_boxed_slice());
+            let mut allocated = false;
+            rooted!(&in(cx) let maybe_latin1 =
             JS_NewMaybeExternalStringLatin1(cx, p.cast(), 3, ext3, &mut allocated));
-        let ext4 = external_callbacks(1);
-        let p = Box::into_raw(Box::new(0x2603u16));
-        let mut allocated_uc = false;
-        rooted!(&in(cx) let maybe_utf16 =
+            let ext4 = external_callbacks(1);
+            let p = Box::into_raw(Box::new(0x2603u16));
+            let mut allocated_uc = false;
+            rooted!(&in(cx) let maybe_utf16 =
             JS_NewMaybeExternalUCString(cx, p, 1, ext4, &mut allocated_uc));
-        let ext5 = external_callbacks(4);
-        let mut utf8_bytes = *b"rust";
-        let utf8_chars = js::jsapi::JS::UTF8Chars {
-            _base: range(utf8_bytes.as_mut_ptr(), utf8_bytes.len()),
-        };
-        let mut allocated_utf8 = false;
-        rooted!(&in(cx) let maybe_utf8 =
+            let ext5 = external_callbacks(4);
+            let mut utf8_bytes = *b"rust";
+            let utf8_chars = js::jsapi::JS::UTF8Chars {
+                _base: range(utf8_bytes.as_mut_ptr(), utf8_bytes.len()),
+            };
+            let mut allocated_utf8 = false;
+            rooted!(&in(cx) let maybe_utf8 =
             JS_NewMaybeExternalStringUTF8(cx, &utf8_chars, ext5, &mut allocated_utf8));
-        assert_eq!(to_rust(cx, maybe_latin1.get()), "xyz");
-        assert_eq!(to_rust(cx, maybe_utf16.get()), "☃");
-        assert_eq!(to_rust(cx, maybe_utf8.get()), "rust");
-        DeleteJSExternalStringCallbacks(external_callbacks(0));
-        let _ = (allocated, allocated_uc, allocated_utf8);
+            assert_eq!(to_rust(cx, maybe_latin1.get()), "xyz");
+            assert_eq!(to_rust(cx, maybe_utf16.get()), "☃");
+            assert_eq!(to_rust(cx, maybe_utf8.get()), "rust");
+            DeleteJSExternalStringCallbacks(external_callbacks(0));
+            let _ = (allocated, allocated_uc, allocated_utf8);
 
-        atoms_and_ids(cx, global, ascii.get());
-        json(cx, global);
-        conversions(cx);
-        allocator(cx);
-        set_global(cx, global, c"encoded", StringValue(&*utf8z.get()));
-        assert!(eval(cx, global, "encoded === 'café'").to_boolean());
-        Observation::ok(Value::Boolean(true))
-    });
+            atoms_and_ids(cx, global, ascii.get());
+            json(cx, global);
+            conversions(cx);
+            allocator(cx);
+            set_global(cx, global, c"encoded", StringValue(&*utf8z.get()));
+            assert!(eval(cx, global, "encoded === 'café'").to_boolean());
+            Observation::ok(Value::Boolean(true))
+        },
+    );
 }
 
 unsafe fn to_rust(cx: &mut JSContext, s: *mut js::jsapi::JSString) -> String {
@@ -469,11 +455,7 @@ unsafe fn range<T>(ptr: *mut T, len: usize) -> Range<T> {
     range
 }
 
-unsafe fn atoms_and_ids(
-    cx: &mut JSContext,
-    global: HandleObject,
-    ascii: *mut js::jsapi::JSString,
-) {
+unsafe fn atoms_and_ids(cx: &mut JSContext, global: HandleObject, ascii: *mut js::jsapi::JSString) {
     let a = JS_AtomizeString(cx, c"name".as_ptr());
     let b = JS_AtomizeStringN(cx, c"name".as_ptr(), 4);
     let c = JS_AtomizeAndPinStringN(cx, c"pinned".as_ptr(), 6);
@@ -499,7 +481,13 @@ unsafe fn atoms_and_ids(
     let mut matched = false;
     assert!(JS_StringEqualsAscii(cx, a, c"name".as_ptr(), &mut matched));
     assert!(matched);
-    assert!(JS_StringEqualsAscii1(cx, a, c"name".as_ptr(), 4, &mut matched));
+    assert!(JS_StringEqualsAscii1(
+        cx,
+        a,
+        c"name".as_ptr(),
+        4,
+        &mut matched
+    ));
     assert!(matched);
 
     rooted!(&in(cx) let a = a);

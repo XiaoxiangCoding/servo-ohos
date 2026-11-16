@@ -141,12 +141,12 @@ unsafe extern "C" fn write_callback(
     let typed = ObjectValue(JS_NewUint8Array(cx, 4));
     assert!(typed.is_object());
 
-    js::jsapi::JS_WriteUint32PairUnchecked(writer, HOST_TAG, id as u32)
-        && js::jsapi::JS_WriteBytes(writer, b"payload!".as_ptr().cast(), 8)
-        && js::jsapi::JS_WriteString(writer, raw_handle(&text))
-        && js::jsapi::JS_WriteDouble(writer, 2.5)
-        && js::jsapi::JS_WriteTypedArray(writer, raw_handle(&typed))
-        && js::jsapi::JS_WriteUint32PairUnchecked(writer, 11, 22)
+    js::jsapi::JS_WriteUint32PairUnchecked(writer, HOST_TAG, id as u32) &&
+        js::jsapi::JS_WriteBytes(writer, b"payload!".as_ptr().cast(), 8) &&
+        js::jsapi::JS_WriteString(writer, raw_handle(&text)) &&
+        js::jsapi::JS_WriteDouble(writer, 2.5) &&
+        js::jsapi::JS_WriteTypedArray(writer, raw_handle(&typed)) &&
+        js::jsapi::JS_WriteUint32PairUnchecked(writer, 11, 22)
 }
 
 unsafe extern "C" fn read_callback(

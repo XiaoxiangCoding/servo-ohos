@@ -6,8 +6,8 @@
 
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::ptr::NonNull;
 use std::ptr;
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use js::jsapi::{
@@ -19,21 +19,19 @@ use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
     AddPromiseReactions, CallOriginalPromiseReject, CallOriginalPromiseResolve,
-    DequeueNextRegularMicroTask, EnqueueMicroTask, GetPromiseIsHandled, GetPromiseState,
-    GetJobQueue, GetRegularMicroTaskCount, HasAnyMicroTasks,
-    HasRegularMicroTasks, IsPromiseObject,
-    JS_DequeueNextMicroTask, NewPromiseObject, PeekNextMicroTask, PrependMicroTask, RejectPromise,
-    MaybeGetHostDefinedDataFromJSMicroTask, ResolvePromise,
-    RunJSMicroTask, SetAnyPromiseIsHandled, SetJobQueue,
-    SetPromiseRejectionTrackerCallback, SetPromiseUserInputEventHandlingState,
-    UseInternalJobQueues, JS_AddInterruptCallback, JS_GetSecurityCallbacks,
-    JS_RequestInterruptCallback, JS_RequestInterruptCallbackCanWait, JS_SetSecurityCallbacks,
+    DequeueNextRegularMicroTask, EnqueueMicroTask, GetJobQueue, GetPromiseIsHandled,
+    GetPromiseState, GetRegularMicroTaskCount, HasAnyMicroTasks, HasRegularMicroTasks,
+    IsPromiseObject, JS_AddInterruptCallback, JS_DequeueNextMicroTask, JS_GetSecurityCallbacks,
+    JS_NewGlobalObject, JS_RequestInterruptCallback, JS_RequestInterruptCallbackCanWait,
+    JS_SetSecurityCallbacks, MaybeGetHostDefinedDataFromJSMicroTask, NewPromiseObject,
+    PeekNextMicroTask, PrependMicroTask, RejectPromise, ResolvePromise, RunJSMicroTask,
+    SetAnyPromiseIsHandled, SetJobQueue, SetPromiseRejectionTrackerCallback,
+    SetPromiseUserInputEventHandlingState, UseInternalJobQueues,
 };
-use js::rust::wrappers2::JS_NewGlobalObject;
 use js::rust::{JSEngine, RealmOptions, SIMPLE_GLOBAL_CLASS};
 
 use crate::support::{
-    eval, observe, record, record_case, set_global, Observation, Value as Observed,
+    Observation, Value as Observed, eval, observe, record, record_case, set_global,
 };
 
 thread_local! {
@@ -161,7 +159,10 @@ fn promise_values(engine: &JSEngine) {
             rooted!(&in(cx) let resolved = CallOriginalPromiseResolve(cx, value.handle()));
             assert_eq!(GetPromiseState(resolved.handle()), PromiseState::Fulfilled);
             rooted!(&in(cx) let resolved_value = ObjectValue(resolved.get()));
-            assert_eq!(CallOriginalPromiseResolve(cx, resolved_value.handle()), resolved.get());
+            assert_eq!(
+                CallOriginalPromiseResolve(cx, resolved_value.handle()),
+                resolved.get()
+            );
 
             assert!(SetPromiseUserInputEventHandlingState(
                 resolved.handle(),
@@ -219,10 +220,7 @@ fn promise_values(engine: &JSEngine) {
             assert_eq!(INTERRUPTS.load(Ordering::SeqCst), 2);
 
             JS_SetSecurityCallbacks(cx, &SECURITY_CALLBACKS);
-            assert_eq!(
-                JS_GetSecurityCallbacks(cx),
-                &SECURITY_CALLBACKS as *const _
-            );
+            assert_eq!(JS_GetSecurityCallbacks(cx), &SECURITY_CALLBACKS as *const _);
             JS_SetSecurityCallbacks(cx, ptr::null());
 
             SetJobQueue(cx, ptr::null_mut());
@@ -265,15 +263,17 @@ fn job_queue(engine: &JSEngine) {
             assert!(!queue.is_null());
             SetJobQueue(cx, queue as *mut jsapi::JobQueue);
             assert_eq!(GetJobQueue(cx), queue as *mut jsapi::JobQueue);
-            assert!(eval(
-                cx,
-                global,
-                "var log = [];
+            assert!(
+                eval(
+                    cx,
+                    global,
+                    "var log = [];
                  Promise.resolve(1).then(() => log.push('a'));
                  Promise.resolve(2).then(() => log.push('b'));
                  log.join() === ''"
-            )
-            .to_boolean());
+                )
+                .to_boolean()
+            );
             assert!(HasAnyMicroTasks(cx));
             assert!(HasRegularMicroTasks(cx));
             assert_eq!(GetRegularMicroTaskCount(cx), 2);
@@ -405,7 +405,5 @@ unsafe extern "C" fn run_jobs(cx: *mut jsapi::JSContext) {
 pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("promise.values_and_reactions", || promise_values(engine));
     crate::support::isolate_case("promise.job_queue", || job_queue(engine));
-    crate::support::isolate_case("promise.internal_job_queue", || {
-        internal_job_queue(engine)
-    });
+    crate::support::isolate_case("promise.internal_job_queue", || internal_job_queue(engine));
 }

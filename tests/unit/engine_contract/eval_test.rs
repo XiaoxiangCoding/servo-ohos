@@ -14,8 +14,8 @@ use js::jsval::{Int32Value, JSVal, ObjectValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{Call, CompileFunction, JS_NewGlobalObject, JS_SetProperty};
 use js::rust::{
-    evaluate_script, transform_u16_to_source_text, CompileOptionsWrapper, EnvironmentChain,
-    HandleObject, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
+    CompileOptionsWrapper, EnvironmentChain, HandleObject, JSEngine, RealmOptions, Runtime,
+    SIMPLE_GLOBAL_CLASS, evaluate_script, transform_u16_to_source_text,
 };
 
 fn eval(cx: &mut js::context::JSContext, global: HandleObject, source: &str) -> JSVal {
@@ -171,7 +171,6 @@ fn the_name_of_a_compiled_function_is_not_bound_in_its_scope(engine: &JSEngine) 
     }
 }
 
-
 pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("eval.environment_chain", || {
         compile_function_with_environment_chain(engine);
@@ -180,9 +179,15 @@ pub fn run(engine: &JSEngine) {
             "eval.environment_chain",
             &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
             &[
-                "AppendToEnvironmentChain", "CompileFunction", "NewEnvironmentChain",
-                "DeleteEnvironmentChain", "JS_GetFunctionObject", "Call",
-                "JS_NewGlobalObject", "JS_NewPlainObject", "JS_SetProperty",
+                "AppendToEnvironmentChain",
+                "CompileFunction",
+                "NewEnvironmentChain",
+                "DeleteEnvironmentChain",
+                "JS_GetFunctionObject",
+                "Call",
+                "JS_NewGlobalObject",
+                "JS_NewPlainObject",
+                "JS_SetProperty",
             ],
         );
     });

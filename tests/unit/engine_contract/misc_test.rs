@@ -10,17 +10,17 @@ use std::ffi::c_void;
 use std::ptr;
 
 use js::jsapi::{
-    self, ContextOptions, GCProgress, GCReason, GCOptions, HeapState, JSClass, JSClassOps,
+    self, ContextOptions, GCOptions, GCProgress, GCReason, HeapState, JSClass, JSClassOps,
     JSGCParamKey, JSGCStatus, JSJitCompilerOption, JSTracer, MemoryUse, ObjectPrivateVisitor,
     ServoSizes, SliceBudget, TraceKind, jsid,
 };
 use js::jsval::Int32Value;
 use js::rooted;
+use js::rust::JSEngine;
 use js::rust::wrappers2::{
     JS_GC, JS_GetProperty, JS_NewEnumerateStandardClasses, JS_NewObject, JS_NewPlainObject,
     JS_ResolveStandardClass, RUST_INTERNED_STRING_TO_JSID,
 };
-use js::rust::JSEngine;
 
 use crate::support::{Observation, Value, Value as Observed, eval, observe, record, with_global};
 
@@ -32,7 +32,10 @@ unsafe extern "C" fn object_size(_: *mut jsapi::JSObject) -> usize {
     11
 }
 
-unsafe extern "C" fn has_private(obj: *mut jsapi::JSObject, iface: *mut *mut jsapi::nsISupports) -> bool {
+unsafe extern "C" fn has_private(
+    obj: *mut jsapi::JSObject,
+    iface: *mut *mut jsapi::nsISupports,
+) -> bool {
     let _ = obj;
     *iface = ptr::null_mut();
     false
@@ -44,14 +47,20 @@ unsafe extern "C" fn want_to_measure(_: *mut jsapi::JSObject) -> bool {
 
 fn gc_state(engine: &JSEngine) {
     with_global(engine, |cx, _global| unsafe {
-        assert_eq!(jsapi::JS_GetParentRuntime(cx.raw_cx()), jsapi::JS_GetRuntime(cx.raw_cx()));
+        assert_eq!(
+            jsapi::JS_GetParentRuntime(cx.raw_cx()),
+            jsapi::JS_GetRuntime(cx.raw_cx())
+        );
         assert_eq!(jsapi::RuntimeHeapState(), HeapState::Idle);
 
         let before = jsapi::GetGCHeapUsage(cx.raw_cx());
         rooted!(&in(cx) let unused = JS_NewPlainObject(cx));
         assert!(!unused.get().is_null());
         let after = jsapi::GetGCHeapUsage(cx.raw_cx());
-        assert!(after >= before, "GC heap usage must not shrink on allocation");
+        assert!(
+            after >= before,
+            "GC heap usage must not shrink on allocation"
+        );
 
         jsapi::NonIncrementalGC(cx.raw_cx(), GCOptions::Normal, GCReason::API);
         assert_eq!(jsapi::RuntimeHeapState(), HeapState::Idle);
@@ -165,7 +174,6 @@ fn roots_options_and_memory(engine: &JSEngine) {
         ],
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // GC callbacks, GC parameters and job-queue hints.
@@ -422,7 +430,9 @@ fn build_ids(_engine: &JSEngine) -> Observation {
 
 pub fn run(engine: &JSEngine) {
     crate::support::isolate_case("misc.gc_state", || gc_state(engine));
-    crate::support::isolate_case("misc.roots_options_memory", || roots_options_and_memory(engine));
+    crate::support::isolate_case("misc.roots_options_memory", || {
+        roots_options_and_memory(engine)
+    });
     crate::support::run_case(
         "misc.gc_callbacks",
         &[
@@ -463,13 +473,17 @@ pub fn run(engine: &JSEngine) {
     crate::support::run_case("misc.jit_backend", &["DisableJitBackend"], || {
         disable_jit_backend(engine)
     });
-    crate::support::run_case("misc.process_lifecycle", &["JS_Init", "JS_ShutDown"], || {
-        process_lifecycle(engine)
-    });
+    crate::support::run_case(
+        "misc.process_lifecycle",
+        &["JS_Init", "JS_ShutDown"],
+        || process_lifecycle(engine),
+    );
     crate::support::run_case("misc.self_hosted_code", &["InitSelfHostedCode"], || {
         self_hosted_code(engine)
     });
-    crate::support::run_case("misc.build_ids", &["SetBuildId", "SetProcessBuildIdOp"], || {
-        build_ids(engine)
-    });
+    crate::support::run_case(
+        "misc.build_ids",
+        &["SetBuildId", "SetProcessBuildIdOp"],
+        || build_ids(engine),
+    );
 }

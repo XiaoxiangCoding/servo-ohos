@@ -16,8 +16,8 @@ use js::rust::{CustomAutoRooter, CustomTrace, JSEngine};
 use crate::support::{Observation, Value, eval, get_property, observe, run_case, with_global};
 
 pub fn run(engine: &JSEngine) {
-    if crate::support::case_selected("call.throw_pending_exception")
-        || crate::support::case_selected("rooter.trace_on_gc")
+    if crate::support::case_selected("call.throw_pending_exception") ||
+        crate::support::case_selected("rooter.trace_on_gc")
     {
         call_cases(engine);
     }

@@ -31,13 +31,13 @@ mod clone_test;
 #[cfg(test)]
 mod contract_test;
 #[cfg(test)]
-mod errors_test;
+mod debugger_test;
 #[cfg(test)]
-mod eval_test;
+mod errors_test;
 #[cfg(test)]
 mod eval_ext_test;
 #[cfg(test)]
-mod debugger_test;
+mod eval_test;
 #[cfg(test)]
 mod event_loop_test;
 #[cfg(test)]
@@ -45,29 +45,29 @@ mod misc_test;
 #[cfg(test)]
 mod module_test;
 #[cfg(test)]
+mod objects_extra_test;
+#[cfg(test)]
 mod objects_test;
 #[cfg(test)]
-mod objects_extra_test;
+mod promises_test;
 #[cfg(test)]
 mod property_test;
 #[cfg(test)]
 mod proxy_test;
 #[cfg(test)]
-mod promises_test;
-#[cfg(test)]
 mod realm_test;
 #[cfg(test)]
 mod runtime_test;
 #[cfg(test)]
-mod strings_test;
-#[cfg(test)]
-mod strings_extra_test;
-#[cfg(test)]
-mod support;
-#[cfg(test)]
 mod stencil_test;
 #[cfg(test)]
 mod streaming_test;
+#[cfg(test)]
+mod strings_extra_test;
+#[cfg(test)]
+mod strings_test;
+#[cfg(test)]
+mod support;
 
 #[cfg(test)]
 mod tests {

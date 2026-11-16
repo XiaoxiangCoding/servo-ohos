@@ -170,15 +170,36 @@ does the mechanical work; only the affected cases are left to edit.
    says `no changes; no cases are affected`, skip this step. `empty` and `todo` entries still need a
    case; the rules above apply.
 
-4. **Run the gate and commit.**
+4. **Run the gate, format, and commit.**
 
    ```bash
    tests/unit/engine_contract/tools/run.sh run-contract-gate
    ./mach fmt
+   git status --short
    ```
 
-   Then commit the version pins, the lockfile, the regenerated snapshot/usage files, and the touched
-   cases together. Add the allowlist or fix records only when the gate required them.
+   `./mach fmt` runs rustfmt with `binop_separator=Back`, `imports_granularity=Module` and
+   `group_imports=StdExternalCrate`, so it can rewrite files that the upgrade did not touch. Keep
+   those changes: `./mach test-tidy`, which the `lint` workflow runs, uses the same configuration
+   and fails if they are reverted. Do not run plain `cargo fmt --check` as the gate; its output
+   differs and does not describe the repository's format.
+
+   Commit the version pins, the lockfile, the regenerated snapshot/usage files, and the touched
+   cases together. If `./mach fmt` also reformatted unrelated files, commit that separately:
+
+   ```bash
+   git add Cargo.toml Cargo.lock support/quickjs/cargo-config.toml \
+     tests/unit/engine_contract/mozjs-api-snapshot.toml \
+     tests/unit/engine_contract/servo-mozjs-api-usage.toml \
+     tests/unit/engine_contract/<touched>_test.rs
+   git commit -m "deps: Bump mozjs to <X.Y.Z>"
+
+   git add tests/unit/engine_contract/*.rs
+   git commit -m "chore: run mach fmt on the engine contract tests"
+   ```
+
+   Add the allowlist or fix records only when the gate required them. Never commit
+   `.vscode/settings.json`; it is a personal editor configuration.
 
 ## Tool tests
 

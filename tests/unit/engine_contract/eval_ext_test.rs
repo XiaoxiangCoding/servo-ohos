@@ -4,9 +4,7 @@
 
 //! Script compilation, evaluation and script-private contract.
 
-use js::jsapi::{
-    HandleValueArray, SupportUnscopables,
-};
+use js::jsapi::{HandleValueArray, SupportUnscopables};
 use js::jsval::{Int32Value, ObjectValue, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{
@@ -14,11 +12,11 @@ use js::rust::wrappers2::{
     JS_ExecuteScript1, JS_GetScriptPrivate,
 };
 use js::rust::{
-    transform_str_to_source_text, transform_u16_to_source_text, CompileOptionsWrapper,
-    EnvironmentChain, JSEngine,
+    CompileOptionsWrapper, EnvironmentChain, JSEngine, transform_str_to_source_text,
+    transform_u16_to_source_text,
 };
 
-use crate::support::{record_case, Observation, Value as Observed};
+use crate::support::{Observation, Value as Observed, record_case};
 
 pub fn run(engine: &JSEngine) {
     record_case(
@@ -45,10 +43,17 @@ pub fn run(engine: &JSEngine) {
             let mut source = transform_str_to_source_text(utf8);
             rooted!(&in(cx) let script_utf8 = Compile1(cx, options.ptr, &mut source));
             assert!(!script_utf8.get().is_null());
-            assert_eq!(js::jsapi::JS_GetGlobalFromScript(script_utf8.get()), global.get());
+            assert_eq!(
+                js::jsapi::JS_GetGlobalFromScript(script_utf8.get()),
+                global.get()
+            );
 
             rooted!(&in(cx) let mut rval = UndefinedValue());
-            assert!(JS_ExecuteScript(cx, script_utf8.handle(), rval.handle_mut()));
+            assert!(JS_ExecuteScript(
+                cx,
+                script_utf8.handle(),
+                rval.handle_mut()
+            ));
             assert_eq!(rval.get().to_int32(), 3);
 
             let utf16: Vec<u16> = "20 + 22".encode_utf16().collect();
@@ -100,7 +105,13 @@ pub fn run(engine: &JSEngine) {
                 length_: 1,
                 elements_: argv.as_ptr(),
             };
-            assert!(Call(cx, this.handle(), function_value.handle(), &argv, rval.handle_mut()));
+            assert!(Call(
+                cx,
+                this.handle(),
+                function_value.handle(),
+                &argv,
+                rval.handle_mut()
+            ));
             assert_eq!(rval.get().to_int32(), 42);
             Observation::ok(Observed::Boolean(true))
         },

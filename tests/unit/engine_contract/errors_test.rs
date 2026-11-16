@@ -21,9 +21,9 @@ use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::JS_NewGlobalObject;
 use js::rust::{
-    describe_scripted_caller, error_info_from_exception_stack, evaluate_script,
     CompileOptionsWrapper, HandleObject as SafeHandleObject, JSEngine, RealmOptions, Runtime,
-    SIMPLE_GLOBAL_CLASS,
+    SIMPLE_GLOBAL_CLASS, describe_scripted_caller, error_info_from_exception_stack,
+    evaluate_script,
 };
 
 fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, SafeHandleObject)) {
@@ -266,11 +266,7 @@ unsafe extern "C" fn probe(cx: *mut RawJSContext, argc: u32, vp: *mut Value) -> 
 
     let stack = capture(cx, None);
     let mut subsumed = std::mem::MaybeUninit::<StackCapture>::uninit();
-    jsapi::JS_StackCapture_FirstSubsumedFrame(
-        cx.raw_cx(),
-        true,
-        subsumed.as_mut_ptr(),
-    );
+    jsapi::JS_StackCapture_FirstSubsumedFrame(cx.raw_cx(), true, subsumed.as_mut_ptr());
     let mut subsumed_stack: *mut JSObject = ptr::null_mut();
     let none: *mut JSObject = ptr::null_mut();
     assert!(jsapi::CaptureCurrentStack(
@@ -451,7 +447,11 @@ foo();";
         global,
         "stack === 'baz@stack.js:5:7\\nbar@stack.js:7:5\\nfoo@stack.js:9:3\\n@stack.js:12:1\\n'"
     ));
-    assert!(eval_bool(cx, global, "v8Stack.split('\\n')[0] === '    at baz (stack.js:5:7)' && v8Stack.split('\\n')[3] === '    at stack.js:12:1'"));
+    assert!(eval_bool(
+        cx,
+        global,
+        "v8Stack.split('\\n')[0] === '    at baz (stack.js:5:7)' && v8Stack.split('\\n')[3] === '    at stack.js:12:1'"
+    ));
     assert!(eval_bool(
         cx,
         global,
@@ -515,15 +515,27 @@ pub fn run(engine: &JSEngine) {
             "errors.core",
             &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
             &[
-                "BuildStackString", "CaptureCurrentStack", "DescribeScriptedCaller",
-                "GetSavedFrameColumn", "GetSavedFrameFunctionDisplayName", "GetSavedFrameLine",
-                "GetSavedFrameParent", "GetSavedFrameSource", "GetScriptedCallerGlobal",
-                "HideScriptedCaller", "JS_ErrorFromException", "JS_GetFunctionObject",
+                "BuildStackString",
+                "CaptureCurrentStack",
+                "DescribeScriptedCaller",
+                "GetSavedFrameColumn",
+                "GetSavedFrameFunctionDisplayName",
+                "GetSavedFrameLine",
+                "GetSavedFrameParent",
+                "GetSavedFrameSource",
+                "GetScriptedCallerGlobal",
+                "HideScriptedCaller",
+                "JS_ErrorFromException",
+                "JS_GetFunctionObject",
                 "JS_GetScriptedCallerPrivate",
-                "JS_NewFunction", "JS_SetPendingException",
-                "DumpJSStack", "JS_StackCapture_AllFrames",
-                "JS_StackCapture_FirstSubsumedFrame", "JS_StackCapture_MaxFrames",
-                "PendingExceptionStackInfo", "UnhideScriptedCaller",
+                "JS_NewFunction",
+                "JS_SetPendingException",
+                "DumpJSStack",
+                "JS_StackCapture_AllFrames",
+                "JS_StackCapture_FirstSubsumedFrame",
+                "JS_StackCapture_MaxFrames",
+                "PendingExceptionStackInfo",
+                "UnhideScriptedCaller",
             ],
         );
     });

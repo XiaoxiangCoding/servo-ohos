@@ -13,10 +13,10 @@ use std::ptr;
 use js::context::JSContext;
 use js::jsapi::{
     CallArgs, ClippedTime, ESClass, GCReason, GetFunctionNativeReserved, HandleValueArray,
-    IsCallable, IsConstructor, JSContext as RawJSContext, JSFunctionSpec, JSJitInfo,
-    JSJitMethodCallArgs, JSNativeWrapper, JSObject, JSPropertySpec_Name, NewArrayObject1,
-    OnNewGlobalHookOption, RegExpFlags, SetFunctionNativeReserved, Value, JSITER_HIDDEN,
-    JSITER_OWNONLY, JSITER_SYMBOLS, JSITER_SYMBOLSONLY, JSPROP_ENUMERATE,
+    IsCallable, IsConstructor, JSContext as RawJSContext, JSFunctionSpec, JSITER_HIDDEN,
+    JSITER_OWNONLY, JSITER_SYMBOLS, JSITER_SYMBOLSONLY, JSJitInfo, JSJitMethodCallArgs,
+    JSNativeWrapper, JSObject, JSPROP_ENUMERATE, JSPropertySpec_Name, NewArrayObject1,
+    OnNewGlobalHookOption, RegExpFlags, SetFunctionNativeReserved, Value,
 };
 use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
 use js::realm::AutoRealm;
@@ -24,16 +24,16 @@ use js::rooted;
 use js::rust::wrappers2::{
     CheckRegExpSyntax, DateGetMsecSinceEpoch, ExecuteRegExpNoStatics, GetArrayLength,
     GetBuiltinClass, GetPropertyKeys, GetRealmObjectPrototype, GetWeakMapEntry, IsArrayObject,
-    JS_ClearPendingException, JS_DefineFunctions, JS_DefineProperty, JS_FreezeObject,
+    JS_ClearPendingException, JS_DefineFunctions, JS_DefineProperty, JS_FreezeObject, JS_GC,
     JS_GetElement, JS_GetFunctionId, JS_GetPropertyById, JS_HasInstance, JS_IsExceptionPending,
     JS_NewGlobalObject, JS_NewPlainObject, JS_SetElement, JS_SetProperty, MapEntries, MapGet,
     MapSet, MapSize, NewArrayObject, NewDateObject, NewFunctionWithReserved, NewMapObject,
     NewSetObject, NewUCRegExpObject, NewWeakMapObject, ObjectIsDate, SetAdd, SetArrayLength,
-    SetWeakMapEntry, JS_GC,
+    SetWeakMapEntry,
 };
 use js::rust::{
-    evaluate_script, for_of, CompileOptionsWrapper, HandleObject, IdVector, JSEngine,
-    RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
+    CompileOptionsWrapper, HandleObject, IdVector, JSEngine, RealmOptions, Runtime,
+    SIMPLE_GLOBAL_CLASS, evaluate_script, for_of,
 };
 
 unsafe fn eval(cx: &mut JSContext, global: HandleObject, src: &str) -> JSVal {
@@ -240,12 +240,14 @@ fn collections(engine: &JSEngine) {
         assert_eq!(out.get().to_int32(), 42);
         assert!(MapEntries(cx, map.handle(), out.handle_mut()));
         let mut entries = 0;
-        assert!(for_of::<_, _, ()>(cx, out.handle(), |_, entry| {
-            assert!(entry.get().is_object());
-            entries += 1;
-            Ok(ControlFlow::Continue(()))
-        })
-        .is_ok());
+        assert!(
+            for_of::<_, _, ()>(cx, out.handle(), |_, entry| {
+                assert!(entry.get().is_object());
+                entries += 1;
+                Ok(ControlFlow::Continue(()))
+            })
+            .is_ok()
+        );
         assert_eq!(entries, 1);
         assert_eq!(builtin_class(cx, map.get()), ESClass::Map);
 
@@ -274,11 +276,13 @@ fn collections(engine: &JSEngine) {
         assert_eq!(builtin_class(cx, set.get()), ESClass::Set);
         rooted!(&in(cx) let set_value = ObjectValue(set.get()));
         let mut sum = 0;
-        assert!(for_of::<_, _, ()>(cx, set_value.handle(), |_, v| {
-            sum += v.get().to_int32();
-            Ok(ControlFlow::Continue(()))
-        })
-        .is_ok());
+        assert!(
+            for_of::<_, _, ()>(cx, set_value.handle(), |_, v| {
+                sum += v.get().to_int32();
+                Ok(ControlFlow::Continue(()))
+            })
+            .is_ok()
+        );
         assert_eq!(sum, 43);
         assert!(js::jsapi::SetClear(cx.raw_cx(), set.handle().into()));
         assert_eq!(js::jsapi::SetSize(cx.raw_cx(), set.handle().into()), 0);
@@ -542,21 +546,61 @@ pub fn run(engine: &JSEngine) {
             "objects.core",
             &crate::support::Observation::ok(crate::support::Value::Boolean(true)),
             &[
-                "CallJitMethodOp", "CheckRegExpSyntax", "DateGetMsecSinceEpoch",
-                "ExecuteRegExpNoStatics", "GetArrayLength", "GetBuiltinClass",
-                "GetFunctionNativeReserved", "GetPropertyKeys", "GetRealmKeyObject",
-                "GetRealmObjectPrototype", "GetWeakMapEntry", "IsArrayObject", "IsCallable",
-                "IsConstructor", "IsWeakMapObject", "JS_ClearPendingException",
-                "JS_DefineFunctions", "JS_DefineProperties", "JS_DefineProperty",
-                "JS_FreezeObject", "JS_GC", "JS_GetElement", "JS_GetFunctionId",
-                "JS_GetPropertyById", "JS_HasInstance", "JS_IsExceptionPending",
-                "JS_NewGlobalObject", "JS_NewObjectWithGivenProto", "JS_NewPlainObject",
-                "JS_SetElement", "JS_SetProperty", "MapDelete", "MapEntries", "MapGet",
-                "MapHas", "MapSet", "MapSize", "NewArrayObject", "NewArrayObject1",
-                "NewDateObject", "NewFunctionWithReserved", "NewMapObject", "NewSetObject",
-                "NewUCRegExpObject", "NewWeakMapObject", "ObjectIsDate", "ObjectIsRegExp",
-                "RUST_FUNCTION_VALUE_TO_JITINFO", "RunJobs", "SetAdd", "SetArrayLength",
-                "SetClear", "SetFunctionNativeReserved", "SetSize", "SetWeakMapEntry",
+                "CallJitMethodOp",
+                "CheckRegExpSyntax",
+                "DateGetMsecSinceEpoch",
+                "ExecuteRegExpNoStatics",
+                "GetArrayLength",
+                "GetBuiltinClass",
+                "GetFunctionNativeReserved",
+                "GetPropertyKeys",
+                "GetRealmKeyObject",
+                "GetRealmObjectPrototype",
+                "GetWeakMapEntry",
+                "IsArrayObject",
+                "IsCallable",
+                "IsConstructor",
+                "IsWeakMapObject",
+                "JS_ClearPendingException",
+                "JS_DefineFunctions",
+                "JS_DefineProperties",
+                "JS_DefineProperty",
+                "JS_FreezeObject",
+                "JS_GC",
+                "JS_GetElement",
+                "JS_GetFunctionId",
+                "JS_GetPropertyById",
+                "JS_HasInstance",
+                "JS_IsExceptionPending",
+                "JS_NewGlobalObject",
+                "JS_NewObjectWithGivenProto",
+                "JS_NewPlainObject",
+                "JS_SetElement",
+                "JS_SetProperty",
+                "MapDelete",
+                "MapEntries",
+                "MapGet",
+                "MapHas",
+                "MapSet",
+                "MapSize",
+                "NewArrayObject",
+                "NewArrayObject1",
+                "NewDateObject",
+                "NewFunctionWithReserved",
+                "NewMapObject",
+                "NewSetObject",
+                "NewUCRegExpObject",
+                "NewWeakMapObject",
+                "ObjectIsDate",
+                "ObjectIsRegExp",
+                "RUST_FUNCTION_VALUE_TO_JITINFO",
+                "RunJobs",
+                "SetAdd",
+                "SetArrayLength",
+                "SetClear",
+                "SetFunctionNativeReserved",
+                "SetSize",
+                "SetWeakMapEntry",
             ],
         );
     });
