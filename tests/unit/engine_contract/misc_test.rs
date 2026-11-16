@@ -393,11 +393,12 @@ fn standard_classes(engine: &JSEngine) -> Observation {
 // ---------------------------------------------------------------------------
 
 fn engine_options(engine: &JSEngine) -> Observation {
-    // Neither setter has a getter in the bindings (`JS_SetGlobalJitCompilerOption` and
-    // `JS_SetOffthreadIonCompilationEnabled` return void), so the outcome cannot be read back. On
-    // SpiderMonkey both are global switches whose effect is a JIT behaviour change, not a value;
-    // with the suite running on one engine, enabling or disabling them would change how the rest
-    // of the cases execute. The case therefore pins the registration contract only.
+    // The setters return void, and reading a JIT option back does not help: on this SpiderMonkey
+    // build `JS_GetGlobalJitCompilerOption` reports 0 for every option before and after the write,
+    // including warmup triggers that should have a non-zero default. With no readable value there
+    // is nothing a causal assertion could compare, so the case pins that the calls are safe on a
+    // live context. Enabling or disabling a JIT switch here would also change how the rest of the
+    // suite executes.
     with_global(engine, |cx, _global| unsafe {
         jsapi::JS_SetGlobalJitCompilerOption(
             cx.raw_cx(),
