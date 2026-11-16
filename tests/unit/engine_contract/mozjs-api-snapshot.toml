@@ -1,14 +1,14 @@
 [manifest]
 mozjs_version = "0.26.14"
 bindgen_sha256 = "39053877b056c173c89d1ffb0c70891bb14d46b2485ee7a8a6766eb7308962e3"
-quickjs_revision = "ae9eb96"
+quickjs_revision = "6ac4a17"
 bindgen_definitions = 1225
 unique_names = 1224
 variadic = 11
-implemented = 629
+implemented = 630
 empty = 93
-todo = 503
-eligible = 629
+todo = 502
+eligible = 630
 
 [[api]]
 name = "AbortCollectingDelazifications"
@@ -121,7 +121,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::EnvironmentChain, *mut root::JSObject) -> bool"
 file = "engine/eval.rs"
-line = 209
+line = 287
 
 [[api]]
 name = "AppendToIdVector"
@@ -199,7 +199,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, *mut root::JSObject) -> ()"
 file = "engine/proxy.rs"
-line = 1634
+line = 1659
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -209,7 +209,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::HandleValue) -> ()"
 file = "engine/proxy.rs"
-line = 1638
+line = 1663
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -550,7 +550,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject, *mut root::JSContext, bool) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1386
+line = 1411
 
 [[api]]
 name = "CheckedUnwrapStatic"
@@ -559,7 +559,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1382
+line = 1407
 
 [[api]]
 name = "ClearFrontendErrors"
@@ -594,7 +594,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> ()"
 file = "engine/module.rs"
-line = 587
+line = 617
 
 [[api]]
 name = "ClearRegExpStatics"
@@ -644,7 +644,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JS::Compartment) -> bool"
 file = "engine/proxy.rs"
-line = 1552
+line = 1577
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -654,7 +654,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<u16>) -> *mut root::JSScript"
 file = "engine/eval.rs"
-line = 171
+line = 242
 
 [[api]]
 name = "Compile1"
@@ -663,7 +663,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<root::mozilla::Utf8Unit>) -> *mut root::JSScript"
 file = "engine/eval.rs"
-line = 101
+line = 159
 
 [[api]]
 name = "CompileFunction"
@@ -672,7 +672,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::EnvironmentChain, *const root::JS::ReadOnlyCompileOptions, *const ::std::os::raw::c_char, ::std::os::raw::c_uint, *const *const ::std::os::raw::c_char, *mut root::JS::SourceText<u16>) -> *mut root::JSFunction"
 file = "engine/eval.rs"
-line = 308
+line = 386
 
 [[api]]
 name = "CompileFunction1"
@@ -689,7 +689,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::EnvironmentChain, *const root::JS::ReadOnlyCompileOptions, *const ::std::os::raw::c_char, ::std::os::raw::c_uint, *const *const ::std::os::raw::c_char, *const ::std::os::raw::c_char, usize) -> *mut root::JSFunction"
 file = "engine/eval.rs"
-line = 330
+line = 408
 
 [[api]]
 name = "CompileGlobalScriptToStencil"
@@ -730,7 +730,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JS::FrontendContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<root::mozilla::Utf8Unit>, *mut root::already_AddRefed<root::JS::Stencil>) -> ()"
 file = "engine/stencil.rs"
-line = 94
+line = 107
 
 [[api]]
 name = "CompileJsonModule"
@@ -739,7 +739,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<u16>) -> *mut root::JSObject"
 file = "engine/module.rs"
-line = 546
+line = 576
 
 [[api]]
 name = "CompileJsonModule1"
@@ -748,7 +748,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<root::mozilla::Utf8Unit>) -> *mut root::JSObject"
 file = "engine/module.rs"
-line = 535
+line = 565
 
 [[api]]
 name = "CompileModule"
@@ -757,7 +757,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<u16>) -> *mut root::JSObject"
 file = "engine/module.rs"
-line = 524
+line = 548
 
 [[api]]
 name = "CompileModule1"
@@ -766,7 +766,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<root::mozilla::Utf8Unit>) -> *mut root::JSObject"
 file = "engine/module.rs"
-line = 509
+line = 533
 
 [[api]]
 name = "CompileModuleScriptToStencil"
@@ -884,7 +884,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::JS::FrontendContext, *const root::JS::ReadOnlyCompileOptions) -> bool"
 file = "engine/stencil.rs"
-line = 250
+line = 316
 
 [[api]]
 name = "ConvertSavedFrameToPlainObject"
@@ -919,7 +919,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<root::JS::Value>) -> *mut root::JSObject"
 file = "engine/module.rs"
-line = 500
+line = 524
 
 [[api]]
 name = "CreateError"
@@ -936,7 +936,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const root::ProxyTraps, *const ::std::os::raw::c_void) -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1065
+line = 1090
 
 [[api]]
 name = "CreateJSExternalStringCallbacks"
@@ -971,7 +971,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const root::ProxyTraps, *const ::std::os::raw::c_void) -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1053
+line = 1078
 
 [[api]]
 name = "CreateRootedIdVector"
@@ -998,7 +998,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const root::JSPrincipalsCallbacks, *mut ::std::os::raw::c_void) -> *mut root::JSPrincipals"
 file = "engine/proxy.rs"
-line = 1670
+line = 1695
 
 [[api]]
 name = "CreateWrapperProxyHandler"
@@ -1007,7 +1007,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const root::ProxyTraps) -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1077
+line = 1102
 
 [[api]]
 name = "CurrentGlobal"
@@ -1133,7 +1133,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::EnvironmentChain) -> ()"
 file = "engine/eval.rs"
-line = 218
+line = 296
 
 [[api]]
 name = "DeleteJSAutoStructuredCloneBuffer"
@@ -1169,7 +1169,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::OwningCompileOptions) -> ()"
 file = "engine/stencil.rs"
-line = 90
+line = 103
 
 [[api]]
 name = "DeleteRealmOptions"
@@ -1196,7 +1196,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const ::std::os::raw::c_void) -> ()"
 file = "engine/proxy.rs"
-line = 1088
+line = 1113
 
 [[api]]
 name = "DequeueNextDebuggerMicroTask"
@@ -1231,7 +1231,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::FrontendContext) -> ()"
 file = "engine/stencil.rs"
-line = 53
+line = 66
 
 [[api]]
 name = "DestroyRootedIdVector"
@@ -1249,7 +1249,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSPrincipals) -> ()"
 file = "engine/proxy.rs"
-line = 1685
+line = 1710
 
 [[api]]
 name = "DetachArrayBuffer"
@@ -1404,7 +1404,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<u16>, root::JS::MutableHandle<root::JS::Value>) -> bool"
 file = "engine/eval.rs"
-line = 154
+line = 213
 
 [[api]]
 name = "Evaluate1"
@@ -1421,7 +1421,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::ReadOnlyCompileOptions, *mut root::JS::SourceText<root::mozilla::Utf8Unit>, root::JS::MutableHandle<root::JS::Value>) -> bool"
 file = "engine/eval.rs"
-line = 80
+line = 132
 
 [[api]]
 name = "EvaluateUtf8Path"
@@ -1521,7 +1521,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSScript>, root::JS::Handle<*mut root::JSObject>, root::JS::Handle<root::JS::Value>, root::JS::Handle<*mut root::JSObject>) -> bool"
 file = "engine/module.rs"
-line = 921
+line = 951
 
 [[api]]
 name = "FinishLoadingImportedModule"
@@ -1530,7 +1530,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSScript>, root::JS::Handle<*mut root::JSObject>, root::JS::Handle<root::JS::Value>, root::JS::Handle<*mut root::JSObject>, bool) -> bool"
 file = "engine/module.rs"
-line = 898
+line = 928
 
 [[api]]
 name = "FinishLoadingImportedModuleFailed"
@@ -1539,7 +1539,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<root::JS::Value>, root::JS::Handle<root::JS::Value>) -> bool"
 file = "engine/module.rs"
-line = 933
+line = 963
 
 [[api]]
 name = "FinishLoadingImportedModuleFailedWithPendingException"
@@ -1548,7 +1548,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<root::JS::Value>) -> bool"
 file = "engine/module.rs"
-line = 948
+line = 978
 
 [[api]]
 name = "FireOnGarbageCollectionHookRequired"
@@ -1711,7 +1711,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "() -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1092
+line = 1117
 
 [[api]]
 name = "GetCurrentRealmOrNull"
@@ -1729,7 +1729,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> *const root::js::DOMCallbacks"
 file = "engine/proxy.rs"
-line = 1784
+line = 1809
 
 [[api]]
 name = "GetDebuggeeGlobals"
@@ -1827,7 +1827,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Compartment) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1557
+line = 1582
 
 [[api]]
 name = "GetFirstSubsumedSavedFrame"
@@ -2081,7 +2081,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSRuntime) -> root::JS::ModuleLoadHook"
 file = "engine/module.rs"
-line = 1150
+line = 1180
 
 [[api]]
 name = "GetModuleMetadataHook"
@@ -2090,7 +2090,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSRuntime) -> root::JS::ModuleMetadataHook"
 file = "engine/module.rs"
-line = 1166
+line = 1196
 
 [[api]]
 name = "GetModuleNamespace"
@@ -2099,7 +2099,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>) -> *mut root::JSObject"
 file = "engine/module.rs"
-line = 1051
+line = 1081
 
 [[api]]
 name = "GetModuleObject"
@@ -2116,7 +2116,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>) -> *mut root::JSString"
 file = "engine/module.rs"
-line = 635
+line = 665
 
 [[api]]
 name = "GetModuleRequestType"
@@ -2125,7 +2125,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>) -> root::JS::ModuleType"
 file = "engine/module.rs"
-line = 644
+line = 674
 
 [[api]]
 name = "GetModuleScript"
@@ -2134,7 +2134,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(root::JS::Handle<*mut root::JSObject>) -> *mut root::JSScript"
 file = "engine/module.rs"
-line = 604
+line = 634
 
 [[api]]
 name = "GetNonCCWObjectGlobal"
@@ -2312,7 +2312,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1149
+line = 1174
 
 [[api]]
 name = "GetProxyHandlerExtra"
@@ -2321,7 +2321,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1155
+line = 1180
 
 [[api]]
 name = "GetProxyHandlerFamily"
@@ -2330,7 +2330,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "() -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1163
+line = 1188
 
 [[api]]
 name = "GetProxyPrivate"
@@ -2339,7 +2339,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, *mut root::JS::Value) -> ()"
 file = "engine/proxy.rs"
-line = 1179
+line = 1204
 
 [[api]]
 name = "GetProxyReservedSlot"
@@ -2348,7 +2348,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, u32, *mut root::JS::Value) -> ()"
 file = "engine/proxy.rs"
-line = 1206
+line = 1231
 
 [[api]]
 name = "GetRealmArrayPrototype"
@@ -2451,7 +2451,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Realm) -> *mut root::JSPrincipals"
 file = "engine/proxy.rs"
-line = 1733
+line = 1758
 
 [[api]]
 name = "GetRealmPrivate"
@@ -2502,7 +2502,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>, u32) -> root::JS::ModuleType"
 file = "engine/module.rs"
-line = 620
+line = 650
 
 [[api]]
 name = "GetRustJSPrincipalsPrivate"
@@ -2511,7 +2511,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSPrincipals) -> *mut ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1689
+line = 1714
 
 [[api]]
 name = "GetSCOffset"
@@ -2622,7 +2622,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "() -> *const ::std::os::raw::c_void"
 file = "engine/proxy.rs"
-line = 1096
+line = 1121
 
 [[api]]
 name = "GetSelfHostedFunction"
@@ -2826,7 +2826,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "() -> *const root::JSClass"
 file = "engine/proxy.rs"
-line = 1145
+line = 1170
 
 [[api]]
 name = "HadFrontendAllocationOverflow"
@@ -2843,7 +2843,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::FrontendContext) -> bool"
 file = "engine/stencil.rs"
-line = 70
+line = 83
 
 [[api]]
 name = "HadFrontendOutOfMemory"
@@ -3091,7 +3091,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::SelfHostedCache, root::JS::SelfHostedWriter) -> bool"
 file = "engine/runtime.rs"
-line = 107
+line = 109
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -3119,7 +3119,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JS::InstantiateOptions, *mut root::JS::Stencil, *mut root::JS::InstantiationStorage) -> *mut root::JSScript"
 file = "engine/stencil.rs"
-line = 225
+line = 247
 
 [[api]]
 name = "InstantiateModuleStencil"
@@ -3144,7 +3144,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const ::std::os::raw::c_void, *mut root::JSContext, root::JS::HandleObject, root::JS::HandleId, root::JS::MutableHandle<root::JS::PropertyDescriptor>, *mut bool) -> bool"
 file = "engine/proxy.rs"
-line = 1243
+line = 1268
 
 [[api]]
 name = "InvokeHasOwn"
@@ -3153,7 +3153,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*const ::std::os::raw::c_void, *mut root::JSContext, root::JS::HandleObject, root::JS::HandleId, *mut bool) -> bool"
 file = "engine/proxy.rs"
-line = 1259
+line = 1284
 
 [[api]]
 name = "IsArgumentsObject"
@@ -3273,7 +3273,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> bool"
 file = "engine/module.rs"
-line = 559
+line = 589
 
 [[api]]
 name = "IsDebugBuild"
@@ -3457,7 +3457,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSObject, *const root::JSContext) -> bool"
 file = "engine/proxy.rs"
-line = 1643
+line = 1668
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -3492,7 +3492,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject) -> bool"
 file = "engine/proxy.rs"
-line = 1167
+line = 1192
 
 [[api]]
 name = "IsResizableArrayBufferMaybeShared"
@@ -3536,7 +3536,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JS::Compartment) -> bool"
 file = "engine/proxy.rs"
-line = 1547
+line = 1572
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -3563,7 +3563,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JS::Compartment) -> bool"
 file = "engine/proxy.rs"
-line = 1542
+line = 1567
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -3630,7 +3630,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> bool"
 file = "engine/proxy.rs"
-line = 1472
+line = 1497
 
 [[api]]
 name = "IsWindowSlow"
@@ -3639,7 +3639,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> bool"
 file = "engine/proxy.rs"
-line = 1499
+line = 1524
 
 [[api]]
 name = "IsWrapper"
@@ -3648,7 +3648,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject) -> bool"
 file = "engine/proxy.rs"
-line = 1360
+line = 1385
 
 [[api]]
 name = "IterateRealms"
@@ -3657,7 +3657,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut ::std::os::raw::c_void, root::JS::IterateRealmCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1604
+line = 1629
 
 [[api]]
 name = "IterateRealmsInCompartment"
@@ -3666,7 +3666,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::JS::Compartment, *mut ::std::os::raw::c_void, root::JS::IterateRealmCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1612
+line = 1637
 
 [[api]]
 name = "IterateRealmsWithPrincipals"
@@ -3675,7 +3675,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::JSPrincipals, *mut ::std::os::raw::c_void, root::JS::IterateRealmCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1623
+line = 1648
 
 [[api]]
 name = "JS_AbortIfWrongThread"
@@ -3694,7 +3694,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JSTraceDataOp, *mut ::std::os::raw::c_void) -> bool"
 file = "engine/runtime.rs"
-line = 85
+line = 87
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -3978,9 +3978,10 @@ reason = "qjs_todo!: calling this entry panics until servo-quickjs implements it
 name = "JS_DefineDebuggerObject"
 arity = 2
 source = "jsapi"
-status = "todo"
+status = "implemented"
 signature = "(*mut root::JSContext, root::JS::HandleObject) -> bool"
-reason = "qjs_todo!: calling this entry panics until servo-quickjs implements it"
+file = "engine/debugger.rs"
+line = 652
 
 [[api]]
 name = "JS_DefineElement"
@@ -4425,7 +4426,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> ()"
 file = "engine/runtime.rs"
-line = 50
+line = 51
 
 [[api]]
 name = "JS_DisableInterruptCallback"
@@ -4450,7 +4451,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::JSPrincipals) -> ()"
 file = "engine/proxy.rs"
-line = 1703
+line = 1728
 
 [[api]]
 name = "JS_EncodeStringToASCII"
@@ -4531,7 +4532,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSScript>, root::JS::MutableHandle<root::JS::Value>) -> bool"
 file = "engine/eval.rs"
-line = 121
+line = 180
 
 [[api]]
 name = "JS_ExecuteScript1"
@@ -4540,7 +4541,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSScript>) -> bool"
 file = "engine/eval.rs"
-line = 187
+line = 265
 
 [[api]]
 name = "JS_ExecuteScript2"
@@ -4670,7 +4671,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::GCReason) -> ()"
 file = "engine/runtime.rs"
-line = 123
+line = 125
 
 [[api]]
 name = "JS_GetArrayBufferViewBuffer"
@@ -4932,7 +4933,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSScript) -> *mut root::JSObject"
 file = "engine/eval.rs"
-line = 386
+line = 464
 
 [[api]]
 name = "JS_GetGlobalJitCompilerOption"
@@ -5019,7 +5020,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, root::JS::MutableHandleValue) -> ()"
 file = "engine/module.rs"
-line = 591
+line = 621
 
 [[api]]
 name = "JS_GetNaNValue"
@@ -5292,7 +5293,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> *mut root::JSRuntime"
 file = "engine/runtime.rs"
-line = 73
+line = 75
 
 [[api]]
 name = "JS_GetScriptBaseLineNumber"
@@ -5325,7 +5326,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSScript, root::JS::MutableHandleValue) -> ()"
 file = "engine/eval.rs"
-line = 368
+line = 446
 
 [[api]]
 name = "JS_GetScriptedCallerPrivate"
@@ -5588,7 +5589,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSPrincipals) -> ()"
 file = "engine/proxy.rs"
-line = 1699
+line = 1724
 
 [[api]]
 name = "JS_IdToProtoKey"
@@ -5641,7 +5642,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JSDestroyPrincipalsOp) -> ()"
 file = "engine/proxy.rs"
-line = 1725
+line = 1750
 
 [[api]]
 name = "JS_InitReadPrincipalsCallback"
@@ -5650,7 +5651,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JSReadPrincipalsOp) -> ()"
 file = "engine/proxy.rs"
-line = 1717
+line = 1742
 
 [[api]]
 name = "JS_InitReflectParse"
@@ -5725,7 +5726,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> bool"
 file = "engine/proxy.rs"
-line = 1291
+line = 1316
 
 [[api]]
 name = "JS_IsExceptionPending"
@@ -5811,7 +5812,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut ::std::os::raw::c_void, root::JSIterateCompartmentCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1563
+line = 1588
 
 [[api]]
 name = "JS_IterateCompartmentsInZone"
@@ -5820,7 +5821,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::JS::Zone, *mut ::std::os::raw::c_void, root::JSIterateCompartmentCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1577
+line = 1602
 
 [[api]]
 name = "JS_LinearStringEqualsAscii"
@@ -5974,7 +5975,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::JSObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1276
+line = 1301
 
 [[api]]
 name = "JS_NewDependentString"
@@ -6002,7 +6003,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::HandleObject, root::JS::MutableHandleIdVector, bool) -> bool"
 file = "engine/proxy.rs"
-line = 1977
+line = 2002
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -6634,7 +6635,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>) -> bool"
 file = "engine/proxy.rs"
-line = 1321
+line = 1346
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -6817,7 +6818,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JSDestroyCompartmentCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1811
+line = 1836
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -6914,7 +6915,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JSGCParamKey, u32) -> ()"
 file = "engine/runtime.rs"
-line = 77
+line = 79
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -6961,7 +6962,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::NativeStackSize, root::JS::NativeStackSize, root::JS::NativeStackSize) -> ()"
 file = "engine/runtime.rs"
-line = 95
+line = 97
 
 [[api]]
 name = "JS_SetOffthreadBaselineCompilationEnabled"
@@ -7073,7 +7074,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, *const root::JSWrapObjectCallbacks) -> ()"
 file = "engine/proxy.rs"
-line = 1329
+line = 1354
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -7251,7 +7252,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::HandleObject, root::JS::HandleObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1522
+line = 1547
 
 [[api]]
 name = "JS_TypeOfValue"
@@ -7449,7 +7450,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::MutableHandleObject) -> bool"
 file = "engine/proxy.rs"
-line = 1426
+line = 1451
 
 [[api]]
 name = "JS_WrapPropertyDescriptor"
@@ -7458,7 +7459,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::MutableHandle<root::JS::PropertyDescriptor>) -> bool"
 file = "engine/proxy.rs"
-line = 1448
+line = 1473
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -7468,7 +7469,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, u64) -> bool"
 file = "engine/proxy.rs"
-line = 1456
+line = 1481
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -7478,7 +7479,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::MutableHandleValue) -> bool"
 file = "engine/proxy.rs"
-line = 1437
+line = 1462
 
 [[api]]
 name = "JS_WriteBytes"
@@ -7621,7 +7622,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>, root::JS::Handle<root::JS::Value>, root::JS::LoadModuleResolvedCallback, root::JS::LoadModuleRejectedCallback) -> bool"
 file = "engine/module.rs"
-line = 854
+line = 884
 
 [[api]]
 name = "LoadRequestedModules1"
@@ -7630,7 +7631,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>, root::JS::Handle<root::JS::Value>, root::JS::MutableHandle<*mut root::JSObject>) -> bool"
 file = "engine/module.rs"
-line = 866
+line = 896
 
 [[api]]
 name = "LooselyEqual"
@@ -7853,7 +7854,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>, root::JS::MutableHandleValue) -> bool"
 file = "engine/module.rs"
-line = 989
+line = 1019
 
 [[api]]
 name = "ModuleIsLinked"
@@ -7870,7 +7871,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>) -> bool"
 file = "engine/module.rs"
-line = 980
+line = 1010
 
 [[api]]
 name = "ModuleRequestIsSourcePhase"
@@ -7879,7 +7880,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>) -> bool"
 file = "engine/module.rs"
-line = 654
+line = 684
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -7976,7 +7977,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::SupportUnscopables) -> *mut root::JS::EnvironmentChain"
 file = "engine/eval.rs"
-line = 201
+line = 279
 
 [[api]]
 name = "NewExternalArrayBuffer"
@@ -7994,7 +7995,7 @@ source = "jsapi"
 status = "implemented"
 signature = "() -> *mut root::JS::FrontendContext"
 file = "engine/stencil.rs"
-line = 49
+line = 62
 
 [[api]]
 name = "NewFunctionByIdWithReserved"
@@ -8095,7 +8096,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSContext, *const ::std::os::raw::c_void, root::JS::HandleValue, *mut root::JSObject, *const root::JSClass, bool) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1101
+line = 1126
 
 [[api]]
 name = "NewRegExpObject"
@@ -8204,7 +8205,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::HandleObject, *const ::std::os::raw::c_void) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1137
+line = 1162
 
 [[api]]
 name = "NonIncrementalGC"
@@ -8305,7 +8306,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JS::FrontendContext, *const root::JS::ReadOnlyCompileOptions) -> *mut root::JS::OwningCompileOptions"
 file = "engine/stencil.rs"
-line = 75
+line = 88
 
 [[api]]
 name = "ParseJSONWithHandler"
@@ -8392,7 +8393,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JS::FrontendContext, *mut root::JS::Stencil, *mut root::JS::InstantiationStorage) -> bool"
 file = "engine/stencil.rs"
-line = 216
+line = 238
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -8565,7 +8566,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Realm) -> *const root::JS::RealmBehaviors"
 file = "engine/proxy.rs"
-line = 1830
+line = 1855
 
 [[api]]
 name = "RealmBehaviorsRef1"
@@ -8574,7 +8575,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> *const root::JS::RealmBehaviors"
 file = "engine/proxy.rs"
-line = 1836
+line = 1861
 
 [[api]]
 name = "RealmCreationOptionsRef"
@@ -8583,7 +8584,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Realm) -> *const root::JS::RealmCreationOptions"
 file = "engine/proxy.rs"
-line = 1818
+line = 1843
 
 [[api]]
 name = "RealmCreationOptionsRef1"
@@ -8592,7 +8593,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext) -> *const root::JS::RealmCreationOptions"
 file = "engine/proxy.rs"
-line = 1824
+line = 1849
 
 [[api]]
 name = "RecomputeWrappers"
@@ -8601,7 +8602,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, *const root::js::CompartmentFilter, *const root::js::CompartmentFilter) -> bool"
 file = "engine/proxy.rs"
-line = 1312
+line = 1337
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -8619,7 +8620,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSContext, root::InvokeScriptPreparerHook) -> ()"
 file = "engine/module.rs"
-line = 1089
+line = 1119
 
 [[api]]
 name = "RejectPromise"
@@ -8645,7 +8646,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::HandleObject, root::JS::HandleObject) -> bool"
 file = "engine/proxy.rs"
-line = 1303
+line = 1328
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -8655,7 +8656,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, *mut root::js::CompartmentTransplantCallback, root::JS::MutableHandleObject) -> ()"
 file = "engine/proxy.rs"
-line = 1295
+line = 1320
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -8864,7 +8865,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSContext, *mut root::js::ScriptEnvironmentPreparer_Closure) -> bool"
 file = "engine/module.rs"
-line = 1104
+line = 1134
 
 [[api]]
 name = "RuntimeHeapState"
@@ -8997,7 +8998,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::js::DOMCallbacks) -> ()"
 file = "engine/proxy.rs"
-line = 1761
+line = 1786
 
 [[api]]
 name = "SetDOMProxyInformation"
@@ -9006,7 +9007,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*const ::std::os::raw::c_void, root::JS::DOMProxyShadowsCheck, *const ::std::os::raw::c_void) -> ()"
 file = "engine/proxy.rs"
-line = 1231
+line = 1256
 
 [[api]]
 name = "SetDataPropertyDescriptor"
@@ -9041,7 +9042,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::DestroyRealmCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1804
+line = 1829
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -9160,7 +9161,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSRuntime, root::JS::ModuleLoadHook) -> ()"
 file = "engine/module.rs"
-line = 1141
+line = 1171
 
 [[api]]
 name = "SetModuleMetadataHook"
@@ -9169,7 +9170,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSRuntime, root::JS::ModuleMetadataHook) -> ()"
 file = "engine/module.rs"
-line = 1154
+line = 1184
 
 [[api]]
 name = "SetModulePrivate"
@@ -9178,7 +9179,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject, *const root::JS::Value) -> ()"
 file = "engine/module.rs"
-line = 566
+line = 596
 
 [[api]]
 name = "SetNativeObjectReservedSlotWithBarrier"
@@ -9195,7 +9196,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::FrontendContext, root::JS::NativeStackSize) -> ()"
 file = "engine/stencil.rs"
-line = 57
+line = 70
 
 [[api]]
 name = "SetOutOfMemoryCallback"
@@ -9222,7 +9223,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::js::PreserveWrapperCallback, root::js::HasReleasedWrapperCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1789
+line = 1814
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -9293,7 +9294,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, *const root::JS::Value) -> ()"
 file = "engine/proxy.rs"
-line = 1188
+line = 1213
 
 [[api]]
 name = "SetProxyReservedSlot"
@@ -9302,7 +9303,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, u32, *const root::JS::Value) -> ()"
 file = "engine/proxy.rs"
-line = 1219
+line = 1244
 
 [[api]]
 name = "SetRealmLocaleOverride"
@@ -9319,7 +9320,7 @@ source = "jsapi"
 status = "empty"
 signature = "(*mut root::JSContext, root::JS::RealmNameCallback) -> ()"
 file = "engine/proxy.rs"
-line = 1797
+line = 1822
 reason = "silent no-op: the shim has no observable engine semantics for this entry"
 
 [[api]]
@@ -9337,7 +9338,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Realm, *mut root::JSPrincipals) -> ()"
 file = "engine/proxy.rs"
-line = 1737
+line = 1762
 
 [[api]]
 name = "SetRealmPrivate"
@@ -9397,7 +9398,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSScript, *const root::JS::Value) -> ()"
 file = "engine/eval.rs"
-line = 357
+line = 435
 
 [[api]]
 name = "SetScriptPrivateReferenceHooks"
@@ -9406,7 +9407,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSRuntime, root::JS::ScriptPrivateReferenceHook, root::JS::ScriptPrivateReferenceHook) -> ()"
 file = "engine/module.rs"
-line = 1172
+line = 1202
 
 [[api]]
 name = "SetSettledPromiseIsHandled"
@@ -9475,7 +9476,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::WarningReporter) -> root::JS::WarningReporter"
 file = "engine/runtime.rs"
-line = 116
+line = 118
 
 [[api]]
 name = "SetWeakMapEntry"
@@ -9493,7 +9494,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>, root::JS::Handle<*mut root::JSObject>) -> ()"
 file = "engine/proxy.rs"
-line = 1486
+line = 1511
 
 [[api]]
 name = "SetWindowProxyClass"
@@ -9502,7 +9503,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, *const root::JSClass) -> ()"
 file = "engine/proxy.rs"
-line = 1467
+line = 1492
 
 [[api]]
 name = "ShouldAvoidSideEffects"
@@ -9664,7 +9665,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Stencil) -> ()"
 file = "engine/stencil.rs"
-line = 272
+line = 338
 
 [[api]]
 name = "StencilIsBorrowed"
@@ -9681,7 +9682,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JS::Stencil) -> ()"
 file = "engine/stencil.rs"
-line = 278
+line = 344
 
 [[api]]
 name = "StopDrainingJobQueue"
@@ -9814,7 +9815,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(usize) -> root::JS::NativeStackSize"
 file = "engine/stencil.rs"
-line = 66
+line = 79
 
 [[api]]
 name = "ThrowOnModuleEvaluationFailure"
@@ -9823,7 +9824,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::Handle<*mut root::JSObject>, root::JS::ModuleErrorBehaviour) -> bool"
 file = "engine/module.rs"
-line = 1014
+line = 1044
 
 [[api]]
 name = "ToBigInt"
@@ -10032,7 +10033,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1512
+line = 1537
 
 [[api]]
 name = "ToWindowProxyIfWindowSlow"
@@ -10041,7 +10042,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1504
+line = 1529
 
 [[api]]
 name = "TraceChildren"
@@ -10293,7 +10294,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject, bool, *mut ::std::os::raw::c_uint) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1371
+line = 1396
 
 [[api]]
 name = "UncheckedUnwrapObject"
@@ -10302,7 +10303,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, bool) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1364
+line = 1389
 
 [[api]]
 name = "UncheckedUnwrapWithoutExpose"
@@ -10451,7 +10452,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject, *mut root::JSContext, bool) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1399
+line = 1424
 
 [[api]]
 name = "UnwrapObjectStatic"
@@ -10460,7 +10461,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1395
+line = 1420
 
 [[api]]
 name = "UnwrapOneCheckedDynamic"
@@ -10469,7 +10470,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(root::JS::HandleObject, *mut root::JSContext, bool) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1408
+line = 1433
 
 [[api]]
 name = "UnwrapOneCheckedStatic"
@@ -10478,7 +10479,7 @@ source = "jsapi"
 status = "implemented"
 signature = "(*mut root::JSObject) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1417
+line = 1442
 
 [[api]]
 name = "UnwrapSharedArrayBuffer"
@@ -10597,7 +10598,7 @@ source = "gluebindings"
 status = "implemented"
 signature = "(*mut root::JSContext, root::JS::HandleObject, *const ::std::os::raw::c_void, *const root::JSClass) -> *mut root::JSObject"
 file = "engine/proxy.rs"
-line = 1120
+line = 1145
 
 [[api]]
 name = "WriteBytesToJSStructuredCloneData"

@@ -1458,7 +1458,7 @@ provenance = [
 
 [[entry]]
 name = "JS_DefineDebuggerObject"
-status = "todo"
+status = "implemented"
 mode = "direct"
 provenance = [
   "components/script/dom/debugger/debuggerglobalscope.rs:142",
