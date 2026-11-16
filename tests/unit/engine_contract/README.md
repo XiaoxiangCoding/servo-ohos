@@ -102,6 +102,9 @@ that is merely not the pinned commit is a warning, because testing a local shim 
 `CHECK_PINNED_QJS=1` makes it fatal. The `js-quickjs` test build also fails to compile when the
 patch did not apply.
 
+The check reads `QJS_DIR/mozjs/Cargo.toml`, so a sparse checkout must include it along with
+`mozjs/upstream-bindgen`, `mozjs/src/engine` and `mozjs/stub_bindings.py`.
+
 It then checks that `mozjs-api-snapshot.toml` still matches the bindgen and
 QuickJS shim, then checks that `servo-mozjs-api-usage.toml` still matches Servo's usage, and finally
 checks cases against the scope. A bindgen addition, removal, status change, or signature change

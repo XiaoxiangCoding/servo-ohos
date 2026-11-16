@@ -542,7 +542,10 @@ def servo_mozjs_version(servo_root):
 def shim_mozjs_version(qjs_dir):
     path = os.path.join(qjs_dir, "mozjs", "Cargo.toml")
     if not os.path.isfile(path):
-        raise SystemExit(f"{path}: not found; --qjs-dir must point at a servo-quickjs checkout")
+        raise SystemExit(
+            f"{path}: not found; --qjs-dir must point at a servo-quickjs checkout that "
+            f"includes mozjs/Cargo.toml (a sparse CI checkout must list it)"
+        )
     version = read_toml(path).get("package", {}).get("version")
     if not isinstance(version, str) or not version:
         raise SystemExit(f"{path}: [package] has no version")
