@@ -26,10 +26,10 @@ use js::rust::wrappers2::{
     GetBuiltinClass, GetPropertyKeys, GetRealmObjectPrototype, GetWeakMapEntry, IsArrayObject,
     JS_ClearPendingException, JS_DefineFunctions, JS_DefineProperty, JS_FreezeObject, JS_GC,
     JS_GetElement, JS_GetFunctionId, JS_GetPropertyById, JS_HasInstance, JS_IsExceptionPending,
-    JS_NewGlobalObject, JS_NewPlainObject, JS_SetElement, JS_SetProperty, MapEntries, MapGet,
-    MapSet, MapSize, NewArrayObject, NewDateObject, NewFunctionWithReserved, NewMapObject,
-    NewSetObject, NewUCRegExpObject, NewWeakMapObject, ObjectIsDate, SetAdd, SetArrayLength,
-    SetWeakMapEntry,
+    JS_NewGlobalObject, JS_NewObjectWithGivenProto, JS_NewPlainObject, JS_SetElement,
+    JS_SetProperty, MapEntries, MapGet, MapSet, MapSize, NewArrayObject, NewDateObject,
+    NewFunctionWithReserved, NewMapObject, NewSetObject, NewUCRegExpObject, NewWeakMapObject,
+    ObjectIsDate, SetAdd, SetArrayLength, SetWeakMapEntry,
 };
 use js::rust::{
     CompileOptionsWrapper, HandleObject, IdVector, JSEngine, RealmOptions, Runtime,
@@ -168,6 +168,23 @@ fn arrays(engine: &JSEngine) {
             &mut is_instance
         ));
         assert!(!is_instance);
+
+        // A new object given an explicit prototype must inherit exactly that prototype, so both
+        // the inherited-property lookup and the prototype identity depend on the call.
+        rooted!(&in(cx) let proto = eval(cx, global, "({ inherited: 41 })").to_object());
+        rooted!(&in(cx) let given = JS_NewObjectWithGivenProto(cx, ptr::null(), proto.handle()));
+        assert!(!given.get().is_null());
+        set_global(cx, global, c"given_proto", ObjectValue(proto.get()));
+        set_global(cx, global, c"given", ObjectValue(given.get()));
+        assert!(
+            eval(
+                cx,
+                global,
+                "Object.getPrototypeOf(given) === given_proto && given.inherited === 41 \
+                 && !Object.hasOwn(given, 'inherited')",
+            )
+            .to_boolean()
+        );
     });
 }
 
