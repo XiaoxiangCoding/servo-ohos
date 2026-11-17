@@ -10,7 +10,7 @@
 [scope]
 owner = "servo"
 description = "mozjs entries Servo calls directly or reaches through wrappers"
-entries = 410
+entries = 428
 
 [[entry]]
 name = "AddAssociatedMemory"
@@ -114,6 +114,7 @@ provenance = [
   "components/script/dom/worklet/paintworkletglobalscope.rs:338",
   "components/script_bindings/proxyhandler.rs:841",
   "components/script_bindings/proxyhandler.rs:899",
+  "get",
 ]
 
 [[entry]]
@@ -330,6 +331,14 @@ provenance = [
 ]
 
 [[entry]]
+name = "Construct"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "Construct1",
+]
+
+[[entry]]
 name = "Construct1"
 status = "implemented"
 mode = "direct"
@@ -526,6 +535,14 @@ provenance = [
 ]
 
 [[entry]]
+name = "DequeueNextRegularMicroTask"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "JS_DequeueNextMicroTask",
+]
+
+[[entry]]
 name = "DescribeScriptedCaller"
 status = "implemented"
 mode = "indirect"
@@ -554,6 +571,7 @@ name = "DestroyRustJSPrincipals"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "JS_DropPrincipals",
   "components/script/dom/bindings/principals.rs:21",
 ]
 
@@ -636,8 +654,10 @@ name = "FinishLoadingImportedModuleFailed"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "FinishLoadingImportedModuleFailedWithPendingException",
   "components/script/scripting/module_loading.rs:518",
   "components/script/scripting/module_loading.rs:537",
+  "host_load_imported_module",
 ]
 
 [[entry]]
@@ -648,6 +668,7 @@ provenance = [
   "components/script/scripting/module_loading.rs:441",
   "components/script/scripting/module_loading.rs:461",
   "components/script/scripting/module_loading.rs:507",
+  "host_load_imported_module",
 ]
 
 [[entry]]
@@ -717,6 +738,7 @@ status = "implemented"
 mode = "indirect"
 provenance = [
   "assert",
+  "get_context_realm",
 ]
 
 [[entry]]
@@ -843,6 +865,14 @@ provenance = [
 ]
 
 [[entry]]
+name = "GetModuleScript"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "inner_module_loading",
+]
+
+[[entry]]
 name = "GetNonCCWObjectGlobal"
 status = "implemented"
 mode = "direct"
@@ -868,6 +898,7 @@ mode = "direct"
 provenance = [
   "components/script/dom/window/window.rs:3562",
   "components/script_bindings/proxyhandler.rs:1136",
+  "get_object_realm",
 ]
 
 [[entry]]
@@ -927,6 +958,7 @@ name = "GetProxyHandlerFamily"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "SetDOMProxyInformation",
   "components/script_bindings/proxyhandler.rs:101",
 ]
 
@@ -1353,8 +1385,10 @@ name = "IsWindowProxy"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "ToWindowIfWindowProxy",
   "components/script_bindings/conversions.rs:573",
   "components/script_bindings/proxyhandler.rs:674",
+  "unwrap_one",
 ]
 
 [[entry]]
@@ -1362,6 +1396,7 @@ name = "IsWindowSlow"
 status = "implemented"
 mode = "indirect"
 provenance = [
+  "ToWindowProxyIfWindowSlow",
   "is_window",
 ]
 
@@ -1461,7 +1496,7 @@ name = "JS_DefineDebuggerObject"
 status = "implemented"
 mode = "direct"
 provenance = [
-  "components/script/dom/debugger/debuggerglobalscope.rs:142",
+  "components/script/dom/debugger/debuggerglobalscope.rs:139",
 ]
 
 [[entry]]
@@ -1470,6 +1505,14 @@ status = "implemented"
 mode = "indirect"
 provenance = [
   "reviewed: mozjs conversions.rs:732 ToJSValConvertible for [T]",
+]
+
+[[entry]]
+name = "JS_DefineFunction"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "DefineFunctionWithReserved",
 ]
 
 [[entry]]
@@ -1566,6 +1609,7 @@ provenance = [
   "components/script/dom/window/windowproxy.rs:1630",
   "components/script_bindings/observablearray.rs:458",
   "components/script_bindings/proxyhandler.rs:162",
+  "delete",
 ]
 
 [[entry]]
@@ -1603,7 +1647,17 @@ name = "JS_DropPrincipals"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "SetRealmPrincipals",
   "components/script_bindings/principals.rs:80",
+  "forget_leaked_realms",
+]
+
+[[entry]]
+name = "JS_EncodeStringToLatin1"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: engine/string.rs:635 JS_EncodeStringToASCII -> :639 JS_EncodeStringToLatin1",
 ]
 
 [[entry]]
@@ -1663,6 +1717,7 @@ provenance = [
   "components/script/dom/window/windowproxy.rs:1486",
   "components/script_bindings/observablearray.rs:500",
   "components/script_bindings/utils.rs:149",
+  "get",
 ]
 
 [[entry]]
@@ -1672,6 +1727,7 @@ mode = "direct"
 provenance = [
   "components/script/dom/window/windowproxy.rs:1533",
   "components/script_bindings/observablearray.rs:665",
+  "set",
 ]
 
 [[entry]]
@@ -1741,6 +1797,14 @@ provenance = [
   "components/script_bindings/observablearray.rs:439",
   "components/script_bindings/observablearray.rs:495",
   "components/script_bindings/observablearray.rs:540",
+]
+
+[[entry]]
+name = "JS_GetEmptyString"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: engine/string.rs:433 JS_GetEmptyStringValue -> :434 JS_GetEmptyString",
 ]
 
 [[entry]]
@@ -1825,6 +1889,7 @@ mode = "direct"
 provenance = [
   "components/script_bindings/js.rs:163",
   "components/script_bindings/observablearray.rs:549",
+  "get_own_property_descriptor",
 ]
 
 [[entry]]
@@ -1882,7 +1947,9 @@ name = "JS_GetPrototype"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "GetObjectProto",
   "components/script_bindings/js.rs:138",
+  "get_prototype",
 ]
 
 [[entry]]
@@ -1901,7 +1968,7 @@ name = "JS_GetRuntime"
 status = "implemented"
 mode = "indirect"
 provenance = [
-  "reviewed: components/script/runtime/script_runtime.rs:715 -> mozjs rust.rs:400",
+  "rt",
 ]
 
 [[entry]]
@@ -1977,8 +2044,10 @@ name = "JS_HasOwnPropertyById"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "JS_AlreadyHasOwnPropertyById",
   "components/script/dom/indexeddb/key.rs:345",
   "components/script/dom/window/windowproxy.rs:1422",
+  "has_own",
 ]
 
 [[entry]]
@@ -1998,6 +2067,7 @@ provenance = [
   "components/script_bindings/observablearray.rs:579",
   "components/script_bindings/utils.rs:141",
   "components/script_bindings/utils.rs:347",
+  "has",
 ]
 
 [[entry]]
@@ -2005,6 +2075,8 @@ name = "JS_HoldPrincipals"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "JS_NewGlobalObject",
+  "SetRealmPrincipals",
   "components/script_bindings/principals.rs:46",
 ]
 
@@ -2083,6 +2155,7 @@ status = "implemented"
 mode = "direct"
 provenance = [
   "components/script_bindings/js.rs:78",
+  "host_load_imported_module",
 ]
 
 [[entry]]
@@ -2227,6 +2300,7 @@ name = "JS_NewFunction"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "NewFunctionWithReserved",
   "components/script/dom/bindings/function.rs:50",
   "components/script/dom/promise/promise.rs:248",
   "components/script_bindings/interface.rs:354",
@@ -2429,7 +2503,7 @@ name = "JS_RequestInterruptCallback"
 status = "implemented"
 mode = "indirect"
 provenance = [
-  "reviewed: components/script/event_loop/script_thread.rs:446; components/script/workers/worker.rs:351 -> mozjs rust.rs:477",
+  "reinterrupt",
 ]
 
 [[entry]]
@@ -2624,6 +2698,14 @@ provenance = [
 ]
 
 [[entry]]
+name = "JS_ValueToObject"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: engine/string.rs:933 ToObjectSlow -> :944 super::JS_ValueToObject",
+]
+
+[[entry]]
 name = "JS_ValueToSource"
 status = "implemented"
 mode = "direct"
@@ -2770,6 +2852,7 @@ name = "NewArrayBuffer"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "NewArrayBufferWithContents",
   "components/script_bindings/buffer_source.rs:985",
 ]
 
@@ -2976,6 +3059,22 @@ status = "implemented"
 mode = "direct"
 provenance = [
   "components/script_bindings/interface.rs:286",
+]
+
+[[entry]]
+name = "RealmBehaviorsRef"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: engine/proxy.rs:1862 RealmBehaviorsRef1 -> :1864 RealmBehaviorsRef",
+]
+
+[[entry]]
+name = "RealmCreationOptionsRef"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: engine/proxy.rs:1850 RealmCreationOptionsRef1 -> :1852 RealmCreationOptionsRef",
 ]
 
 [[entry]]
@@ -3199,7 +3298,9 @@ name = "SetPropertyIgnoringNamedGetter"
 status = "implemented"
 mode = "direct"
 provenance = [
+  "SetPropertyIgnoringNamedGetter",
   "components/script_bindings/proxyhandler.rs:746",
+  "set",
 ]
 
 [[entry]]
@@ -3308,7 +3409,7 @@ name = "StackGCVectorStringAtIndex"
 status = "implemented"
 mode = "indirect"
 provenance = [
-  "reviewed: components/script/runtime/script_runtime.rs:393 -> mozjs rust.rs:1305",
+  "at",
 ]
 
 [[entry]]
@@ -3324,7 +3425,7 @@ name = "StackGCVectorValueAtIndex"
 status = "implemented"
 mode = "indirect"
 provenance = [
-  "reviewed: components/script/runtime/script_runtime.rs:404 -> mozjs rust.rs:1290",
+  "at",
 ]
 
 [[entry]]
@@ -3416,6 +3517,22 @@ provenance = [
 ]
 
 [[entry]]
+name = "ToInt32Slow"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "ToInt32",
+]
+
+[[entry]]
+name = "ToInt64Slow"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "ToInt64",
+]
+
+[[entry]]
 name = "ToJSON"
 status = "implemented"
 mode = "direct"
@@ -3448,10 +3565,43 @@ provenance = [
 ]
 
 [[entry]]
+name = "ToUint16Slow"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "ToUint16",
+]
+
+[[entry]]
+name = "ToUint32Slow"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "ToUint32",
+]
+
+[[entry]]
+name = "ToUint64Slow"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "ToUint64",
+]
+
+[[entry]]
+name = "ToWindowIfWindowProxy"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "global_realm",
+]
+
+[[entry]]
 name = "ToWindowProxyIfWindowSlow"
 status = "implemented"
 mode = "indirect"
 provenance = [
+  "outerize",
   "try_to_outerize",
   "try_to_outerize_object",
 ]
@@ -3479,6 +3629,22 @@ status = "implemented"
 mode = "direct"
 provenance = [
   "components/script_bindings/settings_stack.rs:108",
+]
+
+[[entry]]
+name = "UnwrapArrayBuffer"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: mozjs typedarray.rs:459 -> UnwrapArrayBuffer",
+]
+
+[[entry]]
+name = "UnwrapArrayBufferView"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "reviewed: mozjs typedarray.rs:467 -> UnwrapArrayBufferView",
 ]
 
 [[entry]]
@@ -3546,6 +3712,14 @@ status = "implemented"
 mode = "indirect"
 provenance = [
   "reviewed: mozjs typedarray.rs TypedArray<ClampedU8>",
+]
+
+[[entry]]
+name = "WrapperNew"
+status = "implemented"
+mode = "indirect"
+provenance = [
+  "NewWindowProxy",
 ]
 
 [[entry]]

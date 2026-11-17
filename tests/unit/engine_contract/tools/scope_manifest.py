@@ -34,6 +34,12 @@ import tomllib
 
 
 CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\(")
+FUNCTION_ARGUMENT = re.compile(r"(?<=[(,])\s*([A-Za-z_]\w*)\s*(?=[,)])")
+IMPLICIT_DISPATCH = {"deref", "deref_mut", "drop", "trace", "post_barrier"}
+# Accessors of the shim's rooted/stack-vector wrappers. Servo calls these through `Handle<..>`,
+# whose concrete owner is not recoverable from the call site; every definition of the name
+# forwards to the entry of the same family, so following the name stays sound.
+WRAPPER_ACCESSORS = {"len", "at"}
 
 REVIEWED_USAGE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "servo-mozjs-api-usage-reviewed.toml"
@@ -83,21 +89,139 @@ def status_of(entries):
     return "implemented" if "implemented" in statuses else sorted(statuses)[0]
 
 
+def call_path_before(text, position):
+    """Return the `a::b::Name` path segments immediately before a call name."""
+    start = position
+    while start >= 2 and text[start - 2 : start] == "::":
+        ident_end = start - 2
+        ident_start = ident_end
+        while ident_start > 0 and (
+            text[ident_start - 1].isalnum() or text[ident_start - 1] == "_"
+        ):
+            ident_start -= 1
+        if ident_start == ident_end:
+            break
+        start = ident_start
+    return [part.strip() for part in text[start:position].split("::") if part.strip()]
+
+
+QUICKJS_ALIASES = ("q",)
+
+
+def is_quickjs_ffi(segments):
+    """Whether a call goes to the raw QuickJS C API rather than through a mozjs entry.
+
+    The shim's `engine` modules alias `servo_quickjs` as `q` and call `q::JS_DeleteProperty`,
+    `q::JS_IsConstructor`, ... Those are the QuickJS natives that the mozjs entry of the same name
+    wraps; they are not that entry, so following them would claim entries Servo never reaches.
+    """
+    return bool(segments) and segments[0] in QUICKJS_ALIASES
+
+
+def function_body_start(text, position):
+    """Return where a function's body starts, or None for a bodyless declaration.
+
+    Scanning from after the name to the first `;` would misread a signature such as
+    `fn new(length: [u8; 4])` as a declaration, so skip the parameter list first. The return type
+    may itself contain parentheses (`-> Result<i32, ()>`), so the body brace is looked for only
+    after the matching `)`.
+    """
+    paren = text.find("(", position)
+    if paren < 0:
+        return None
+    depth = 0
+    for index in range(paren, len(text)):
+        if text[index] == "(":
+            depth += 1
+        elif text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                brace = text.find("{", index + 1)
+                semicolon = text.find(";", index + 1)
+                if brace < 0 or (semicolon >= 0 and semicolon < brace):
+                    return None
+                return brace
+    return None
+
+
+def impl_ranges(text):
+    """Return `(start, end, type name)` for every `impl` block in `text`."""
+    ranges = []
+    for match in re.finditer(r"\bimpl\b([^{;]*)\{", text):
+        head = match.group(1)
+        if " for " in head:
+            head = head.rsplit(" for ", 1)[1]
+        head = re.sub(r"<.*", "", head).strip()
+        brace = match.end() - 1
+        ranges.append((brace, block_end(text, brace), head.split("::")[-1].strip()))
+    return ranges
+
+
 def scan_mozjs(roots, all_entries, strip):
-    calls = collections.defaultdict(set)
-    entry_deps = collections.defaultdict(set)
+    """Return the call graph of the mozjs shim and the manifest entries each item reaches.
+
+    Nodes stay keyed by function name, because many entries are reached through a wrapper that
+    shares the name of a sibling helper (`Runtime::new` -> `create`). Receiver types are not
+    modelled. Instead, a method call whose name is defined on more than one shim type is only
+    followed for `self.method()` and for the trait methods Rust dispatches implicitly (`deref`,
+    `drop`, `trace`, `post_barrier`). That keeps real edges such as
+    `IdVector::deref -> SliceRootedIdVector` while refusing `OpenOptions::append(true)` ->
+    `RootedObjectVectorWrapper::append` -> `AppendToRootedObjectVector`.
+
+    Besides plain calls, two more forms forward. Functions passed as values are not calls but still
+    forward, which is how `convert_int_from_jsval` obtains `ToInt32Slow`, and an entry reached
+    through the raw QuickJS API (`q::Name`) is not the mozjs entry `Name`.
+    """
+    bodies = []
     for root in roots:
         for path in glob.glob(root + "/**/*.rs", recursive=True):
             text = strip(open(path, encoding="utf-8", errors="ignore").read())
+            impls = impl_ranges(text)
             for match in re.finditer(r"\bfn\s+([A-Za-z_]\w*)", text):
-                start = text.find("{", match.end())
-                if start < 0:
+                start = function_body_start(text, match.end())
+                # `wrap!(jsapi: pub fn Name(...) -> T);` declares a forwarding stub, and a bare
+                # `fn Name(...) -> T;` is an extern declaration: neither has a body, and treating
+                # the following code as one would invent calls that never happen.
+                if start is None:
                     continue
-                end = block_end(text, start)
-                name = match.group(1)
-                found = set(CALL.findall(text[start : end + 1]))
-                calls[name] |= found
-                entry_deps[name] |= found & all_entries
+                owner = next((typ for begin, end, typ in impls if begin < start < end), None)
+                bodies.append((match.group(1), owner, text[start : block_end(text, start) + 1]))
+    method_owners = collections.defaultdict(set)
+    for name, owner, _body in bodies:
+        if owner:
+            method_owners[name].add(owner)
+    free_functions = {name for name, owner, _body in bodies if owner is None}
+
+    calls = collections.defaultdict(set)
+    entry_deps = collections.defaultdict(set)
+    for name, owner, body in bodies:
+        found = set()
+        for call in CALL.finditer(body):
+            position = call.start(1)
+            target = call.group(1)
+            if is_quickjs_ffi(call_path_before(body, position)):
+                continue
+            if position > 0 and body[position - 1] == ".":
+                receiver = body[max(0, position - 24) : position]
+                if re.search(r"\bself\s*$", receiver):
+                    found.add(target)
+                elif (
+                    target in IMPLICIT_DISPATCH
+                    or target in WRAPPER_ACCESSORS
+                    or len(method_owners.get(target, ())) == 1
+                ):
+                    found.add(target)
+                continue
+            found.add(target)
+        for argument in FUNCTION_ARGUMENT.finditer(body):
+            # A function used as a value, e.g. `convert_from_int32::<i32>(cx, v, ToInt32Slow)`.
+            # Requiring an argument position keeps struct fields (`append: [...]`) out, and
+            # restricting it to free functions keeps struct literals (`append,`) out as well.
+            target = argument.group(1)
+            if target in free_functions or len(method_owners.get(target, ())) == 1:
+                found.add(target)
+        calls[name] |= found
+        entry_deps[name] |= found & all_entries
     return calls, entry_deps
 
 
@@ -144,8 +268,8 @@ def collect_wrapper_roots(servo_dir, scan_scope, mozjs_functions, all_entries):
                 line = text.count("\n", 0, position) + 1
                 roots[name].add(f"{relative}:{line}")
 
-        for match in re.finditer(r"\b(?:js|mozjs)::(?:[A-Za-z_]\w*::)+([A-Za-z_]\w*)\s*\(", text):
-            add(match.group(1), match.start())
+        for match in re.finditer(r"\b(?:js|mozjs)::((?:[A-Za-z_]\w*::)+)([A-Za-z_]\w*)\s*\(", text):
+            add(match.group(2), match.start())
         for match in re.finditer(r"(?<![A-Za-z0-9_])([A-Za-z_]\w*)\s*\(", text):
             name = match.group(1)
             before = text[max(0, match.start(1) - 40) : match.start(1)]
@@ -217,10 +341,17 @@ def summarize(servo_dir, manifest_path, mozjs_root, mozjs_sys_root, reviewed_pat
     )
     mozjs_functions = set(calls) | set(entry_deps)
     roots = collect_wrapper_roots(servo_dir, scan_scope, mozjs_functions, all_entries)
+    direct = direct_scan(servo_dir, manifest_path)
 
+    # Both kinds of entry can forward to a sibling entry point, so both seed the walk. A wrapper
+    # helper is called by Servo but is not itself a manifest entry; a direct entry is a manifest
+    # entry Servo calls, and it can forward too (`Construct1` calls `Construct`, `NewWindowProxy`
+    # calls `WrapperNew`, `ToInt32` calls `ToInt32Slow`). Seeding from the wrapper helpers alone
+    # left those siblings outside the scope, which exempted them from contract cases even though
+    # Servo runs them.
     seen = set()
     reached = collections.defaultdict(set)
-    queue = list(roots)
+    queue = list(roots) + list(direct)
     while queue:
         name = queue.pop()
         if name in seen:
@@ -232,7 +363,6 @@ def summarize(servo_dir, manifest_path, mozjs_root, mozjs_sys_root, reviewed_pat
             if child in mozjs_functions and child not in seen:
                 queue.append(child)
 
-    direct = direct_scan(servo_dir, manifest_path)
     reviewed = load_reviewed_usage(reviewed_path)
     merge_reviewed_usage(direct, reached, reviewed, all_entries)
     return {
@@ -243,8 +373,6 @@ def summarize(servo_dir, manifest_path, mozjs_root, mozjs_sys_root, reviewed_pat
         "used": set(direct) | set(reached),
         "reviewed": reviewed,
     }
-
-
 def quote(value):
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 

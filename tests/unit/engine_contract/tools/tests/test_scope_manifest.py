@@ -45,6 +45,111 @@ class ReviewedUsageTest(unittest.TestCase):
                 {"JS_NewPlainObject"},
             )
 
+class ScanMozjsTest(unittest.TestCase):
+    def scan(self, files):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            for name, body in files.items():
+                path = os.path.join(root, name)
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(body)
+            return scope_manifest.scan_mozjs([root], {"One", "Two"}, lambda text: text)
+
+    def test_trait_dispatch_through_deref_is_followed(self):
+        calls, _deps = self.scan(
+            {
+                "vectors.rs": """
+impl IdVector {
+    fn handle_mut(&self) -> *mut Handle {
+        GetIdVectorAddress(self.0)
+    }
+}
+impl Deref for IdVector {
+    type Target = [jsid];
+    fn deref(&self) -> &[jsid] {
+        SliceRootedIdVector(self.0, &mut length)
+    }
+}
+"""
+            }
+        )
+
+        self.assertIn("SliceRootedIdVector", calls["deref"])
+
+    def test_same_name_method_on_two_types_is_not_followed_blindly(self):
+        calls, _deps = self.scan(
+            {
+                "vectors.rs": """
+impl EnvironmentChain {
+    fn append(&self) {
+        AppendToEnvironmentChain(self.chain, obj);
+    }
+}
+impl RootedObjectVectorWrapper {
+    fn append(&self) {
+        AppendToRootedObjectVector(self.ptr, obj);
+    }
+}
+fn write(final_: bool) {
+    let _ = OpenOptions::new().append(true).open(path);
+}
+"""
+            }
+        )
+
+        self.assertIn("AppendToEnvironmentChain", calls["append"])
+        self.assertIn("AppendToRootedObjectVector", calls["append"])
+        self.assertNotIn("append", calls["write"])
+
+    def test_self_method_on_a_colliding_name_is_followed(self):
+        calls, _deps = self.scan(
+            {
+                "vectors.rs": """
+impl EnvironmentChain {
+    fn append(&self) {
+        self.append_inner(obj);
+    }
+    fn append_inner(&self, obj: *mut JSObject) {
+        AppendToEnvironmentChain(self.chain, obj);
+    }
+}
+impl RootedObjectVectorWrapper {
+    fn append(&self) {
+        AppendToRootedObjectVector(self.ptr, obj);
+    }
+}
+"""
+            }
+        )
+
+        self.assertIn("append_inner", calls["append"])
+        self.assertIn("AppendToEnvironmentChain", calls["append_inner"])
+
+    def test_quickjs_ffi_is_not_the_mozjs_entry(self):
+        calls, _deps = self.scan(
+            {"object.rs": "fn is_constructor(v: JSValue) -> bool { q::JS_IsConstructor(v) }"}
+        )
+
+        self.assertNotIn("JS_IsConstructor", calls["is_constructor"])
+
+    def test_bodyless_declaration_does_not_swallow_the_next_function(self):
+        calls, _deps = self.scan(
+            {
+                "wrappers.rs": """
+wrap!(jsapi: pub fn JS_NewPlainObject(cx: &mut JSContext) -> bool);
+fn real(cx: &mut JSContext) -> bool {
+    JS_NewPlainObject(cx)
+}
+"""
+            }
+        )
+
+        self.assertEqual(calls["real"], {"JS_NewPlainObject"})
+        self.assertNotIn("JS_NewPlainObject", calls)
+
+
 
 if __name__ == "__main__":
     unittest.main()
