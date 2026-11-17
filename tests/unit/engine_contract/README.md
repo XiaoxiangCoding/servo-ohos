@@ -54,12 +54,10 @@ Legacy names are accepted as compatibility aliases: `sm`, `qjs`, `diff`, `api-sc
 The case count and the scope distribution are not restated here, because they drift with every
 scan and every new case; `check-contract-case-coverage` prints them. Coverage is measured against
 `servo-mozjs-api-usage.toml`: the mozjs entries Servo production code actually calls directly or
-reaches through the mozjs wrappers. The current scope has 410 unique names (313 marked direct, 97
-marked indirect), of which 368 are `implemented`. Every scoped entry has a contract case: the 368
-`implemented` entries are checked as normal coverage, and the remaining 42 (37 `empty`, 5 `todo`)
-are required cases whose shim behavior is reported separately. Such a case still asserts
-SpiderMonkey behavior; on QuickJS the silent no-op or `qjs_todo!` panic is recorded and must be
-settled by an entry in
+reaches through the mozjs wrappers. Every scoped entry has a contract case: `implemented` entries
+are checked as normal coverage, and `empty`/`todo` entries are required cases whose shim behavior
+is reported separately. Such a case still asserts SpiderMonkey behavior; on QuickJS the silent
+no-op or `qjs_todo!` panic is recorded and must be settled by an entry in
 `quickjs-difference-allowlist.toml`, so a missing capability can never silently drop its case.
 
 | Area | Cases | Source |
@@ -89,12 +87,20 @@ scope the same entries are rejected. This is what keeps an unimplemented
 entry visible: dropping the case would fail `coverage`, while keeping it records today's behavior
 for the diff.
 
-`servo-mozjs-api-usage.toml` is generated, not hand maintained. Entries reached only through mozjs wrapper
-methods, generic `TypedArray` helpers, generated bindings or callback registrations are not
-visible to the conservative call scan; each one is listed in `tools/servo-mozjs-api-usage-reviewed.toml` with
-its review evidence, and the generator merges that list into the scope. It is the usage standard: a mozjs upgrade
-that adds entries does not fail coverage unless Servo starts using them. If Servo gains a new
-call site, `check-servo-mozjs-api-usage` fails until the usage file and any newly required case are updated.
+`servo-mozjs-api-usage.toml` is generated, not hand maintained. Entries reached only through
+mozjs wrapper methods, generic `TypedArray` helpers, generated bindings or callback registrations
+are not visible to the conservative call scan; each one is listed in
+`tools/servo-mozjs-api-usage-reviewed.toml` with its review evidence, and the generator merges
+that list into the scope. The call scan keys the shim's functions by name and does not model
+receiver types, so a method name defined on more than one shim type is only followed for
+`self.method()`, for the trait methods Rust dispatches implicitly (`deref`, `drop`, `trace`,
+`post_barrier`) and for the rooted/stack-vector accessors (`len`, `at`). That is what keeps
+`OpenOptions::append(true)` from claiming `AppendToRootedObjectVector`, while `IdVector::deref`
+still reaches `SliceRootedIdVector`.
+
+It is the usage standard: a mozjs upgrade that adds entries does not fail coverage unless Servo
+starts using them. If Servo gains a new call site, `check-servo-mozjs-api-usage` fails until the
+usage file and any newly required case are updated.
 
 `check-contract-case-coverage` first checks the four version places: the exact `mozjs` pin in
 `Cargo.toml`, the version in `servo-quickjs/mozjs/Cargo.toml`, the `rev` in

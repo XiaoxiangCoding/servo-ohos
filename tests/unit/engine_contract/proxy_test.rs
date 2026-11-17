@@ -493,6 +493,16 @@ fn principals(engine: &JSEngine) {
 
         let realm = GetObjectRealmOrNull(global.get());
         assert!(!realm.is_null());
+        // The `*Ref` entries take the realm pointer and the `*Ref1` entries read the current realm
+        // of a context: both must resolve to the same fields of that realm.
+        assert_eq!(
+            RealmBehaviorsRef(realm),
+            RealmBehaviorsRef1(cx.raw_cx())
+        );
+        assert_eq!(
+            RealmCreationOptionsRef(realm),
+            RealmCreationOptionsRef1(cx.raw_cx())
+        );
         assert!(GetRealmPrincipals(realm).is_null());
         SetRealmPrincipals(realm, principals);
         assert_eq!(GetRealmPrincipals(realm), principals);
@@ -511,6 +521,7 @@ fn principals(engine: &JSEngine) {
             ("realm_roundtrip", Value::Boolean(true)),
             ("refcount_release", Value::Boolean(true)),
             ("destroy_callback", Value::Boolean(true)),
+            ("realm_refs", Value::Boolean(true)),
         ]),
         &[
             "CreateRustJSPrincipals",
@@ -522,6 +533,10 @@ fn principals(engine: &JSEngine) {
             "JS_InitDestroyPrincipalsCallback",
             "JS_InitReadPrincipalsCallback",
             "JS_NewGlobalObject",
+            "RealmBehaviorsRef",
+            "RealmBehaviorsRef1",
+            "RealmCreationOptionsRef",
+            "RealmCreationOptionsRef1",
             "SetRealmPrincipals",
         ],
     );

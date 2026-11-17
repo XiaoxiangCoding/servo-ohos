@@ -102,11 +102,6 @@ mode = "indirect"
 evidence = "components/script_bindings/codegen/codegen.py:6821; generated Bindings"
 
 [[entry]]
-name = "JS_GetRuntime"
-mode = "indirect"
-evidence = "components/script/runtime/script_runtime.rs:715 -> mozjs rust.rs:400"
-
-[[entry]]
 name = "JS_GetTypedArraySharedness"
 mode = "indirect"
 evidence = "components/script/dom/audio/audiobuffer.rs:296,339; components/script/dom/stream/readablestreamdefaultreader.rs:166 -> mozjs typedarray.rs:267"
@@ -157,24 +152,9 @@ mode = "indirect"
 evidence = "mozjs typedarray.rs TypedArray<ClampedU8>::create"
 
 [[entry]]
-name = "JS_RequestInterruptCallback"
-mode = "indirect"
-evidence = "components/script/event_loop/script_thread.rs:446; components/script/workers/worker.rs:351 -> mozjs rust.rs:477"
-
-[[entry]]
 name = "JS_SetElement"
 mode = "indirect"
 evidence = "components/script_bindings/codegen/codegen.py:4983,5044; generated Bindings"
-
-[[entry]]
-name = "StackGCVectorStringAtIndex"
-mode = "indirect"
-evidence = "components/script/runtime/script_runtime.rs:393 -> mozjs rust.rs:1305"
-
-[[entry]]
-name = "StackGCVectorValueAtIndex"
-mode = "indirect"
-evidence = "components/script/runtime/script_runtime.rs:404 -> mozjs rust.rs:1290"
 
 [[entry]]
 name = "UnwrapFloat32Array"
@@ -205,3 +185,43 @@ evidence = "mozjs typedarray.rs TypedArray<Uint8>"
 name = "UnwrapUint8ClampedArray"
 mode = "indirect"
 evidence = "mozjs typedarray.rs TypedArray<ClampedU8>"
+
+# Reached through an entry that Servo calls directly, but not through a plain Rust call the
+# scanner can follow: a wrapper method call on a mixed-ownership value, a generated binding, or a
+# conversion helper. Found by tracing every implemented entry while running WPT with
+# `QJS_CALL_LOG=1`, and checked against the QJS contract log.
+
+[[entry]]
+name = "JS_EncodeStringToLatin1"
+mode = "indirect"
+evidence = "engine/string.rs:635 JS_EncodeStringToASCII -> :639 JS_EncodeStringToLatin1"
+
+[[entry]]
+name = "JS_GetEmptyString"
+mode = "indirect"
+evidence = "engine/string.rs:433 JS_GetEmptyStringValue -> :434 JS_GetEmptyString"
+
+[[entry]]
+name = "JS_ValueToObject"
+mode = "indirect"
+evidence = "engine/string.rs:933 ToObjectSlow -> :944 super::JS_ValueToObject"
+
+[[entry]]
+name = "RealmBehaviorsRef"
+mode = "indirect"
+evidence = "engine/proxy.rs:1862 RealmBehaviorsRef1 -> :1864 RealmBehaviorsRef"
+
+[[entry]]
+name = "RealmCreationOptionsRef"
+mode = "indirect"
+evidence = "engine/proxy.rs:1850 RealmCreationOptionsRef1 -> :1852 RealmCreationOptionsRef"
+
+[[entry]]
+name = "UnwrapArrayBuffer"
+mode = "indirect"
+evidence = "mozjs typedarray.rs:459 -> UnwrapArrayBuffer"
+
+[[entry]]
+name = "UnwrapArrayBufferView"
+mode = "indirect"
+evidence = "mozjs typedarray.rs:467 -> UnwrapArrayBufferView"
