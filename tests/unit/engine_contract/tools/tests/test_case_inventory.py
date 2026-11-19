@@ -118,11 +118,19 @@ class CaseInventoryTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("no contract cases found", output)
 
-    def write_run_sh_repo(self, name):
+    def write_run_sh_repo(self, name, tool_tests=None):
         tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         repository = os.path.join(self.temporary.name, name)
         contract = os.path.join(repository, "tests", "unit", "engine_contract")
         os.makedirs(os.path.join(contract, "tools"))
+        if tool_tests is not None:
+            os.makedirs(os.path.join(contract, "tools", "tests"))
+            with open(
+                os.path.join(contract, "tools", "tests", "test_tool.py"),
+                "w",
+                encoding="utf-8",
+            ) as file:
+                file.write(tool_tests)
         shutil.copy(os.path.join(tools, "run.sh"), os.path.join(contract, "tools", "run.sh"))
         shutil.copy(
             os.path.join(tools, "api_inventory.py"),
@@ -495,6 +503,93 @@ fi
         self.assertIn("compared 1 cases", completed.stdout)
         self.assertIn("run-quickjs-contract exited non-zero", completed.stderr)
         self.assertNotIn("engine contract steps failed:", completed.stderr)
+
+    def test_run_sh_all_runs_tool_tests_first(self):
+        repository, contract = self.write_run_sh_repo(
+            "repo-tool-tests",
+            tool_tests=(
+                "import unittest\n"
+                "\n"
+                "\n"
+                "class ToolTest(unittest.TestCase):\n"
+                "    def test_passes(self):\n"
+                "        self.assertTrue(True)\n"
+            ),
+        )
+        bin_dir = os.path.join(self.temporary.name, "bin-tool-tests")
+        os.makedirs(bin_dir)
+        self.write_fake_cargo(os.path.join(bin_dir, "cargo"), "__never__")
+        output_dir = os.path.join(self.temporary.name, "out-tool-tests")
+        os.makedirs(output_dir)
+        completed = subprocess.run(
+            [
+                os.path.join(contract, "tools", "run.sh"),
+                "run-contract-gate",
+                "--case",
+                "module.one",
+            ],
+            cwd=repository,
+            env={
+                **os.environ,
+                "OUT_DIR": output_dir,
+                "QJS_DIR": self.temporary.name,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                "FIX_CHECK_BASELINE": os.path.join(
+                    contract, "baseline-quickjs-difference-allowlist.toml"
+                ),
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("==> run-tool-tests", completed.stdout)
+        self.assertIn("Ran 1 test", completed.stderr)
+        # The tool tests must run before the engines, so a broken manifest tool stops the gate
+        # instead of letting a meaningless comparison pass.
+        self.assertLess(
+            completed.stdout.index("==> run-tool-tests"),
+            completed.stdout.index("==> run-spidermonkey-contract"),
+        )
+
+    def test_run_sh_all_fails_when_a_tool_test_fails(self):
+        repository, contract = self.write_run_sh_repo(
+            "repo-tool-tests-failing",
+            tool_tests=(
+                "import unittest\n"
+                "\n"
+                "\n"
+                "class ToolTest(unittest.TestCase):\n"
+                "    def test_fails(self):\n"
+                "        self.fail('manifest tool regression')\n"
+            ),
+        )
+        bin_dir = os.path.join(self.temporary.name, "bin-tool-tests-failing")
+        os.makedirs(bin_dir)
+        self.write_fake_cargo(os.path.join(bin_dir, "cargo"), "__never__")
+        output_dir = os.path.join(self.temporary.name, "out-tool-tests-failing")
+        os.makedirs(output_dir)
+        completed = subprocess.run(
+            [
+                os.path.join(contract, "tools", "run.sh"),
+                "run-contract-gate",
+                "--case",
+                "module.one",
+            ],
+            cwd=repository,
+            env={
+                **os.environ,
+                "OUT_DIR": output_dir,
+                "QJS_DIR": self.temporary.name,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                "FIX_CHECK_BASELINE": os.path.join(
+                    contract, "baseline-quickjs-difference-allowlist.toml"
+                ),
+            },
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 1, completed.stdout + completed.stderr)
+        self.assertIn("engine contract steps failed: run-tool-tests", completed.stderr)
 
 
 if __name__ == "__main__":
