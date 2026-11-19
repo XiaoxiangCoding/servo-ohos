@@ -49,17 +49,17 @@ def load(path, expected_engine):
             if case_id in cases:
                 raise SystemExit(f"{path}:{line_number}: duplicate case id {case_id!r}")
             cases[case_id] = case
-    # An empty run has no engine marker to check; the case inventory checks cover that case.
-    if engines:
-        if len(engines) > 1:
-            raise SystemExit(f"{path}: mixed engine markers {sorted(map(str, engines))}")
-        actual = next(iter(engines))
-        if actual != expected_engine:
-            raise SystemExit(
-                f"{path}: expected {expected_engine!r} results, found {actual!r}. "
-                "A missing [patch.crates-io] makes the QuickJS run build SpiderMonkey, so this "
-                "comparison would be SpiderMonkey against itself."
-            )
+    if not cases:
+        raise SystemExit(f"{path}: no cases recorded")
+    if len(engines) > 1:
+        raise SystemExit(f"{path}: mixed engine markers {sorted(map(str, engines))}")
+    actual = next(iter(engines))
+    if actual != expected_engine:
+        raise SystemExit(
+            f"{path}: expected {expected_engine!r} results, found {actual!r}. "
+            "A missing [patch.crates-io] makes the QuickJS run build SpiderMonkey, so this "
+            "comparison would be SpiderMonkey against itself."
+        )
     return cases
 
 

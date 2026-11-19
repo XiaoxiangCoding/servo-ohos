@@ -439,6 +439,54 @@ pub fn run(engine: &JSEngine) {
             let int_descriptor_writable = desc.get().writable_();
             let int_descriptor_enumerable = desc.get().enumerable_();
             let int_descriptor_configurable = desc.get().configurable_();
+            assert!(
+                !int_descriptor_writable,
+                "JSPROP_READONLY must clear writable"
+            );
+            assert!(
+                int_descriptor_enumerable,
+                "JSPROP_ENUMERATE must set enumerable"
+            );
+            assert!(
+                !int_descriptor_configurable,
+                "JSPROP_PERMANENT must clear configurable"
+            );
+
+            // A failed assignment to a readonly property is ignored in sloppy mode; the value
+            // must not change even though the API reports success.
+            rooted!(&in(cx) let replacement = Int32Value(99));
+            let write_attempt = JS_SetProperty(
+                cx,
+                object.handle(),
+                c"int_value".as_ptr(),
+                replacement.handle(),
+            );
+            assert!(write_attempt, "a sloppy readonly assignment must not throw");
+            let int_value_after_failed_write =
+                observe_property(cx, ObjectValue(object.get()), c"int_value");
+            assert_eq!(
+                int_value_after_failed_write,
+                Observed::Number(-7.0),
+                "a readonly property must ignore assignment"
+            );
+
+            // A non-configurable property cannot be deleted; the operation reports failure and
+            // the property remains visible.
+            let mut delete_result = ObjectOpResult::default();
+            let delete_attempt =
+                JS_DeleteProperty(cx, object.handle(), c"int_value".as_ptr(), &mut delete_result);
+            assert!(delete_attempt, "a failed delete must not throw");
+            assert!(
+                !delete_result.ok(),
+                "deleting a non-configurable property must fail"
+            );
+            let int_value_after_failed_delete =
+                observe_property(cx, ObjectValue(object.get()), c"int_value");
+            assert_eq!(
+                int_value_after_failed_delete,
+                Observed::Number(-7.0),
+                "a non-configurable property must survive deletion"
+            );
             rooted!(&in(cx) let own_id = id_for(cx, _global, "'uint_value'"));
             let mut is_none = true;
             assert!(JS_GetOwnPropertyDescriptorById(
@@ -652,6 +700,14 @@ pub fn run(engine: &JSEngine) {
                 ("constructed_value", constructed_value),
                 ("boxed_value", boxed_value),
                 ("int_descriptor_value", int_descriptor_value),
+                (
+                    "int_value_after_failed_write",
+                    int_value_after_failed_write,
+                ),
+                (
+                    "int_value_after_failed_delete",
+                    int_value_after_failed_delete,
+                ),
                 (
                     "int_descriptor_writable",
                     Observed::Boolean(int_descriptor_writable),

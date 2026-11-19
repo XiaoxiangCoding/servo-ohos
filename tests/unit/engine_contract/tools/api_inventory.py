@@ -8,7 +8,6 @@ time: when a servo-quickjs checkout is supplied, its parser is imported and reus
 Usage:
   api_inventory.py generate --bindgen-dir DIR --engine-src DIR --output FILE \
       [--quickjs-revision REV] [--stub-bindings FILE]
-  api_inventory.py check --snapshot FILE
   api_inventory.py verify --snapshot FILE --bindgen-dir DIR --engine-src DIR \
       [--stub-bindings FILE]
   api_inventory.py report --baseline FILE --snapshot FILE --output FILE [--format toml|tsv]
@@ -359,7 +358,7 @@ def inventory(entries):
 
 
 def inventory_problems(metadata, entries):
-    """The structural checks `verify` shares with `check`.
+    """The structural checks `verify` runs before comparing inventories.
 
     `verify` only compares the entry set, which is a dict keyed by name/arity/source: a duplicated
     `[[api]]` block, a missing `reason`, or a stale summary count all compare as unchanged. Run
@@ -390,20 +389,6 @@ def inventory_problems(metadata, entries):
     if metadata.get("eligible") != counts["implemented"]:
         problems.append("eligible must equal implemented")
     return problems, counts
-
-
-def check(args):
-    metadata, entries = load_inventory(args.snapshot)
-    problems, counts = inventory_problems(metadata, entries)
-    if problems:
-        for problem in problems:
-            print("error:", problem, file=sys.stderr)
-        return 1
-    print(
-        f"mozjs API inventory ok: {counts['bindgen_definitions']} definitions, "
-        f"{counts['implemented']} eligible, {counts['empty']} empty, {counts['todo']} todo"
-    )
-    return 0
 
 
 def diff_inventory(recorded, generated):
@@ -699,10 +684,6 @@ def main(argv):
     generate_parser.add_argument("--mozjs-version", default="0.26.14")
     generate_parser.add_argument("--quickjs-revision", default="unknown")
     generate_parser.set_defaults(func=generate)
-
-    check_parser = subparsers.add_parser("check")
-    add_snapshot_argument(check_parser)
-    check_parser.set_defaults(func=check)
 
     verify_parser = subparsers.add_parser("verify")
     add_snapshot_argument(verify_parser)

@@ -18,8 +18,8 @@ use js::jsval::{JSVal, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
-    HasAnyMicroTasks, JS_DequeueNextMicroTask, JS_NewGlobalObject, JS_SetProperty, RunJSMicroTask,
-    SetJobQueue,
+    HasAnyMicroTasks, JS_ClearPendingException, JS_DequeueNextMicroTask, JS_GetPendingException,
+    JS_IsExceptionPending, JS_NewGlobalObject, JS_SetProperty, RunJSMicroTask, SetJobQueue,
 };
 use js::rust::{
     CompileOptionsWrapper, HandleObject, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
@@ -293,6 +293,50 @@ pub fn observe_property(cx: &mut JSContext, object: JSVal, name: &CStr) -> Value
     observe(cx, value)
 }
 
+/// Takes the pending exception and asserts its `name`, so a failure path cannot pass merely by
+/// leaving some unrelated exception pending.
+#[track_caller]
+pub fn take_exception_named(cx: &mut JSContext, expected: &str) -> String {
+    assert!(
+        unsafe { JS_IsExceptionPending(cx) },
+        "expected a pending {expected}"
+    );
+    rooted!(&in(cx) let mut exception = UndefinedValue());
+    assert!(
+        unsafe { JS_GetPendingException(cx, exception.handle_mut()) },
+        "reading the pending exception"
+    );
+    let name = observe_property(cx, exception.get(), c"name");
+    assert_eq!(
+        name,
+        Value::String(expected.to_owned()),
+        "unexpected pending exception"
+    );
+    unsafe { JS_ClearPendingException(cx) };
+    assert!(!unsafe { JS_IsExceptionPending(cx) });
+    expected.to_owned()
+}
+
+/// Asserts the pending exception is an `Error` object named `expected` and clears it.
+#[track_caller]
+pub unsafe fn assert_exception_named(cx: &mut JSContext, expected: &str) {
+    assert!(JS_IsExceptionPending(cx), "expected a pending {expected}");
+    rooted!(&in(cx) let mut exception = UndefinedValue());
+    assert!(
+        JS_GetPendingException(cx, exception.handle_mut()),
+        "reading the pending exception"
+    );
+    let value = exception.get();
+    assert!(value.is_object(), "expected an {expected} object");
+    assert_eq!(
+        observe_property(cx, value, c"name"),
+        Value::String(expected.to_owned()),
+        "unexpected pending exception"
+    );
+    unsafe { js::jsapi::JS_ClearPendingException(cx.raw_cx()) };
+    assert!(!unsafe { JS_IsExceptionPending(cx) });
+}
+
 static JOB_QUEUE_TRAPS: js::glue::JobQueueTraps = js::glue::JobQueueTraps {
     getHostDefinedData: Some(job_queue_host_defined_data),
     getHostDefinedGlobal: Some(job_queue_host_defined_global),
@@ -370,7 +414,7 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
             std::fs::write(&path, b"").expect("truncating CONTRACT_OUT");
         });
     }
-    let engine = std::env::var("CONTRACT_ENGINE").unwrap_or_else(|_| "unknown".to_owned());
+    let engine = contract_engine();
     let observation = observation.to_json();
     let line = serde_json::json!({
         "id": case,
@@ -657,7 +701,7 @@ pub fn run_isolated() -> bool {
         eprintln!("CONTRACT_ISOLATE_CASES=1 needs CONTRACT_OUT");
         std::process::exit(2);
     };
-    let engine = std::env::var("CONTRACT_ENGINE").unwrap_or_else(|_| "unknown".to_owned());
+    let engine = contract_engine();
     let selection = std::env::var("CONTRACT_CASES").unwrap_or_default();
 
     let cases = collect_cases(&selection);
@@ -704,6 +748,21 @@ pub fn run_isolated() -> bool {
     // an error even when it wrote an observation: the assertion failure must not look like a
     // successful runner.
     std::process::exit(if failed.is_empty() { 0 } else { 1 });
+}
+
+/// The engine marker written into every result line.
+///
+/// It is required whenever results are recorded: an absent or misspelled value used to be written
+/// as `"unknown"`, which only failed later in `compare.py`. Rejecting it here keeps the failure at
+/// the recording site and makes the JSONL self-describing.
+fn contract_engine() -> String {
+    let engine = std::env::var("CONTRACT_ENGINE")
+        .expect("CONTRACT_ENGINE must be set when CONTRACT_OUT is written");
+    assert!(
+        engine == "spidermonkey" || engine == "quickjs",
+        "CONTRACT_ENGINE must be spidermonkey or quickjs, got {engine:?}"
+    );
+    engine
 }
 
 /// Runs the suite once without executing any case to learn which ids the selection covers.

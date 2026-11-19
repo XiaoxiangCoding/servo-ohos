@@ -2129,29 +2129,26 @@ fn weakmap(engine: &JSEngine) {
                 primitive.handle(),
                 one.handle(),
             );
-            let primitive_pending = JS_IsExceptionPending(cx.raw_cx());
-            if primitive_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            assert!(!primitive_set, "a primitive WeakMap key must be rejected");
+            crate::support::assert_exception_named(cx, "TypeError");
             let primitive_get_ok = GetWeakMapEntry(
                 cx,
                 weak.handle(),
                 primitive.handle(),
                 out.handle_mut(),
             );
-            let primitive_get_pending = JS_IsExceptionPending(cx.raw_cx());
-            if primitive_get_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            assert!(primitive_get_ok, "GetWeakMapEntry must accept a missing key");
+            assert!(out.get().is_undefined(), "a primitive WeakMap key has no entry");
+            assert!(!JS_IsExceptionPending(cx.raw_cx()));
 
             Observation::new(vec![
                 ("missing_ok", Value::Boolean(missing_ok)),
                 ("overwritten", Value::Number(overwritten as f64)),
                 ("other_missing", Value::Boolean(other_missing)),
                 ("primitive_set", Value::Boolean(primitive_set)),
-                ("primitive_pending", Value::Boolean(primitive_pending)),
+                ("primitive_pending", Value::Boolean(true)),
                 ("primitive_get_ok", Value::Boolean(primitive_get_ok)),
-                ("primitive_get_pending", Value::Boolean(primitive_get_pending)),
+                ("primitive_get_pending", Value::Boolean(false)),
             ])
         },
     );
@@ -2375,17 +2372,14 @@ fn regexp_syntax(engine: &JSEngine) {
             let bad: Vec<u16> = "(".encode_utf16().collect();
             rooted!(&in(cx) let bad_re =
                 NewUCRegExpObject(cx, bad.as_ptr(), bad.len(), flags));
-            let bad_null = bad_re.get().is_null();
-            let bad_pending = JS_IsExceptionPending(cx.raw_cx());
-            if bad_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            assert!(bad_re.get().is_null(), "an invalid RegExp must not be constructed");
+            crate::support::assert_exception_named(cx, "SyntaxError");
 
             Observation::new(vec![
                 ("valid", Value::Number(valid_count as f64)),
                 ("invalid", Value::Number(invalid_count as f64)),
-                ("bad_null", Value::Boolean(bad_null)),
-                ("bad_pending", Value::Boolean(bad_pending)),
+                ("bad_null", Value::Boolean(true)),
+                ("bad_pending", Value::Boolean(true)),
             ])
         },
     );

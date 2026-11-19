@@ -306,12 +306,8 @@ fn json_and_synthetic(engine: &JSEngine) {
             let bad =
                 CompileJsonModule1(cx, options.ptr, &mut transform_str_to_source_text("{ nope"));
             let bad_json_compile_failed = bad.is_null();
-            let bad_json_has_pending_exception = jsapi::JS_IsExceptionPending(cx.raw_cx());
             assert!(bad_json_compile_failed, "CompileJsonModule1 must reject invalid JSON");
-            assert!(bad_json_has_pending_exception, "invalid JSON must leave a pending exception");
-            if bad_json_has_pending_exception {
-                jsapi::JS_ClearPendingException(cx.raw_cx());
-            }
+            crate::support::assert_exception_named(cx, "SyntaxError");
 
             rooted!(&in(cx) let default = Int32Value(7));
             let synthetic = CreateDefaultExportSyntheticModule(cx, default.handle());
@@ -341,7 +337,7 @@ fn json_and_synthetic(engine: &JSEngine) {
                 ),
                 (
                     "bad_json_has_pending_exception",
-                    Observed::Boolean(bad_json_has_pending_exception),
+                    Observed::Boolean(true),
                 ),
                 ("synthetic_default", synthetic_default),
             ])

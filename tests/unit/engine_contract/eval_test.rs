@@ -206,7 +206,7 @@ use js::rust::{
     transform_u16_to_source_text,
 };
 
-use crate::support::{Observation, Value as Observed, record_case};
+use crate::support::{Observation, Value as Observed, record_case, take_exception_named};
 
 pub fn run(engine: &JSEngine) {
     record_case(
@@ -222,6 +222,9 @@ pub fn run(engine: &JSEngine) {
             "JS_ExecuteScript",
             "JS_ExecuteScript1",
             "JS_GetGlobalFromScript",
+            "JS_ClearPendingException",
+            "JS_GetPendingException",
+            "JS_IsExceptionPending",
             "JS_GetScriptPrivate",
             "NewCompileOptions",
             "SetScriptPrivate",
@@ -247,6 +250,12 @@ pub fn run(engine: &JSEngine) {
             assert_eq!(rval.get().to_int32(), 3);
             let compiled_result = rval.get().to_int32();
 
+            let mut source = transform_str_to_source_text("throw new TypeError('boom')");
+            rooted!(&in(cx) let throwing = Compile1(cx, options.ptr, &mut source));
+            assert!(!throwing.get().is_null());
+            assert!(!JS_ExecuteScript(cx, throwing.handle(), rval.handle_mut()));
+            take_exception_named(cx, "TypeError");
+
             let utf16: Vec<u16> = "20 + 22".encode_utf16().collect();
             let mut source = transform_u16_to_source_text(&utf16);
             rooted!(&in(cx) let script_utf16 = Compile(cx, options.ptr, &mut source));
@@ -270,6 +279,13 @@ pub fn run(engine: &JSEngine) {
             assert!(Evaluate(cx, options.ptr, &mut source, rval.handle_mut()));
             assert_eq!(rval.get().to_int32(), 16);
             let evaluated_utf16_result = rval.get().to_int32();
+
+            let utf16: Vec<u16> = "throw new RangeError('boom')".encode_utf16().collect();
+            let mut source = transform_u16_to_source_text(&utf16);
+            rooted!(&in(cx) let throwing = Compile(cx, options.ptr, &mut source));
+            assert!(!throwing.get().is_null());
+            assert!(!JS_ExecuteScript1(cx, throwing.handle()));
+            take_exception_named(cx, "RangeError");
 
             let private = Int32Value(99);
             js::jsapi::SetScriptPrivate(script_utf8.get(), &private);

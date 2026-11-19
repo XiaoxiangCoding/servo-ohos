@@ -107,6 +107,12 @@ class CompareTest(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "cannot release"):
                     self.run_compare("accepted", severity)
 
+    def test_rejects_an_empty_results_file(self):
+        sm = self.write("spidermonkey-contract-results.jsonl", "")
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": True})
+        with self.assertRaisesRegex(SystemExit, "no cases recorded"):
+            compare.main(["compare.py", sm, qjs])
+
     def test_difference_requires_reason_owner_status_and_severity(self):
         sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
         qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})

@@ -288,7 +288,7 @@ class ManifestVerifyTest(unittest.TestCase):
         with open(self.manifest, "w", encoding="utf-8") as file:
             file.writelines(edit(lines))
 
-    def test_verify_rejects_a_duplicated_entry_that_check_reports(self):
+    def test_verify_rejects_a_duplicated_entry(self):
         self.generate()
         self.rewrite_manifest(lambda lines: lines + lines[-8:])
         result, output = self.verify()

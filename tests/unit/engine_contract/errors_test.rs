@@ -7,7 +7,10 @@
 //! Error reports, scripted callers and saved-frame stacks.
 
 use std::cell::RefCell;
-use std::ffi::{CStr, c_int, c_void};
+use std::ffi::CStr;
+#[cfg(unix)]
+use std::ffi::{c_int, c_void};
+#[cfg(unix)]
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::os::fd::FromRawFd;
@@ -76,6 +79,15 @@ fn capture_stdout(f: impl FnOnce()) -> String {
         assert_eq!(dup2(fds[1], 1), 1);
         close(fds[1]);
 
+        // Drain while the producer runs. A dump larger than the pipe buffer would otherwise
+        // block the writer forever because nobody reads before `f` returns.
+        let mut pipe = std::fs::File::from_raw_fd(fds[0]);
+        let reader = std::thread::spawn(move || {
+            let mut output = Vec::new();
+            pipe.read_to_end(&mut output).expect("reading dump");
+            output
+        });
+
         f();
 
         let _ = std::io::stdout().flush();
@@ -84,9 +96,7 @@ fn capture_stdout(f: impl FnOnce()) -> String {
         restore.active = false;
         close(restore.saved);
 
-        let mut output = Vec::new();
-        let mut pipe = std::fs::File::from_raw_fd(fds[0]);
-        pipe.read_to_end(&mut output).expect("reading dump");
+        let output = reader.join().expect("joining the stdout reader");
         String::from_utf8_lossy(&output).into_owned()
     }
 }
@@ -95,24 +105,6 @@ fn capture_stdout(f: impl FnOnce()) -> String {
 fn capture_stdout(f: impl FnOnce()) -> String {
     f();
     String::new()
-}
-
-fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, SafeHandleObject)) {
-    let mut runtime = Runtime::new(engine.handle());
-    let context = runtime.cx();
-    unsafe {
-        rooted!(&in(context) let global = JS_NewGlobalObject(
-            context,
-            &SIMPLE_GLOBAL_CLASS,
-            ptr::null_mut(),
-            OnNewGlobalHookOption::FireOnNewGlobalHook,
-            &*RealmOptions::default(),
-        ));
-        assert!(!global.get().is_null(), "JS_NewGlobalObject returned null");
-        let mut realm = AutoRealm::new_from_handle(context, global.handle());
-        let (global, realm) = realm.global_and_reborrow();
-        f(realm, global);
-    }
 }
 
 fn eval_in(
@@ -179,6 +171,16 @@ fn assert_dump_stack_output(output: &str) {
     );
 }
 
+#[cfg(unix)]
+fn capture_stdout_large() -> String {
+    let body = "x".repeat(200 * 1024);
+    capture_stdout(|| {
+        let mut out = std::io::stdout();
+        out.write_all(body.as_bytes()).expect("writing a large dump");
+        out.write_all(b"\n").expect("finishing the large dump");
+    })
+}
+
 unsafe fn handle<T>(ptr: &T) -> Handle<T> {
     Handle::from_marked_location(ptr)
 }
@@ -189,12 +191,21 @@ fn thrown(
     global: SafeHandleObject,
     file: &CStr,
     source: &str,
+    expected_name: Option<&str>,
 ) -> js::rust::ErrorInfo {
     assert!(eval_in(cx, global, file, source).is_err());
     assert!(unsafe { jsapi::JS_IsExceptionPending(cx.raw_cx()) });
     rooted!(&in(cx) let mut exception = UndefinedValue());
     let info = error_info_from_exception_stack(cx, exception.handle_mut()).unwrap();
     assert!(!unsafe { jsapi::JS_IsExceptionPending(cx.raw_cx()) });
+    if let Some(expected) = expected_name {
+        let name = crate::support::observe_property(cx, exception.get(), c"name");
+        assert_eq!(
+            name,
+            Observed::String(expected.to_owned()),
+            "unexpected exception name"
+        );
+    }
     info
 }
 
@@ -205,6 +216,7 @@ fn report_thrown_error_location(cx: &mut JSContext, global: SafeHandleObject) {
         global,
         c"err.js",
         "function f() {\n  throw new TypeError('boom');\n}\nf();",
+        Some("TypeError"),
     );
     assert_eq!(info.message, "boom");
     assert_eq!(info.filename, "err.js");
@@ -212,7 +224,7 @@ fn report_thrown_error_location(cx: &mut JSContext, global: SafeHandleObject) {
 }
 
 fn report_primitive_throw(cx: &mut JSContext, global: SafeHandleObject) {
-    let info = thrown(cx, global, c"err.js", "\nthrow 42;");
+    let info = thrown(cx, global, c"err.js", "\nthrow 42;", None);
     assert_eq!(info.message, "uncaught exception: 42");
     assert_eq!(
         (info.filename.as_str(), info.line, info.col),
@@ -238,7 +250,7 @@ fn report_native_throws(cx: &mut JSContext, global: SafeHandleObject) {
             handle(&ObjectValue(f))
         ));
     }
-    let info = thrown(cx, global, c"native.js", "\n\nthrowValue();");
+    let info = thrown(cx, global, c"native.js", "\n\nthrowValue();", None);
     assert_eq!(info.message, "uncaught exception: 5");
     assert_eq!((info.filename.as_str(), info.line), ("native.js", 3));
     let info = thrown(
@@ -246,13 +258,14 @@ fn report_native_throws(cx: &mut JSContext, global: SafeHandleObject) {
         global,
         c"native.js",
         "function g() {\n  throw { toString() { return 'obj'; } };\n}\ng();",
+        None,
     );
     assert_eq!(info.message, "uncaught exception: obj");
     assert_eq!((info.filename.as_str(), info.line), ("native.js", 2));
 }
 
 fn report_syntax_error(cx: &mut JSContext, global: SafeHandleObject) {
-    let info = thrown(cx, global, c"syntax.js", "\nvar x = ;");
+    let info = thrown(cx, global, c"syntax.js", "\nvar x = ;", Some("SyntaxError"));
     assert!(!info.message.is_empty());
     assert_eq!(info.filename, "syntax.js");
     assert_eq!(info.line, 2);
@@ -842,7 +855,7 @@ unsafe extern "C" fn describe_scripted_caller_probe(
     argc: u32,
     vp: *mut Value,
 ) -> bool {
-    let mut cx = JSContext::from_ptr(NonNull::new(cx).unwrap());
+    let cx = JSContext::from_ptr(NonNull::new(cx).unwrap());
     let value = match describe_scripted_caller(&cx) {
         Ok(caller) => format!("{}:{}:{}", caller.filename, caller.line, caller.col),
         Err(()) => "DescribeScriptedCaller failed".to_owned(),
@@ -993,6 +1006,11 @@ pub fn run(engine: &JSEngine) {
             assert_dump_stack_output(&output);
             *dump_output.borrow_mut() = output;
         })
+    });
+    #[cfg(unix)]
+    steps.step("capture_stdout_large", || {
+        let output = capture_stdout_large();
+        assert_eq!(output.len(), 200 * 1024 + 1, "large dump was truncated");
     });
     let mut fields = ERRORS_OBSERVATION.with(|observation| std::mem::take(&mut *observation.borrow_mut()));
     fields.push(("dump_contains_outer", Observed::Boolean(dump_output.borrow().contains("outer"))));

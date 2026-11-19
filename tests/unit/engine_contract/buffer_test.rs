@@ -40,14 +40,14 @@ use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
     ArrayBufferClone, ArrayBufferCopyData, CopyArrayBuffer, DetachArrayBuffer,
-    HasDefinedArrayBufferDetachKey, JS_ClearPendingException, JS_IsExceptionPending,
-    JS_NewBigInt64Array, JS_NewBigInt64ArrayFromArray, JS_NewBigInt64ArrayWithBuffer,
-    JS_NewBigUint64Array, JS_NewBigUint64ArrayFromArray, JS_NewBigUint64ArrayWithBuffer,
-    JS_NewDataView, JS_NewFloat16Array, JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer,
-    JS_NewFloat32Array, JS_NewFloat32ArrayFromArray, JS_NewFloat32ArrayWithBuffer,
-    JS_NewFloat64Array, JS_NewFloat64ArrayFromArray, JS_NewFloat64ArrayWithBuffer,
-    JS_NewGlobalObject, JS_NewInt8Array, JS_NewInt8ArrayFromArray, JS_NewInt8ArrayWithBuffer,
-    JS_NewInt16Array, JS_NewInt16ArrayFromArray, JS_NewInt16ArrayWithBuffer, JS_NewInt32Array,
+    HasDefinedArrayBufferDetachKey, JS_NewBigInt64Array, JS_NewBigInt64ArrayFromArray,
+    JS_NewBigInt64ArrayWithBuffer, JS_NewBigUint64Array, JS_NewBigUint64ArrayFromArray,
+    JS_NewBigUint64ArrayWithBuffer, JS_NewDataView, JS_NewFloat16Array,
+    JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer, JS_NewFloat32Array,
+    JS_NewFloat32ArrayFromArray, JS_NewFloat32ArrayWithBuffer, JS_NewFloat64Array,
+    JS_NewFloat64ArrayFromArray, JS_NewFloat64ArrayWithBuffer, JS_NewGlobalObject, JS_NewInt8Array,
+    JS_NewInt8ArrayFromArray, JS_NewInt8ArrayWithBuffer, JS_NewInt16Array,
+    JS_NewInt16ArrayFromArray, JS_NewInt16ArrayWithBuffer, JS_NewInt32Array,
     JS_NewInt32ArrayFromArray, JS_NewInt32ArrayWithBuffer, JS_NewUint8Array,
     JS_NewUint8ArrayFromArray, JS_NewUint8ArrayWithBuffer, JS_NewUint8ClampedArray,
     JS_NewUint8ClampedArrayFromArray, JS_NewUint8ClampedArrayWithBuffer, JS_NewUint16Array,
@@ -106,12 +106,6 @@ fn assert_js(cx: &mut JSContext, global: HandleObject, src: &str) {
 fn set_global(cx: &mut JSContext, global: HandleObject, name: &CStr, obj: *mut JSObject) {
     rooted!(&in(cx) let v = ObjectValue(obj));
     assert!(unsafe { JS_SetProperty(cx, global, name.as_ptr(), v.handle()) });
-}
-
-#[track_caller]
-fn take_exception(cx: &mut JSContext) {
-    assert!(unsafe { JS_IsExceptionPending(cx) });
-    unsafe { JS_ClearPendingException(cx) };
 }
 
 macro_rules! check_type {
@@ -331,13 +325,13 @@ fn each_type(
     // Creating a view over something that is not a buffer, or out of bounds, throws.
     rooted!(&in(cx) let bad = unsafe { JS_NewUint8ArrayWithBuffer(cx, o.handle(), 0, -1) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "TypeError");
     rooted!(&in(cx) let bad = unsafe { JS_NewUint32ArrayWithBuffer(cx, buf.handle(), 1, -1) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "RangeError");
     rooted!(&in(cx) let bad = unsafe { JS_NewUint8ArrayWithBuffer(cx, buf.handle(), 2, 3) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "RangeError");
 
     vec![
         ("typed_array_kinds", crate::support::Value::Number(11.0)),
@@ -387,7 +381,7 @@ fn views_with_offsets(
     }
     rooted!(&in(cx) let bad = unsafe { JS_NewDataView(cx, buf.handle(), 14, 4) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "RangeError");
 
     vec![
         ("view_byte_offset", crate::support::Value::Number(4.0)),
@@ -432,10 +426,10 @@ fn detach(cx: &mut JSContext, global: HandleObject) -> Vec<(&'static str, crate:
     // Detaching again is a no-op; detaching a view throws.
     assert!(unsafe { DetachArrayBuffer(cx, d.handle()) });
     assert!(!unsafe { DetachArrayBuffer(cx, view.handle()) });
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "TypeError");
     let view_detach_key_rejected = !unsafe { HasDefinedArrayBufferDetachKey(cx, view.handle(), &mut defined) };
     assert!(view_detach_key_rejected);
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "TypeError");
     vec![
         ("detach_key_undefined", crate::support::Value::Boolean(true)),
         ("detached_flag", crate::support::Value::Boolean(true)),
@@ -461,7 +455,7 @@ fn clone_and_copy(
     );
     rooted!(&in(cx) let bad = unsafe { ArrayBufferClone(cx, buf.handle(), 4, 3) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "RangeError");
 
     // Overlapping copy within one buffer.
     assert!(unsafe { ArrayBufferCopyData(cx, buf.handle(), 2, buf.handle(), 0, 4) });
@@ -469,7 +463,7 @@ fn clone_and_copy(
     assert!(unsafe { ArrayBufferCopyData(cx, clone.handle(), 0, buf.handle(), 5, 1) });
     assert_js(cx, global, "new Uint8Array(cl).join() === '3,2,3'");
     assert!(!unsafe { ArrayBufferCopyData(cx, clone.handle(), 1, buf.handle(), 0, 3) });
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "RangeError");
 
     rooted!(&in(cx) let copy = unsafe { CopyArrayBuffer(cx, buf.handle()) });
     set_global(cx, global, c"cp", copy.get());
@@ -481,10 +475,10 @@ fn clone_and_copy(
     assert!(unsafe { DetachArrayBuffer(cx, buf.handle()) });
     rooted!(&in(cx) let bad = unsafe { CopyArrayBuffer(cx, buf.handle()) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "TypeError");
     rooted!(&in(cx) let bad = unsafe { ArrayBufferClone(cx, buf.handle(), 0, 0) });
     assert!(bad.get().is_null());
-    take_exception(cx);
+    crate::support::take_exception_named(cx, "TypeError");
     vec![
         ("clone_values", crate::support::Value::String("1,2,3".to_owned())),
         ("overlap_copy_values", crate::support::Value::String("0,1,0,1,2,3".to_owned())),
@@ -609,10 +603,10 @@ use js::glue::{
 };
 use js::jsapi::{
     GetArrayBufferByteLength, GetArrayBufferData,
-    GetArrayBufferViewLengthAndData, IsDetachedArrayBufferObject, JS_ClearPendingException,
+    GetArrayBufferViewLengthAndData, IsDetachedArrayBufferObject,
     JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset,
     JS_GetTypedArrayByteLength, JS_GetTypedArrayLength, JS_GetTypedArraySharedness,
-    JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsTypedArrayObject, UnwrapArrayBufferView,
+    JS_IsArrayBufferViewObject, JS_IsTypedArrayObject, UnwrapArrayBufferView,
     UnwrapFloat32Array, UnwrapFloat64Array, UnwrapUint8ClampedArray,
 };
 use js::jsval::ObjectValue;
@@ -624,7 +618,9 @@ use js::rust::wrappers2::{
 };
 use js::rust::JSEngine;
 
-use crate::support::{Observation, Value, eval, record_case, set_global};
+use crate::support::{
+    Observation, Value, eval, record_case, set_global, take_exception_named,
+};
 
 
 
@@ -806,10 +802,8 @@ fn typed_arrays_buffer(engine: &JSEngine) {
                 5,
             ));
             let oob_null = oob.get().is_null();
-            let oob_pending = JS_IsExceptionPending(cx.raw_cx());
-            if oob_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            take_exception_named(cx, "RangeError");
+            let oob_pending = true;
 
             rooted!(&in(cx) let unaligned = JS_NewFloat64ArrayWithBuffer(
                 cx,
@@ -818,10 +812,8 @@ fn typed_arrays_buffer(engine: &JSEngine) {
                 1,
             ));
             let unaligned_null = unaligned.get().is_null();
-            let unaligned_pending = JS_IsExceptionPending(cx.raw_cx());
-            if unaligned_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            take_exception_named(cx, "RangeError");
+            let unaligned_pending = true;
 
             let mut generic_byte_len = 0;
             let mut generic_shared = true;
@@ -1001,7 +993,9 @@ pub fn run(engine: &JSEngine) {
 }
 
 mod edge_buffer_more_contract {
-use crate::support::{Observation, Value, eval, record_case, set_global};
+use crate::support::{
+    Observation, Value, eval, record_case, set_global, take_exception_named,
+};
 use std::ptr;
 
 use js::context::JSContext;
@@ -1011,10 +1005,10 @@ use js::jsapi::mozilla::Range;
 use js::jsapi::{
     GetArrayBufferByteLength, GetArrayBufferData,
     GetArrayBufferLengthAndData, IsArrayBufferObject,
-    IsDetachedArrayBufferObject, JS_ClearPendingException,
+    IsDetachedArrayBufferObject,
     JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset, JS_GetArrayBufferViewType,
     JS_GetTypedArrayByteLength, JS_GetTypedArrayLength, JS_IsArrayBufferViewObject,
-    JS_IsExceptionPending, JS_IsTypedArrayObject, UnwrapArrayBuffer, UnwrapInt32Array,
+    JS_IsTypedArrayObject, UnwrapArrayBuffer, UnwrapInt32Array,
     UnwrapUint32Array, UnwrapUint8Array,
 };
 use js::jsval::{JSVal, ObjectValue};
@@ -1202,11 +1196,8 @@ fn buffer_roundtrip(engine: &JSEngine) {
 
             let bad_copy = ArrayBufferCopyData(cx, clone.handle(), 4, source.handle(), 0, 8);
             assert!(!bad_copy, "ArrayBufferCopyData must reject an out-of-range copy");
-            let bad_pending = JS_IsExceptionPending(cx.raw_cx());
-            assert!(bad_pending, "a rejected copy must leave a pending exception");
-            if bad_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            take_exception_named(cx, "RangeError");
+            let bad_pending = true;
 
             rooted!(&in(cx) let copy = CopyArrayBuffer(cx, source.handle()));
             set_global(cx, global, c"copy", ObjectValue(copy.get()));
@@ -1225,11 +1216,15 @@ fn buffer_roundtrip(engine: &JSEngine) {
             let bad_clone = ArrayBufferClone(cx, source.handle(), 0, 1);
             let bad_clone_null = bad_clone.is_null();
             assert!(bad_clone_null, "ArrayBufferClone must fail for a detached source");
-            let bad_clone_pending = JS_IsExceptionPending(cx.raw_cx());
-            assert!(bad_clone_pending, "a failed clone must leave a pending exception");
-            if bad_clone_pending {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            take_exception_named(cx, "TypeError");
+            let bad_clone_pending = true;
+
+            let detached_copy = CopyArrayBuffer(cx, source.handle());
+            assert!(
+                detached_copy.is_null(),
+                "CopyArrayBuffer must reject a detached source"
+            );
+            take_exception_named(cx, "TypeError");
 
             rooted!(&in(cx) let steal_source = NewArrayBuffer(cx, 4));
             let mut steal_shared = true;

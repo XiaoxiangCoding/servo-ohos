@@ -99,6 +99,11 @@ fn new_global_object_hook(_engine: &JSEngine) -> Observation {
         hits
     };
 
+    #[cfg(not(feature = "js-quickjs"))]
+    assert!(
+        matches!(hits, Value::Number(1.0)),
+        "JS_FireOnNewGlobalObject must deliver exactly one hook call: {hits:?}"
+    );
     Observation::new(vec![("on_new_global_object", hits)])
 }
 

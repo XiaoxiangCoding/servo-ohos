@@ -22,7 +22,8 @@ use js::rust::wrappers2::{
     DequeueNextRegularMicroTask, EnqueueMicroTask, GetJobQueue, GetPromiseIsHandled,
     GetPromiseState, GetRegularMicroTaskCount, HasAnyMicroTasks, HasRegularMicroTasks,
     IsPromiseObject, JS_AddInterruptCallback, JS_DequeueNextMicroTask, JS_GetSecurityCallbacks,
-    JS_NewGlobalObject, JS_RequestInterruptCallback, JS_RequestInterruptCallbackCanWait,
+    JS_NewGlobalObject, JS_NewPlainObject, JS_RequestInterruptCallback,
+    JS_RequestInterruptCallbackCanWait,
     JS_SetSecurityCallbacks, MaybeGetHostDefinedDataFromJSMicroTask, NewPromiseObject,
     PeekNextMicroTask, PrependMicroTask, RejectPromise, ResolvePromise, RunJSMicroTask,
     SetAnyPromiseIsHandled, SetJobQueue, SetPromiseRejectionTrackerCallback,
@@ -140,6 +141,9 @@ fn promise_values(engine: &JSEngine) {
 
             rooted!(&in(cx) let promise = NewPromiseObject(cx, executor_object.handle()));
             assert!(IsPromiseObject(promise.handle()));
+            rooted!(&in(cx) let plain = JS_NewPlainObject(cx));
+            let plain_is_not_promise = !IsPromiseObject(plain.handle());
+            assert!(plain_is_not_promise, "IsPromiseObject must reject a plain object");
             assert_eq!(GetPromiseState(promise.handle()), PromiseState::Pending);
             rooted!(&in(cx) let value = Int32Value(42));
             assert!(ResolvePromise(cx, promise.handle(), value.handle()));
@@ -241,6 +245,7 @@ fn promise_values(engine: &JSEngine) {
             let observed = observe(cx, check.get());
             Observation::new(vec![
                 ("initial_pending", Observed::Boolean(true)),
+                ("plain_is_not_promise", Observed::Boolean(plain_is_not_promise)),
                 ("resolved_value", Observed::Number(42.0)),
                 ("settled_after_reject", Observed::Boolean(true)),
                 ("resolved_state", Observed::String("fulfilled".to_owned())),
@@ -691,6 +696,9 @@ fn promise_states_and_queue(engine: &JSEngine) {
             let initial_state = GetPromiseState(promise.handle());
             assert_eq!(initial_state, PromiseState::Pending);
             assert!(IsPromiseObject(promise.handle()));
+            rooted!(&in(cx) let plain = js::rust::wrappers2::JS_NewPlainObject(cx));
+            let plain_is_not_promise = !IsPromiseObject(plain.handle());
+            assert!(plain_is_not_promise, "IsPromiseObject must reject a plain object");
             rooted!(&in(cx) let forty_two = Int32Value(42));
             assert!(ResolvePromise(cx, promise.handle(), forty_two.handle()));
             let fulfilled_state = GetPromiseState(promise.handle());
@@ -773,6 +781,7 @@ fn promise_states_and_queue(engine: &JSEngine) {
 
             let observation = Observation::new(vec![
                 ("initial_state", Value::String(promise_state_name(initial_state).to_owned())),
+                ("plain_is_not_promise", Value::Boolean(plain_is_not_promise)),
                 ("fulfilled_state", Value::String(promise_state_name(fulfilled_state).to_owned())),
                 ("fulfilled_result", Value::Number(fulfilled_result as f64)),
                 ("reject_after_resolve", Value::Boolean(reject_after_resolve)),

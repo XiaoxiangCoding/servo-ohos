@@ -17,8 +17,8 @@ use js::offthread::{CompilationResult, FrontendContext, compile_to_stencil_offth
 use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
-    ConvertFrontendErrorsToRuntimeErrors, InstantiateGlobalStencil, JS_ClearPendingException,
-    JS_ExecuteScript, JS_GetPendingException, JS_NewGlobalObject,
+    ConvertFrontendErrorsToRuntimeErrors, InstantiateGlobalStencil, JS_ExecuteScript,
+    JS_NewGlobalObject,
 };
 use js::rust::{
     CompileOptionsWrapper, HandleObject as SafeHandleObject, JSEngine, OwningCompileOptionsWrapper,
@@ -58,13 +58,6 @@ unsafe fn execute(
     } else {
         Err(())
     }
-}
-
-unsafe fn take_exception(cx: &mut js::context::JSContext) -> Value {
-    rooted!(&in(cx) let mut exception = UndefinedValue());
-    assert!(JS_GetPendingException(cx, exception.handle_mut()));
-    JS_ClearPendingException(cx);
-    exception.get()
 }
 
 fn offthread_success(engine: &JSEngine) {
@@ -123,7 +116,7 @@ fn offthread_failure(engine: &JSEngine) {
             *fc,
             compile_options.read_only()
         ));
-        take_exception(cx);
+        crate::support::assert_exception_named(cx, "SyntaxError");
         observe_field("failed_has_exception", Observed::Boolean(true));
     });
 }

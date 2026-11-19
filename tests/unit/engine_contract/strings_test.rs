@@ -434,10 +434,39 @@ use js::context::JSContext;
 use js::jsapi::{JS_ClearPendingException, JS_IsExceptionPending};
 use js::jsval::{JSVal, UndefinedValue};
 use js::rooted;
-use js::rust::wrappers2::{JS_ParseJSON, JS_Stringify};
+use js::rust::wrappers2::{JS_GetPendingException, JS_ParseJSON, JS_Stringify};
 use js::rust::{HandleObject, HandleValue, JSEngine};
 
-use crate::support::{Observation, Value, eval, record_case, set_global};
+use crate::support::{
+    Observation, Value, eval, observe_property, record_case, set_global,
+};
+
+/// Reads and clears the pending exception without requiring it to be an `Error` object, then
+/// returns its `name` when it has one. Primitive throws are legal in JavaScript and have no name.
+unsafe fn exception_name(cx: &mut JSContext) -> Option<String> {
+    assert!(JS_IsExceptionPending(cx.raw_cx()));
+    rooted!(&in(cx) let mut exception = UndefinedValue());
+    assert!(JS_GetPendingException(cx, exception.handle_mut()));
+    JS_ClearPendingException(cx.raw_cx());
+    let value = exception.get();
+    if value.is_object() {
+        match observe_property(cx, value, c"name") {
+            Value::String(name) => Some(name),
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+#[track_caller]
+unsafe fn assert_exception_named(cx: &mut JSContext, expected: &str, context: &str) {
+    assert_eq!(
+        exception_name(cx).as_deref(),
+        Some(expected),
+        "{context} must throw {expected}"
+    );
+}
 
 unsafe extern "C" fn append_json(buf: *const u16, len: u32, data: *mut c_void) -> bool {
     let out = &mut *(data as *mut Option<String>);
@@ -564,6 +593,16 @@ fn json_parse_values(engine: &JSEngine) {
 }
 
 fn json_parse_errors(engine: &JSEngine) {
+    #[track_caller]
+    unsafe fn assert_syntax_error(cx: &mut JSContext, text: &str) {
+        assert!(parse_json(cx, text).is_none(), "JSON must reject {text:?}");
+        assert_eq!(
+            exception_name(cx).as_deref(),
+            Some("SyntaxError"),
+            "invalid JSON must throw SyntaxError: {text:?}"
+        );
+    }
+
     record_case(
         engine,
         "edge.json_parse_errors",
@@ -583,22 +622,14 @@ fn json_parse_errors(engine: &JSEngine) {
             let mut rejected = 0;
             let mut pending = 0;
             for text in invalid {
-                if parse_json(cx, text).is_none() {
-                    rejected += 1;
-                    if JS_IsExceptionPending(cx.raw_cx()) {
-                        pending += 1;
-                    }
-                    JS_ClearPendingException(cx.raw_cx());
-                } else {
-                    JS_ClearPendingException(cx.raw_cx());
-                }
+                assert_syntax_error(cx, text);
+                rejected += 1;
+                pending += 1;
             }
 
             // A non-breaking space is not JSON whitespace.
-            let nbsp = parse_json(cx, "\u{00a0}[1]").is_none();
-            if JS_IsExceptionPending(cx.raw_cx()) {
-                JS_ClearPendingException(cx.raw_cx());
-            }
+            assert_syntax_error(cx, "\u{00a0}[1]");
+            let nbsp = true;
 
             // A lone surrogate inside a JSON string is data, not a syntax error.
             let lone = parse_json(cx, "\"\\ud800x\"").expect("lone surrogate JSON");
@@ -671,18 +702,19 @@ fn json_stringify_errors(engine: &JSEngine) {
             ];
             let mut rejected = 0;
             let mut pending = 0;
-            for (name, source) in cases {
+            for (_, source) in cases {
                 let value = eval(cx, global, source);
-                if stringify(cx, value, HandleObject::null(), HandleValue::null()).is_err() {
-                    rejected += 1;
-                    if JS_IsExceptionPending(cx.raw_cx()) {
-                        pending += 1;
-                    }
-                    JS_ClearPendingException(cx.raw_cx());
-                } else {
-                    let _ = name;
-                    JS_ClearPendingException(cx.raw_cx());
-                }
+                assert!(
+                    stringify(cx, value, HandleObject::null(), HandleValue::null()).is_err(),
+                    "JSON.stringify must reject {source:?}"
+                );
+                rejected += 1;
+                let expected = match source {
+                    "1n" | "(() => { const o = {}; o.self = o; return o; })()" => "TypeError",
+                    _ => "Error",
+                };
+                assert_exception_named(cx, expected, &format!("JSON.stringify({source:?})"));
+                pending += 1;
             }
             assert_eq!(rejected, 4);
             assert_eq!(pending, 4);
@@ -1916,9 +1948,9 @@ unsafe fn number_conversions(cx: &mut JSContext, global: HandleObject) {
     observe_field("number_value_of", Observed::Number(7.0));
     observe_field("number_single_element_array", Observed::Number(5.0));
     assert_eq!(number(cx, "Symbol()"), Err(()));
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "TypeError");
     assert_eq!(number(cx, "1n"), Err(()));
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "TypeError");
     assert_eq!(number(cx, "({ valueOf() { throw 1; } })"), Err(()));
     assert!(take_exception(cx));
 
@@ -2042,7 +2074,7 @@ unsafe fn string_conversions(cx: &mut JSContext, global: HandleObject) {
     }
     v.set(eval(cx, global, "Symbol('s')"));
     assert!(ToString(cx, v.handle()).is_null());
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "TypeError");
 }
 
 unsafe fn primitives_and_equality(cx: &mut JSContext, global: HandleObject) {
@@ -2085,7 +2117,7 @@ unsafe fn primitives_and_equality(cx: &mut JSContext, global: HandleObject) {
         JSType::JSTYPE_NUMBER,
         v.handle_mut()
     ));
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "TypeError");
 
     for (source, expected) in [
         ("undefined", JSType::JSTYPE_UNDEFINED),
@@ -2542,7 +2574,7 @@ unsafe fn js_parse_json(cx: &mut JSContext, global: HandleObject) {
         bad.len() as u32,
         v.handle_mut()
     ));
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "SyntaxError");
 
     // A raw lone surrogate inside a JSON string survives parsing.
     let lone = [0x22, 0xd800, 0x78, 0x22];
@@ -2601,7 +2633,7 @@ unsafe fn to_json_step(cx: &mut JSContext, _global: HandleObject) {
         Some(append_json),
         &mut out as *mut _ as *mut c_void
     ));
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "Error");
     v.set(eval(cx, _global, "1n"));
     assert!(!ToJSON(
         cx,
@@ -2611,7 +2643,7 @@ unsafe fn to_json_step(cx: &mut JSContext, _global: HandleObject) {
         Some(append_json),
         &mut out as *mut _ as *mut c_void
     ));
-    assert!(take_exception(cx));
+    crate::support::assert_exception_named(cx, "TypeError");
 }
 
 unsafe fn js_stringify(cx: &mut JSContext, global: HandleObject) {
