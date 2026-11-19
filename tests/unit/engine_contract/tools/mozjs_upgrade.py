@@ -21,9 +21,14 @@ import sys
 import tomllib
 
 
+# The usage scan follows forwarding edges through the shim's wrapper bodies, which live beside
+# `mozjs/src/engine` rather than inside it. A sparse checkout that stops at `engine` silently drops
+# those edges, so require the files that prove the whole `mozjs/src` tree is present.
 REQUIRED_SHIM_FILES = (
     "mozjs/upstream-bindgen/jsapi.rs",
     "mozjs/src/engine/mod.rs",
+    "mozjs/src/rust.rs",
+    "mozjs/src/conversions.rs",
     "mozjs/stub_bindings.py",
 )
 

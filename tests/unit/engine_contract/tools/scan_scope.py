@@ -279,12 +279,8 @@ def enclosing_modules(text, position):
     return [name for name in stack if name]
 
 
-def parse_use_tree(tree):
-    """Yield (target, symbol, alias, glob) for one `use` tree."""
-    tree = tree.strip()
-    if not tree:
-        return
-    # Split top-level commas inside `{...}`.
+def split_top_level(tree):
+    """Split a `use` tree on commas that are not inside `{...}`."""
     parts = []
     depth = 0
     start = 0
@@ -297,19 +293,40 @@ def parse_use_tree(tree):
             parts.append(tree[start:index].strip())
             start = index + 1
     parts.append(tree[start:].strip())
-    for part in parts:
+    return parts
+
+
+def parse_use_tree(tree):
+    """Yield (target, symbol, alias, glob) for one `use` tree."""
+    tree = tree.strip()
+    if not tree:
+        return
+    for part in split_top_level(tree):
         if not part:
             continue
         brace = part.find("{")
         if brace >= 0 and part.endswith("}"):
             prefix = part[:brace].rstrip(":")
             inner = part[brace + 1 : -1]
-            for target, symbol, alias, glob in parse_use_tree(inner):
-                yield (prefix + "::" + target if target else prefix, symbol, alias, glob)
+            for nested in split_top_level(inner):
+                if nested == "self":
+                    # `use foo::bar::{self}` is the same import as `use foo::bar;`: bind the
+                    # module under its last segment so `bar::Item(..)` resolves.
+                    yield (prefix, "self", prefix.split("::")[-1], False)
+                    continue
+                for target, symbol, alias, glob in parse_use_tree(nested):
+                    yield (prefix + "::" + target if target else prefix, symbol, alias, glob)
             continue
         if part == "*":
+            # `use foo::*;` imports every public item of `foo`.
             yield ("", "*", "*", True)
             continue
+        if part.endswith("::*"):
+            # `use foo::bar::*;` is the qualified form of the same glob import.
+            base = part[:-3].rstrip(":")
+            if re.fullmatch(PATH, base):
+                yield (base, "*", "*", True)
+                continue
         match = re.fullmatch(r"(" + PATH + r")(?:\s+as\s+(" + IDENT + r"))?", part)
         if not match:
             continue
@@ -323,6 +340,11 @@ def parse_use_tree(tree):
             continue
         target = "::".join(segments[:-1])
         symbol = segments[-1]
+        # `use js::jsapi as api;` renames the module itself, so later `api::Item(..)` calls
+        # resolve through it. Aliasing a single item (`use js::jsapi::Foo as Bar;`) does not.
+        if alias and path in JS_ROOTS:
+            yield (path, "self", alias, False)
+            continue
         yield (target, symbol, alias or symbol, False)
 
 
@@ -340,6 +362,11 @@ def is_js_module(path):
     return any(path == root or path.startswith(root + "::") for root in JS_ROOTS)
 
 
+def is_js_module_itself(path):
+    """True when `path` names one of the JS modules, not an item inside it."""
+    return path in JS_ROOTS
+
+
 def js_api_name(path):
     """Return the mozjs entry name for a full `js::...::Name` path, or None."""
     if not is_js_module(path):
@@ -347,7 +374,7 @@ def js_api_name(path):
     return path.split("::")[-1]
 
 
-def call_sites(text, env_for, glob_js_for):
+def call_sites(text, env_for, glob_js_for, is_known_api=None):
     """Find calls that resolve through `env` (alias -> API) or direct `js::` paths."""
     sites = []
     for match in re.finditer(r"(?<![A-Za-z0-9_])(" + IDENT + r")\s*(?:::<[^;{}()]*>)?\s*\(", text):
@@ -391,6 +418,11 @@ def call_sites(text, env_for, glob_js_for):
             sites.append((entry["api"], start, match.group(0).strip(), name))
         elif entry and "module" in entry and glob_js:
             sites.append((name, start, match.group(0).strip(), name))
+        elif glob_js and is_known_api is not None and is_known_api(name):
+            # A glob import brings the module's public names into scope unqualified, so a bare
+            # `Item(..)` may be a JS entry. Requiring the name to exist in the manifest keeps
+            # unrelated identifiers from the same module scope out of the scope file.
+            sites.append((name, start, match.group(0).strip(), name))
     return sites
 
 
@@ -421,11 +453,29 @@ def scan(servo_dir, manifest):
             uses = parse_uses(text)
             records.append((path, relative, file_module, scopes, text, uses, tests))
             for position, target, symbol, alias, glob, _ in uses:
-                if target and is_js_module(target) and symbol != "self":
-                    api = js_api_name(target + "::" + symbol)
-                    if api:
-                        module = module_at(scopes, position)
-                        exports.setdefault(module, {})[alias] = {"api": api}
+                if not target:
+                    continue
+                module = module_at(scopes, position)
+                if glob:
+                    # `use js::jsapi::*;` imports every public item of the module.
+                    if is_js_module_itself(target):
+                        exports.setdefault(module, {}).setdefault(
+                            target.split("::")[-1], {"module": target}
+                        )
+                    continue
+                if symbol == "self":
+                    if is_js_module_itself(target):
+                        # `use js::jsapi::{self};` binds the module under its last segment.
+                        exports.setdefault(module, {})[alias] = {"module": target}
+                    continue
+                joined = target + "::" + symbol
+                if is_js_module_itself(joined):
+                    # `use js::jsapi;` / `use js::jsapi as jsapi;` import the module, not an item.
+                    exports.setdefault(module, {})[alias] = {"module": joined}
+                    continue
+                api = js_api_name(joined)
+                if api:
+                    exports.setdefault(module, {})[alias] = {"api": api}
 
     # Resolve internal re-exports to a fixpoint. Module paths are approximate; a use is attached
     # to the enclosing `mod` block when the source has one.
@@ -457,7 +507,9 @@ def scan(servo_dir, manifest):
         # have populated those modules through nested `mod` blocks.
         glob_modules = set()
         for position, target, symbol, alias, glob, _ in uses:
-            if target and is_js_module(target) and glob:
+            # `use js::jsapi::*;` parses as a glob with the module target; a bare `use foo::*;`
+            # keeps an empty target. Both import every item of a module.
+            if glob and (not target or is_js_module(target)):
                 glob_modules.add(module_at(scopes, position))
 
         def env_for(position, scopes=scopes):
@@ -473,7 +525,9 @@ def scan(servo_dir, manifest):
                 for module in glob_modules
             )
 
-        for api, position, call, resolved in call_sites(text, env_for, glob_js_for):
+        for api, position, call, resolved in call_sites(
+            text, env_for, glob_js_for, lambda name: name in manifest
+        ):
             if in_ranges(position, tests):
                 continue
             if api not in manifest:

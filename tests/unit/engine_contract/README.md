@@ -112,7 +112,10 @@ that is merely not the pinned commit is a warning, because testing a local shim 
 patch did not apply.
 
 The check reads `QJS_DIR/mozjs/Cargo.toml`, so a sparse checkout must include it along with
-`mozjs/upstream-bindgen`, `mozjs/src/engine` and `mozjs/stub_bindings.py`.
+`mozjs/upstream-bindgen`, the whole `mozjs/src` tree and `mozjs/stub_bindings.py`. Taking only
+`mozjs/src/engine` is not enough: the usage scan follows calls through the wrapper bodies in
+`mozjs/src/{rust,conversions,...}.rs`, so a checkout that stops at `engine` reports every
+indirect entry as removed.
 
 It then checks that `mozjs-api-snapshot.toml` still matches the bindgen and
 QuickJS shim, then checks that `servo-mozjs-api-usage.toml` still matches Servo's usage, and finally
