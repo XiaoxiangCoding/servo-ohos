@@ -358,8 +358,13 @@ def inventory(entries):
     }
 
 
-def check(args):
-    metadata, entries = load_inventory(args.snapshot)
+def inventory_problems(metadata, entries):
+    """The structural checks `verify` shares with `check`.
+
+    `verify` only compares the entry set, which is a dict keyed by name/arity/source: a duplicated
+    `[[api]]` block, a missing `reason`, or a stale summary count all compare as unchanged. Run
+    these checks first so a snapshot that is "fresh" but malformed cannot pass the gate.
+    """
     problems = []
     ids = set()
     for entry in entries:
@@ -384,6 +389,12 @@ def check(args):
             problems.append(f"{key}: inventory says {metadata.get(key)}, entries say {value}")
     if metadata.get("eligible") != counts["implemented"]:
         problems.append("eligible must equal implemented")
+    return problems, counts
+
+
+def check(args):
+    metadata, entries = load_inventory(args.snapshot)
+    problems, counts = inventory_problems(metadata, entries)
     if problems:
         for problem in problems:
             print("error:", problem, file=sys.stderr)
@@ -636,7 +647,13 @@ def versions(args):
 
 def verify(args):
     """Fail when the checked-in inventory no longer describes the bindgen and shim inputs."""
-    _, recorded_entries = load_inventory(args.snapshot)
+    recorded_metadata, recorded_entries = load_inventory(args.snapshot)
+    problems, _ = inventory_problems(recorded_metadata, recorded_entries)
+    if problems:
+        print(f"error: {args.snapshot} is structurally invalid", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        return 1
     stub = load_stub_module(args.stub_bindings)
     recorded = inventory(recorded_entries)
     generated_entries = generate_entries(

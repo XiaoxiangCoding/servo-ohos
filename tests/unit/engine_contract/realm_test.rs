@@ -291,50 +291,16 @@ fn realm_entry_identity_and_private_inner(engine: &JSEngine) {
 // Script compilation, environment chains and script private values.
 // ---------------------------------------------------------------------------
 
-use std::cell::{Cell, RefCell};
-use std::ffi::{c_char, c_void, CStr};
-use std::ops::ControlFlow;
-use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::Cell;
+use std::ffi::c_void;
+use std::ptr;
 
-use js::context::JSContext;
-use js::conversions::jsstr_to_string;
-use js::glue::{CallJitMethodOp, RUST_FUNCTION_VALUE_TO_JITINFO};
-use js::jsapi::{
-    self, CallArgs, CompilationType, ESClass, Handle, HandleString, HandleValue,
-    IsWeakMapObject, JSFunction, JSFunctionSpec, JSJitInfo, JS_GetArrayBufferViewType,
-    JS_GetFunctionObject, JS_GetTypedArrayByteLength, JS_GetTypedArrayLength,
-    JSJitMethodCallArgs, JSNativeWrapper, JSObject, JSPropertySpec, JSPropertySpec_Accessor,
-    JSPropertySpec_AccessorsOrValue, JSPropertySpec_AccessorsOrValue_Accessors,
-    JSPropertySpec_Kind, JSPropertySpec_Name, JSPROP_ENUMERATE, JSString, JSSecurityCallbacks,
-    PromiseRejectionHandlingState, PromiseState, PromiseUserInputEventHandlingState,
-    RuntimeCode, Value as JsValue, jsid,
-};
-use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::jsapi::{self, JSObject};
 use js::rooted;
-use js::rust::wrappers2::{
-    AddPromiseReactions, Call, CallOriginalPromiseReject, CallOriginalPromiseResolve, Compile,
-    Compile1, CompileFunction, Evaluate, Evaluate2, GetBuiltinClass, GetJobQueue,
-    GetPromiseIsHandled, GetPromiseState,
-    GetRealmKeyObject, JS_DefineFunctions, JS_DefineProperties, JS_DefinePropertyById2,
-    JS_ExecuteScript, JS_GetScriptPrivate,
-    JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer, JS_NewFloat32Array,
-    JS_NewBigInt64ArrayWithBuffer, JS_NewBigUint64ArrayWithBuffer, JS_NewUint32ArrayWithBuffer,
-    JS_NewInt32ArrayWithBuffer, JS_RequestInterruptCallback, JS_SetSecurityCallbacks,
-    JS_AddInterruptCallback, JS_ExecuteScript1, NewPromiseObject, RejectPromise, ResolvePromise,
-    SetAnyPromiseIsHandled,
-    SetPromiseRejectionTrackerCallback, SetPromiseUserInputEventHandlingState,
-    GetWellKnownSymbol, RUST_SYMBOL_TO_JSID, int_to_jsid, NewExternalArrayBuffer,
-    JS_NewGlobalObject,
-};
-use js::rust::{
-    CompileOptionsWrapper, EnvironmentChain, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
-    evaluate_script, for_of, transform_str_to_source_text,
-    transform_u16_to_source_text,
-};
-use js::rust::{HandleObject, IdVector, RootedObjectVectorWrapper};
+use js::rust::wrappers2::JS_NewGlobalObject;
+use js::rust::{JSEngine, Runtime, SIMPLE_GLOBAL_CLASS};
 
-use crate::support::{Observation, Value, eval, record_case, set_global};
+use crate::support::{Observation, Value};
 
 pub fn run(engine: &JSEngine) {
     realm_entry_identity_and_private(engine);

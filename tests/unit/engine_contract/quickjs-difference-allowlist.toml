@@ -109,7 +109,7 @@ severity = "P2"
 [[difference]]
 id = "edge.promise.states_and_queue"
 fields = ["fields"]
-reason = "QuickJS does not run the interrupt callback requested by JS_RequestInterruptCallback; the script still completes with result 1000"
+reason = "QuickJS polls its interrupt handler every 10000 bytecode operations, so a requested interrupt is still pending when this 1000-iteration script finishes; the script completes with result 1000 and the callback has not run yet"
 owner = "servo-quickjs"
 status = "accepted"
 severity = "P3"

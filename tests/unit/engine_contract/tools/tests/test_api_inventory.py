@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -280,6 +281,32 @@ class ManifestVerifyTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("recorded:  (i32, i32) -> i32", output)
         self.assertIn("generated: (i32, u64) -> i32", output)
+
+    def rewrite_manifest(self, edit):
+        with open(self.manifest, encoding="utf-8") as file:
+            lines = file.readlines()
+        with open(self.manifest, "w", encoding="utf-8") as file:
+            file.writelines(edit(lines))
+
+    def test_verify_rejects_a_duplicated_entry_that_check_reports(self):
+        self.generate()
+        self.rewrite_manifest(lambda lines: lines + lines[-8:])
+        result, output = self.verify()
+        self.assertEqual(result, 1, output)
+        self.assertIn("structurally invalid", output)
+        self.assertIn("duplicate entry", output)
+
+    def test_verify_rejects_a_snapshot_that_disagrees_with_its_summary(self):
+        self.generate()
+        self.rewrite_manifest(
+            lambda lines: [
+                "implemented = 99\n" if line.startswith("implemented = ") else line
+                for line in lines
+            ]
+        )
+        result, output = self.verify()
+        self.assertEqual(result, 1, output)
+        self.assertIn("implemented: inventory says 99", output)
 
 
 class EngineVersionsTest(unittest.TestCase):
@@ -624,7 +651,13 @@ class ApiScanEntryPointTest(unittest.TestCase):
         self.tools = os.path.join(self.contract, "tools")
         os.makedirs(self.tools)
         source_tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for name in ("run.sh", "api_inventory.py", "scope_manifest.py", "scan_scope.py"):
+        for name in (
+            "run.sh",
+            "api_inventory.py",
+            "check_api_coverage.py",
+            "scope_manifest.py",
+            "scan_scope.py",
+        ):
             shutil.copy(os.path.join(source_tools, name), os.path.join(self.tools, name))
         with open(
             os.path.join(self.tools, "servo-mozjs-api-usage-reviewed.toml"),
@@ -678,6 +711,20 @@ class ApiScanEntryPointTest(unittest.TestCase):
         self.write_inventory(
             self.baseline,
             [self.entry("Existing", 1, "jsapi", "implemented", "(u64) -> i32")],
+        )
+        self.write(
+            os.path.join(self.repository, "Cargo.toml"),
+            """
+            [workspace.dependencies]
+            js = { package = "mozjs", version = "=0.26.14" }
+            """,
+        )
+        self.write(
+            os.path.join(self.repository, "support", "quickjs", "cargo-config.toml"),
+            """
+            [patch.crates-io]
+            mozjs = { rev = "abc123" }
+            """,
         )
 
     def tearDown(self):
@@ -830,6 +877,60 @@ class ApiScanEntryPointTest(unittest.TestCase):
         self.assertTrue(os.path.exists(usage))
         with open(usage, encoding="utf-8") as file:
             self.assertIn('name = "Existing"', file.read())
+
+    def test_coverage_checks_are_chained_so_a_failure_cannot_be_overwritten(self):
+        """`run_all` calls this through `if ! runner`, where `set -e` is suppressed.
+
+        Without the explicit `|| return 1`, a failed version or snapshot check would be
+        overwritten by a later passing coverage check and the gate would go green.
+        """
+        with open(os.path.join(self.tools, "run.sh"), encoding="utf-8") as file:
+            script = file.read()
+        body = script[
+            script.index("check_contract_case_coverage() {") :
+            script.index("check_engine_versions() {")
+        ]
+        for check in (
+            "check_engine_versions",
+            "check_mozjs_api_snapshot",
+            "check_servo_mozjs_api_usage",
+        ):
+            self.assertIn(f"{check} || return 1", body)
+
+    def test_lockfile_restore_keeps_the_original_mode(self):
+        """The backup is a 0600 `mktemp` file; renaming it into place would chmod Cargo.lock."""
+        with open(os.path.join(self.repository, "Cargo.lock"), "w", encoding="utf-8") as file:
+            file.write("lock\n")
+        os.chmod(os.path.join(self.repository, "Cargo.lock"), 0o644)
+        bin_dir = os.path.join(self.root, "bin")
+        os.makedirs(bin_dir, exist_ok=True)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        with open(fake_cargo, "w", encoding="utf-8") as file:
+            file.write(
+                "#!/usr/bin/env bash\n"
+                "set -eu\n"
+                "if [[ \" $* \" == *\" test \"* ]]; then\n"
+                "    printf 'changed\\n' > Cargo.lock\n"
+                "fi\n"
+                "exit 1\n"
+            )
+        os.chmod(fake_cargo, 0o755)
+        subprocess.run(
+            [os.path.join(self.tools, "run.sh"), "run-quickjs-contract"],
+            cwd=self.repository,
+            env={
+                **os.environ,
+                "QJS_DIR": self.qjs,
+                "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+            },
+            text=True,
+            capture_output=True,
+        )
+        with open(os.path.join(self.repository, "Cargo.lock"), encoding="utf-8") as file:
+            self.assertEqual(file.read(), "lock\n")
+        self.assertEqual(
+            os.stat(os.path.join(self.repository, "Cargo.lock")).st_mode & 0o777, 0o644
+        )
 
 
 if __name__ == "__main__":

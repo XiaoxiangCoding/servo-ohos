@@ -60,9 +60,12 @@ qjs_dir="${QJS_DIR:-$repo_root/../servo-quickjs}"
 lockfile="$repo_root/Cargo.lock"
 lockfile_backup=""
 
+# Restore through the lockfile itself rather than renaming the backup into place: `mktemp` creates
+# the backup with mode 0600, and `mv` would leave Cargo.lock unreadable to other users for good.
 restore_lockfile() {
     if [[ -n "$lockfile_backup" && -f "$lockfile_backup" ]]; then
-        mv "$lockfile_backup" "$lockfile"
+        cat "$lockfile_backup" > "$lockfile"
+        rm -f "$lockfile_backup"
         lockfile_backup=""
     fi
 }
@@ -87,6 +90,13 @@ protect_lockfile() {
 case "$out_dir" in
     /*) ;;
     *) out_dir="$(pwd)/$out_dir" ;;
+esac
+
+# Same rule for QJS_DIR: the commands `cd` into the repository root, so a path that was relative
+# to the invoking directory would stop resolving after the first `cd`.
+case "$qjs_dir" in
+    /*) ;;
+    *) qjs_dir="$(pwd)/$qjs_dir" ;;
 esac
 
 parse_contract_args() {
@@ -414,9 +424,12 @@ generate_mozjs_api_snapshot() {
 }
 
 check_contract_case_coverage() {
-    check_engine_versions
-    check_mozjs_api_snapshot
-    check_servo_mozjs_api_usage
+    # `set -e` does not abort inside a function that the caller invokes in a condition, which is
+    # how every command here is reached. Chain the checks explicitly so a version drift or a stale
+    # snapshot cannot be overwritten by a later, passing coverage check.
+    check_engine_versions || return 1
+    check_mozjs_api_snapshot || return 1
+    check_servo_mozjs_api_usage || return 1
     local results
     results=$(spidermonkey_results_path)
     if [[ ! -f "$results" ]]; then

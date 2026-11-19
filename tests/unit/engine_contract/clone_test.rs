@@ -407,52 +407,18 @@ use js::context::JSContext;
 use js::conversions::jsstr_to_string;
 use js::glue::{
     CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer,
-    GetLengthOfJSStructuredCloneData, GetUint8ArrayLengthAndData, NewJSAutoStructuredCloneBuffer,
+    GetLengthOfJSStructuredCloneData, NewJSAutoStructuredCloneBuffer,
     WriteBytesToJSStructuredCloneData,
 };
-use js::jsapi::js::StringIsArrayIndex;
 use js::jsapi::mozilla::Range;
 use js::jsapi::{
-    AtomToLinearString, CloneDataPolicy, GetArrayBufferByteLength, GetArrayBufferData,
-    GetArrayBufferLengthAndData, GetFunctionNativeReserved, GetLinearStringCharAt,
-    GetLinearStringLength, GetStaticPrototype, IsArrayBufferObject, IsCallable, IsConstructor,
-    IsDetachedArrayBufferObject, JS_ClearPendingException, JS_DeprecatedStringHasLatin1Chars,
-    JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset, JS_GetArrayBufferViewType,
-    JS_GetFunctionArity, JS_GetFunctionObject, JS_GetStringLength, JS_GetTypedArrayByteLength,
-    JS_GetTypedArrayLength, JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsGlobalObject,
-    JS_IsTypedArrayObject, JS_STRUCTURED_CLONE_VERSION, JSStructuredCloneData, JSObject,
-    SetFunctionNativeReserved, StructuredCloneScope, UnwrapArrayBuffer, UnwrapInt32Array,
-    UnwrapUint32Array, UnwrapUint8Array, jsid,
+    CloneDataPolicy, JS_STRUCTURED_CLONE_VERSION, StructuredCloneScope,
 };
-use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::jsval::{JSVal, UndefinedValue};
 use js::rooted;
 use js::rust::wrappers2::{
-    ArrayBufferClone, ArrayBufferCopyData, Construct1, CopyArrayBuffer, DefineFunctionWithReserved,
-    DequeueNextRegularMicroTask, DetachArrayBuffer, EnqueueMicroTask, FromPropertyDescriptor,
-    GetArrayLength, GetCurrentRealmOrNull, GetFunctionRealm, GetObjectProto,
-    GetRealmErrorPrototype, GetRealmFunctionPrototype, GetRealmIteratorPrototype,
-    GetRealmObjectPrototype, GetRegularMicroTaskCount, HasAnyMicroTasks,
-    HasDefinedArrayBufferDetachKey, HasRegularMicroTasks, IsArgumentsObject, IsArrayObject,
-    JS_AtomizeAndPinString, JS_AtomizeStringN, JS_CompareStrings, JS_ConcatStrings,
-    JS_DefineProperty, JS_DefineProperty2, JS_DefineUCProperty2, JS_DequeueNextMicroTask,
-    JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo, JS_FreezeObject,
-    JS_GetArrayBufferViewBuffer, JS_GetEmptyString, JS_GetFunctionDisplayId, JS_GetFunctionId,
-    JS_GetLatin1StringCharsAndLength, JS_GetStringCharAt, JS_GetTwoByteStringCharsAndLength,
-    JS_InitializePropertiesFromCompatibleNativeObject, JS_IsIdentifier,
-    JS_LinkConstructorAndPrototype, JS_NewDataView, JS_NewDependentString,
-    JS_NewFloat32ArrayWithBuffer, JS_NewFloat64ArrayWithBuffer, JS_NewInt16ArrayWithBuffer,
-    JS_NewInt32Array, JS_NewInt32ArrayWithBuffer, JS_NewInt8ArrayWithBuffer,
-    JS_NewObjectWithoutMetadata, JS_NewPlainObject, JS_NewStringCopyN, JS_NewStringCopyUTF8N,
-    JS_NewUCStringCopyN, JS_NewUint16ArrayWithBuffer, JS_NewUint32Array,
-    JS_NewUint32ArrayWithBuffer, JS_NewUint8Array, JS_NewUint8ArrayWithBuffer,
-    JS_NewUint8ClampedArrayWithBuffer, JS_ReadStructuredClone, JS_SetImmutablePrototype,
-    JS_TypeOfValue, JS_ValueToFunction, JS_ValueToId, JS_ValueToSource,
-    JS_WriteStructuredClone, NewArrayBuffer, NewArrayBufferWithContents, NewArrayObject,
-    NewArrayObject1, NewExternalArrayBuffer, NewFunctionWithReserved, PeekNextMicroTask,
-    PrependMicroTask, RUST_JSID_IS_VOID, RunJSMicroTask, SameValue, SetArrayLength,
-    SetDataPropertyDescriptor, SetPropertyIgnoringNamedGetter, StealArrayBufferContents,
-    ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToNumberSlow, ToStringSlow, ToUint16Slow,
-    ToUint32Slow, ToUint64Slow,
+    JS_ReadStructuredClone,
+    JS_WriteStructuredClone,
 };
 use js::rust::JSEngine;
 

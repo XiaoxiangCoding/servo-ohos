@@ -25,7 +25,7 @@ use js::jsapi::{
     GetFirstGlobalInCompartment, GetObjectRealmOrNull, GetRealmPrincipals, IsWindowProxy,
     IsWindowSlow, JS_DropPrincipals, JS_GetOwnPropertyDescriptorById, JS_HasOwnPropertyById,
     JS_HoldPrincipals, JS_InitDestroyPrincipalsCallback, JS_InitReadPrincipalsCallback,
-    JS_IsDeadWrapper, JS_IterateCompartments, JS_IterateCompartmentsInZone, JS_NewGlobalObject,
+    JS_IsDeadWrapper, JS_NewGlobalObject,
     JS_TransplantObject, JS_WrapObject, JS_WrapValue, JSContext as RawJSContext, JSObject,
     JSPROP_ENUMERATE, JSPrincipals, OnNewGlobalHookOption, PropertyDescriptor, Realm,
     RealmBehaviorsRef, RealmBehaviorsRef1, RealmCreationOptionsRef, RealmCreationOptionsRef1,
@@ -37,8 +37,8 @@ use js::jsval::{Int32Value, ObjectValue, PrivateValue, StringValue, UndefinedVal
 use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
-    CheckedUnwrapDynamic, InvokeGetOwnPropertyDescriptor, InvokeHasOwn, IterateRealms,
-    IterateRealmsInCompartment, IterateRealmsWithPrincipals, JS_NewDeadWrapper, JS_NewPlainObject,
+    CheckedUnwrapDynamic, InvokeGetOwnPropertyDescriptor, InvokeHasOwn,
+    IterateRealmsInCompartment, JS_NewDeadWrapper, JS_NewPlainObject,
     JS_NewStringCopyN, JS_ValueToId, NewProxyObject, SetPreserveWrapperCallbacks,
     UnwrapObjectDynamic, UnwrapOneCheckedDynamic, WrapperNew,
 };

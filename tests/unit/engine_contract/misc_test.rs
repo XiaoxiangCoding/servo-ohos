@@ -22,7 +22,7 @@ use js::rust::wrappers2::{
     JS_NewObject, JS_NewPlainObject, JS_ResolveStandardClass, RUST_INTERNED_STRING_TO_JSID,
 };
 
-use crate::support::{Observation, Value, Value as Observed, eval, observe, record, with_global};
+use crate::support::{Observation, Value, eval, observe, record, with_global};
 
 unsafe extern "C" fn size_of(_: *const c_void) -> usize {
     7

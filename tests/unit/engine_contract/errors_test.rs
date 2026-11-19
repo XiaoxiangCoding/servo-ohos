@@ -874,6 +874,11 @@ static DOM_CALLBACKS: jsapi::DOMCallbacks = jsapi::DOMCallbacks {
 };
 
 /// `Error.isError` asks the embedder about DOM objects, which may have [[ErrorData]].
+///
+/// The callbacks stay installed for the rest of this runtime: SpiderMonkey dereferences
+/// `Runtime::DOMcallbacks` whenever it sees a `JSCLASS_IS_DOMJSCLASS` object, so clearing them
+/// while such an object is still reachable is a null-pointer crash. Servo installs them once at
+/// runtime setup, which is what this mirrors; `with_global` gives each step its own runtime.
 fn dom_errors(cx: &mut JSContext, global: SafeHandleObject) {
     unsafe {
         js::rust::wrappers2::SetDOMCallbacks(cx, &DOM_CALLBACKS);
@@ -890,8 +895,6 @@ fn dom_errors(cx: &mut JSContext, global: SafeHandleObject) {
             global,
             "Error.isError(domError) && Error.isError(new TypeError()) && !Error.isError({})"
         ));
-        js::rust::wrappers2::SetDOMCallbacks(cx, ptr::null());
-        assert!(eval_bool(cx, global, "!Error.isError(domError)"));
     }
 }
 
@@ -910,9 +913,11 @@ pub fn run(engine: &JSEngine) {
             "GetScriptedCallerGlobal",
             "HideScriptedCaller",
             "JS_ErrorFromException",
+            "JS_NewObject",
             "JS_GetFunctionObject",
             "JS_GetScriptedCallerPrivate",
             "JS_NewFunction",
+            "SetDOMCallbacks",
             "JS_SetPendingException",
             "DumpJSStack",
             "JS_StackCapture_AllFrames",
@@ -936,6 +941,9 @@ pub fn run(engine: &JSEngine) {
     });
     steps.step("report_error_from_exception", || {
         crate::support::with_global(engine, report_error_from_exception)
+    });
+    steps.step("dom_errors", || {
+        crate::support::with_global(engine, dom_errors)
     });
     steps.step("stacks", || {
         crate::support::with_global(engine, |cx, global| {

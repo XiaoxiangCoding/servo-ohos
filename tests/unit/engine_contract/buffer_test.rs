@@ -600,42 +600,29 @@ mod typed_array_contract {
 //! values, error paths, ordering and object lifetime so a shim that merely returns "success"
 //! cannot pass by matching a boolean.
 
-use std::ffi::c_void;
 use std::ptr;
 use std::slice;
 
-use js::context::JSContext;
-use js::conversions::jsstr_to_string;
 use js::glue::{
     GetFloat32ArrayLengthAndData, GetFloat64ArrayLengthAndData,
     GetUint8ClampedArrayLengthAndData,
 };
 use js::jsapi::{
-    ClippedTime, GetArrayBufferByteLength, GetArrayBufferData,
+    GetArrayBufferByteLength, GetArrayBufferData,
     GetArrayBufferViewLengthAndData, IsDetachedArrayBufferObject, JS_ClearPendingException,
     JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset,
     JS_GetTypedArrayByteLength, JS_GetTypedArrayLength, JS_GetTypedArraySharedness,
-    JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsTypedArrayObject, JSObject,
-    RegExpFlag_Global, RegExpFlag_UnicodeSets, RegExpFlags, UnwrapArrayBufferView,
-    UnwrapFloat32Array, UnwrapFloat64Array, UnwrapUint8ClampedArray, jsid,
+    JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsTypedArrayObject, UnwrapArrayBufferView,
+    UnwrapFloat32Array, UnwrapFloat64Array, UnwrapUint8ClampedArray,
 };
-use js::jsval::{DoubleValue, Int32Value, JSVal, ObjectValue, UndefinedValue};
+use js::jsval::ObjectValue;
 use js::rooted;
 use js::rust::wrappers2::{
-    CheckRegExpSyntax, DateGetMsecSinceEpoch, DetachArrayBuffer, ExecuteRegExpNoStatics,
-    GetPropertyKeys, JS_GetArrayBufferViewBuffer, JS_GetElement, JS_GetProperty,
-    JS_GetPropertyById, JS_IdToValue, JS_IndexToId,
+    DetachArrayBuffer, JS_GetArrayBufferViewBuffer,
     JS_NewFloat32ArrayWithBuffer, JS_NewFloat64Array, JS_NewFloat64ArrayWithBuffer,
-    JS_NewPlainObject, JS_NewUint8ClampedArray,
-    JS_NewUint8ArrayWithBuffer, JS_ParseJSON, JS_SetElement, JS_SetProperty, JS_Stringify,
-    JS_ValueToSource, MapClear, MapDelete, MapEntries, MapForEach, MapGet, MapHas, MapKeys,
-    MapSet, MapSize, MapValues, NewArrayBuffer, NewDateObject, NewMapObject, NewSetObject,
-    NewSharedArrayBuffer,
-    NewUCRegExpObject, NewWeakMapObject, ObjectIsDate, ObjectIsRegExp, SameValue, SetAdd,
-    SetClear, SetDelete, SetEntries, SetHas, SetKeys, SetSize, SetValues, SetWeakMapEntry,
-    GetWeakMapEntry, StrictlyEqual,
+    JS_NewUint8ClampedArray, JS_NewUint8ArrayWithBuffer, NewArrayBuffer, NewSharedArrayBuffer,
 };
-use js::rust::{HandleObject, HandleValue, IdVector, JSEngine};
+use js::rust::JSEngine;
 
 use crate::support::{Observation, Value, eval, record_case, set_global};
 
@@ -930,7 +917,7 @@ fn typed_arrays_shared_detach(engine: &JSEngine) {
             "GetFloat64ArrayLengthAndData", "JS_NewFloat64ArrayWithBuffer",
             "UnwrapArrayBufferView",
         ],
-        |cx, global| unsafe {
+        |cx, _global| unsafe {
             rooted!(&in(cx) let shared_buffer = NewSharedArrayBuffer(cx, 16));
             let shared_available = !shared_buffer.get().is_null();
             let (sharedness, shared_len, is_shared, shared_data_null, shared_alias) =
@@ -1019,54 +1006,28 @@ use std::ptr;
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
-use js::glue::{
-    CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer,
-    GetLengthOfJSStructuredCloneData, GetUint8ArrayLengthAndData, NewJSAutoStructuredCloneBuffer,
-    WriteBytesToJSStructuredCloneData,
-};
-use js::jsapi::js::StringIsArrayIndex;
+use js::glue::GetUint8ArrayLengthAndData;
 use js::jsapi::mozilla::Range;
 use js::jsapi::{
-    AtomToLinearString, CloneDataPolicy, GetArrayBufferByteLength, GetArrayBufferData,
-    GetArrayBufferLengthAndData, GetFunctionNativeReserved, GetLinearStringCharAt,
-    GetLinearStringLength, GetStaticPrototype, IsArrayBufferObject, IsCallable, IsConstructor,
-    IsDetachedArrayBufferObject, JS_ClearPendingException, JS_DeprecatedStringHasLatin1Chars,
+    GetArrayBufferByteLength, GetArrayBufferData,
+    GetArrayBufferLengthAndData, IsArrayBufferObject,
+    IsDetachedArrayBufferObject, JS_ClearPendingException,
     JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset, JS_GetArrayBufferViewType,
-    JS_GetFunctionArity, JS_GetFunctionObject, JS_GetStringLength, JS_GetTypedArrayByteLength,
-    JS_GetTypedArrayLength, JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsGlobalObject,
-    JS_IsTypedArrayObject, JS_STRUCTURED_CLONE_VERSION, JSStructuredCloneData, JSObject,
-    SetFunctionNativeReserved, StructuredCloneScope, UnwrapArrayBuffer, UnwrapInt32Array,
-    UnwrapUint32Array, UnwrapUint8Array, jsid,
+    JS_GetTypedArrayByteLength, JS_GetTypedArrayLength, JS_IsArrayBufferViewObject,
+    JS_IsExceptionPending, JS_IsTypedArrayObject, UnwrapArrayBuffer, UnwrapInt32Array,
+    UnwrapUint32Array, UnwrapUint8Array,
 };
-use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::jsval::{JSVal, ObjectValue};
 use js::rooted;
 use js::rust::wrappers2::{
-    ArrayBufferClone, ArrayBufferCopyData, Construct1, CopyArrayBuffer, DefineFunctionWithReserved,
-    DequeueNextRegularMicroTask, DetachArrayBuffer, EnqueueMicroTask, FromPropertyDescriptor,
-    GetArrayLength, GetCurrentRealmOrNull, GetFunctionRealm, GetObjectProto,
-    GetRealmErrorPrototype, GetRealmFunctionPrototype, GetRealmIteratorPrototype,
-    GetRealmObjectPrototype, GetRegularMicroTaskCount, HasAnyMicroTasks,
-    HasDefinedArrayBufferDetachKey, HasRegularMicroTasks, IsArgumentsObject, IsArrayObject,
-    JS_AtomizeAndPinString, JS_AtomizeStringN, JS_CompareStrings, JS_ConcatStrings,
-    JS_DefineProperty, JS_DefineProperty2, JS_DefineUCProperty2, JS_DequeueNextMicroTask,
-    JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo, JS_FreezeObject,
-    JS_GetArrayBufferViewBuffer, JS_GetEmptyString, JS_GetFunctionDisplayId, JS_GetFunctionId,
-    JS_GetLatin1StringCharsAndLength, JS_GetStringCharAt, JS_GetTwoByteStringCharsAndLength,
-    JS_InitializePropertiesFromCompatibleNativeObject, JS_IsIdentifier,
-    JS_LinkConstructorAndPrototype, JS_NewDataView, JS_NewDependentString,
+    ArrayBufferClone, ArrayBufferCopyData, CopyArrayBuffer, DetachArrayBuffer,
+    HasDefinedArrayBufferDetachKey, JS_GetArrayBufferViewBuffer, JS_NewDataView,
     JS_NewFloat32ArrayWithBuffer, JS_NewFloat64ArrayWithBuffer, JS_NewInt16ArrayWithBuffer,
     JS_NewInt32Array, JS_NewInt32ArrayWithBuffer, JS_NewInt8ArrayWithBuffer,
-    JS_NewObjectWithoutMetadata, JS_NewPlainObject, JS_NewStringCopyN, JS_NewStringCopyUTF8N,
-    JS_NewUCStringCopyN, JS_NewUint16ArrayWithBuffer, JS_NewUint32Array,
+    JS_NewUint16ArrayWithBuffer, JS_NewUint32Array,
     JS_NewUint32ArrayWithBuffer, JS_NewUint8Array, JS_NewUint8ArrayWithBuffer,
-    JS_NewUint8ClampedArrayWithBuffer, JS_ReadStructuredClone, JS_SetImmutablePrototype,
-    JS_TypeOfValue, JS_ValueToFunction, JS_ValueToId, JS_ValueToSource,
-    JS_WriteStructuredClone, NewArrayBuffer, NewArrayBufferWithContents, NewArrayObject,
-    NewArrayObject1, NewExternalArrayBuffer, NewFunctionWithReserved, PeekNextMicroTask,
-    PrependMicroTask, RUST_JSID_IS_VOID, RunJSMicroTask, SameValue, SetArrayLength,
-    SetDataPropertyDescriptor, SetPropertyIgnoringNamedGetter, StealArrayBufferContents,
-    ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToNumberSlow, ToStringSlow, ToUint16Slow,
-    ToUint32Slow, ToUint64Slow,
+    JS_NewUint8ClampedArrayWithBuffer, NewArrayBuffer, NewArrayBufferWithContents,
+    StealArrayBufferContents,
 };
 use js::rust::JSEngine;
 
@@ -1511,48 +1472,23 @@ fn buffer_extra_arrays(engine: &JSEngine) {
 
 unsafe extern "C" fn ignore_external_free(_contents: *mut c_void, _user_data: *mut c_void) {}
 
-use std::cell::{Cell, RefCell};
-use std::ffi::{c_char, c_void, CStr};
-use std::ops::ControlFlow;
-use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::ffi::c_void;
+use std::ptr;
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
-use js::glue::{CallJitMethodOp, RUST_FUNCTION_VALUE_TO_JITINFO};
 use js::jsapi::{
-    self, CallArgs, CompilationType, ESClass, Handle, HandleString, HandleValue,
-    IsWeakMapObject, JSFunction, JSFunctionSpec, JSJitInfo, JS_GetArrayBufferViewType,
-    JS_GetFunctionObject, JS_GetTypedArrayByteLength, JS_GetTypedArrayLength,
-    JSJitMethodCallArgs, JSNativeWrapper, JSObject, JSPropertySpec, JSPropertySpec_Accessor,
-    JSPropertySpec_AccessorsOrValue, JSPropertySpec_AccessorsOrValue_Accessors,
-    JSPropertySpec_Kind, JSPropertySpec_Name, JSPROP_ENUMERATE, JSString, JSSecurityCallbacks,
-    PromiseRejectionHandlingState, PromiseState, PromiseUserInputEventHandlingState,
-    RuntimeCode, Value as JsValue, jsid,
+    JS_GetArrayBufferViewType, JS_GetTypedArrayByteLength, JS_GetTypedArrayLength, JSObject,
 };
-use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::jsval::{JSVal, ObjectValue};
 use js::rooted;
 use js::rust::wrappers2::{
-    AddPromiseReactions, Call, CallOriginalPromiseReject, CallOriginalPromiseResolve, Compile,
-    Compile1, CompileFunction, Evaluate, Evaluate2, GetBuiltinClass, GetJobQueue,
-    GetPromiseIsHandled, GetPromiseState,
-    GetRealmKeyObject, JS_DefineFunctions, JS_DefineProperties, JS_DefinePropertyById2,
-    JS_ExecuteScript, JS_GetScriptPrivate,
     JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer, JS_NewFloat32Array,
     JS_NewBigInt64ArrayWithBuffer, JS_NewBigUint64ArrayWithBuffer, JS_NewUint32ArrayWithBuffer,
-    JS_NewInt32ArrayWithBuffer, JS_RequestInterruptCallback, JS_SetSecurityCallbacks,
-    JS_AddInterruptCallback, JS_ExecuteScript1, NewPromiseObject, RejectPromise, ResolvePromise,
-    SetAnyPromiseIsHandled,
-    SetPromiseRejectionTrackerCallback, SetPromiseUserInputEventHandlingState,
-    GetWellKnownSymbol, RUST_SYMBOL_TO_JSID, int_to_jsid, NewExternalArrayBuffer,
-    JS_NewGlobalObject,
+    JS_NewInt32ArrayWithBuffer, NewExternalArrayBuffer,
 };
-use js::rust::{
-    CompileOptionsWrapper, EnvironmentChain, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
-    evaluate_script, for_of, transform_str_to_source_text,
-    transform_u16_to_source_text,
-};
-use js::rust::{HandleObject, IdVector, RootedObjectVectorWrapper};
+use js::rust::JSEngine;
+use js::rust::HandleObject;
 
 use crate::support::{Observation, Value, eval, record_case, set_global};
 
@@ -1828,18 +1764,6 @@ fn apis_for_case(case: &str) -> &'static [&'static str] {
             "JS_GetArrayBufferViewByteOffset",
             "UnwrapArrayBuffer",
         ],
-        "buffer.data_pointers" => &[
-            "JS_NewUint8Array",
-            "JS_GetUint8ArrayData",
-            "JS_GetObjectAsFloat64Array",
-            "JS_NewBigInt64Array",
-            "JS_GetBigInt64ArrayData",
-            "JS_NewFloat16Array",
-            "JS_GetFloat16ArrayData",
-            "NewArrayBuffer",
-            "GetArrayBufferData",
-            "GetArrayBufferLengthAndData",
-        ],
         "buffer.views_with_offsets" => &[
             "JS_GetArrayBufferViewByteOffset",
             "JS_GetArrayBufferViewByteLength",
@@ -1860,14 +1784,6 @@ fn apis_for_case(case: &str) -> &'static [&'static str] {
             "JS_GetTypedArrayLength",
             "JS_GetArrayBufferViewByteOffset",
             "GetArrayBufferViewLengthAndData",
-        ],
-        "buffer.steal_contents" => &[
-            "StealArrayBufferContents",
-            "IsDetachedArrayBufferObject",
-            "NewArrayBufferWithContents",
-            "GetArrayBufferData",
-            "NewArrayBuffer",
-            "ArrayBufferHasData",
         ],
         "buffer.clone_and_copy" => &[
             "ArrayBufferClone",
@@ -1934,32 +1850,6 @@ fn apis_for_case(case: &str) -> &'static [&'static str] {
             "GetArrayBufferViewLengthAndData",
             "JS_GetObjectAsArrayBufferView",
             "GetObjectAsArrayBuffer",
-        ],
-        "buffer.shared" => &[
-            "NewSharedArrayBuffer",
-            "IsArrayBufferObjectMaybeShared",
-            "IsSharedArrayBufferObject",
-            "IsResizableArrayBufferMaybeShared",
-            "UnwrapArrayBufferMaybeShared",
-            "UnwrapSharedArrayBuffer",
-            "GetSharedArrayBufferByteLength",
-            "GetSharedArrayBufferData",
-            "GetSharedArrayBufferLengthAndData",
-            "JS_NewUint8ArrayWithBuffer",
-            "IsArrayBufferViewShared",
-            "JS_GetTypedArraySharedness",
-            "JS_GetUint8ArrayData",
-            "GetUint8ArrayLengthAndData",
-        ],
-        "buffer.view_data" => &[
-            "NewArrayBuffer",
-            "EnsureNonInlineArrayBufferOrView",
-            "GetArrayBufferData",
-            "JS_NewUint8ArrayWithBuffer",
-            "JS_GetArrayBufferViewData",
-            "JS_GetArrayBufferViewFixedData",
-            "GetArrayBufferMaybeSharedData",
-            "GetArrayBufferMaybeSharedLengthAndData",
         ],
         _ => panic!("unknown buffer case {case}"),
     }

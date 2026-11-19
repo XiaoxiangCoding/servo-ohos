@@ -9,22 +9,16 @@ reported. Re-exports inside Servo are followed, so `crate::import::module::Call`
 
 Usage:
   scan_scope.py scan --servo-dir DIR --manifest FILE [--format jsonl|tsv] [--output FILE]
-  scan_scope.py check --servo-dir DIR --manifest FILE --scope FILE
-  scan_scope.py export --servo-dir DIR --manifest FILE --covered COVERAGE.jsonl --output FILE
 
 `scan` prints one record per API and provenance pair. Each record contains the API name, its
 manifest status, and every file/line where the API is called, together with the call text. That
 is the human review surface: a scope entry is only trustworthy when its provenance can be read
 back as an actual call.
 
-`check` validates an existing scope file against the same scanner. It fails when a scope entry
-has no provenance that the scanner can reproduce, or when the scanner finds an `implemented`
-entry that the scope omits. It also reports entries whose provenance is now stale.
-
-`export` writes Servo's `servo-mozjs-api-usage.toml` from a deterministic scan. Entries whose contracts
-appear in the supplied coverage JSONL are marked `coverage = "covered"`; every other reachable
-entry is `coverage = "pending"`. The output is sorted, so rerunning it produces no diff unless
-Servo's reachable surface changed.
+This module is the scanner behind `scope_manifest.py`, which owns `servo-mozjs-api-usage.toml`:
+it merges the reviewed usage list, classifies `direct`/`indirect`, and checks the file for
+staleness. Do not generate the scope file from this module; its output would omit the reviewed
+entries and use a different schema.
 """
 
 import argparse
@@ -559,36 +553,6 @@ def scan(servo_dir, manifest):
     return report
 
 
-def classify(api):
-    if api.startswith(("CompileJsonModule", "CompileModule", "CreateDefaultExportSyntheticModule", "SetModuleMetadataHook")):
-        return "module-compilation"
-    if "Module" in api or api.startswith(("LoadRequestedModules", "FinishLoading")):
-        return "module-loading"
-    if api in ("SetModuleLoadHook", "GetModuleLoadHook", "SetScriptPrivateReferenceHooks"):
-        return "module-loading"
-    if api.startswith(("JS_DefineProperty", "JS_Has", "JS_GetOwnProperty", "JS_GetPropertyDescriptor", "JS_SetProperty", "JS_GetProperty", "JS_DeleteProperty", "JS_GetPrototype", "JS_SetPrototype", "JS_NewPlainObject", "Construct")):
-        return "dom-object-model"
-    if "Proxy" in api:
-        return "dom-proxy"
-    if api.startswith(("ArrayBuffer", "SharedArrayBuffer", "Uint8", "Int8", "Float", "TypedArray", "JS_NewArrayBuffer", "JS_GetArrayBuffer", "JS_DetachArrayBuffer", "JS_StealArrayBufferContents", "JS_IsArrayBuffer")):
-        return "typed-array"
-    if api.startswith(("JS_NewString", "JS_GetString", "JS_String", "JS_DeprecatedString", "JS_EncodeString", "JS_LinearString", "JS_CompareStrings", "JS_ConcatStrings", "JS_NewDependentString", "JS_NewAtom", "JS_Atomize")):
-        return "string"
-    if api.startswith(("Promise", "JS_NewPromise", "JS_ResolvePromise", "JS_RejectPromise", "JS_AddPromise", "JS_GetPromise", "JS_IsPromise", "RunJSMicroTask", "JS_EnqueuePromiseJob", "JS_DequeueNextMicroTask", "SetJobQueue", "ClearKeptObjects")):
-        return "promise-job"
-    if api.startswith(("JS_GC", "JS_MaybeGC", "JS_AddRoot", "JS_RemoveRoot", "JS_AddRawValueRoot", "JS_RemoveRawValueRoot", "AddPersistentRoot", "RemovePersistentRoot", "AddAssociatedMemory", "RemoveAssociatedMemory", "JS_SetReservedSlot", "JS_GetReservedSlot", "CallObjectTracer", "CallValueTracer", "CallStringTracer", "CallScriptTracer", "CallBigIntTracer", "CallFunctionTracer")):
-        return "gc-rooting"
-    if api.startswith(("JS_IsException", "JS_GetPendingException", "JS_SetPendingException", "JS_ClearPendingException", "JS_Throw", "JS_ReportError", "JS_Error")):
-        return "exception"
-    if api.startswith(("JS_NewGlobalObject", "JS_Init", "JS_ShutDown", "JSEngine", "JS_NewRuntime", "JS_DestroyRuntime", "JS_SetNativeStackQuota", "JS_GetRuntime", "JS_Context", "JS_Enter", "JS_Leave", "JS_SetContext", "JS_GetContext")):
-        return "runtime"
-    if api.startswith(("JS_Wrap", "GetFunctionRealm", "GetNonCCWObjectGlobal", "UncheckedUnwrapObject", "CheckedUnwrapStatic", "EnterRealm", "LeaveRealm", "GetRealm")):
-        return "realm"
-    if api.startswith(("JS_ReadStructuredClone", "JS_WriteStructuredClone", "JS_StructuredClone")):
-        return "structured-clone"
-    return "jsapi-other"
-
-
 def render_jsonl(report, output):
     with open(output, "w", encoding="utf-8") as file:
         for entry in report:
@@ -627,119 +591,6 @@ def investigate(report):
         print(f"{entry['api']}\t{entry['status']}\t{len(entry['provenance'])} sites")
 
 
-def check_scope(servo_dir, manifest_path, scope_path):
-    scope = load_scope(scope_path)
-    report = scan(servo_dir, load_manifest(manifest_path))
-    found = {entry["api"]: entry for entry in report}
-    errors = []
-    for name, entry in sorted(scope.items()):
-        if name not in found:
-            errors.append(f"scope entry {name} has no reproducible call site ({entry['provenance'][0]})")
-            continue
-        actual = {(site["path"], site["line"]) for site in found[name]["provenance"]}
-        expected = {(path, line) for path, line in entry["locations"]}
-        stale = sorted(expected - actual)
-        if stale:
-            errors.append(f"scope entry {name} has stale provenance: {stale}")
-    if errors:
-        for error in errors:
-            print("error:", error, file=sys.stderr)
-        return 1
-    missing = sorted(
-        name for name, entry in found.items() if entry["status"] == "implemented" and name not in scope
-    )
-    if missing:
-        print(f"warning: {len(missing)} reachable implemented entries are not in the scope", file=sys.stderr)
-        for name in missing:
-            print(f"  {name}", file=sys.stderr)
-    print(f"scope check ok: {len(scope)} entries, {len(found)} reachable APIs")
-    return 0
-
-
-def load_contracts(path):
-    covered = set()
-    with open(path, encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if not line:
-                continue
-            case = json.loads(line)
-            covered.update(case.get("contracts", []))
-    return covered
-
-
-HEADER = """# The mozjs surface Servo can actually reach.
-#
-# Ownership: Servo owns this file because every provenance below is a Servo source path.
-# servo-quickjs reads it through SERVO_DIR when checking contract coverage.
-#
-# consumer: who reaches the entry through its own source.
-# mode: direct = called by Servo; indirect = reached through a trap/hook Servo installs.
-# provenance: the Servo `path:line` call sites that establish reachability.
-# impact: the observable behavior this entry participates in.
-# expect: the manifest status the scope requires (implemented, empty, or todo).
-# coverage: covered = a contract case guarantees this entry; pending = reachable but not yet
-# covered. Only `implemented` + `covered` entries are gated by check_scope.py.
-#
-# Regenerate with:
-#   python3 tests/unit/engine_contract/tools/scan_scope.py export \\
-#     --servo-dir . --manifest tests/unit/engine_contract/mozjs-api-snapshot.toml \\
-#     --covered /path/to/quickjs-contract-results.jsonl \\
-#     --output tests/unit/engine_contract/servo-mozjs-api-usage.toml
-"""
-
-
-def export_scope(servo_dir, manifest_path, covered_path, output):
-    manifest = load_manifest(manifest_path)
-    report = scan(servo_dir, manifest)
-    covered = load_contracts(covered_path)
-    known = {entry["api"]: entry for entry in report}
-    covered = {name for name in covered if name in known and known[name]["status"] == "implemented"}
-
-    lines = [HEADER]
-    counts = {"covered": 0, "pending": 0}
-    for entry in sorted(report, key=lambda item: item["api"]):
-        name = entry["api"]
-        status = entry["status"]
-        coverage = "covered" if name in covered else "pending"
-        counts[coverage] += 1
-        provenance = sorted(
-            {f"{site['path']}:{site['line']}" for site in entry["provenance"]}
-        )
-        lines.append("\n[[entry]]\n")
-        lines.append(f'name = "{name}"\n')
-        lines.append('consumer = ["servo"]\n')
-        lines.append('mode = "direct"\n')
-        lines.append("provenance = [\n")
-        for item in provenance:
-            lines.append(f'  "{item}",\n')
-        lines.append("]\n")
-        lines.append(f'impact = "{classify(name)}"\n')
-        lines.append(f'expect = "{status}"\n')
-        lines.append(f'coverage = "{coverage}"\n')
-
-    with open(output, "w", encoding="utf-8") as file:
-        file.write("".join(lines))
-    print(
-        f"wrote {output}: {len(report)} reachable entries, "
-        f"{counts['covered']} covered, {counts['pending']} pending"
-    )
-    return 0
-
-
-def load_scope(path):
-    with open(path, "rb") as file:
-        document = tomllib.load(file)
-    scope = {}
-    for entry in document.get("entry", []):
-        locations = []
-        for item in entry.get("provenance", []):
-            path, _, line = item.rpartition(":")
-            locations.append((path, int(line)))
-        scope[entry["name"]] = {"locations": locations, "provenance": entry.get("provenance", [])}
-    return scope
-
-
 def main(argv):
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -748,21 +599,7 @@ def main(argv):
     scan_parser.add_argument("--manifest", required=True)
     scan_parser.add_argument("--format", choices=("jsonl", "tsv"), default="jsonl")
     scan_parser.add_argument("--output", default="-")
-    check_parser = subparsers.add_parser("check")
-    check_parser.add_argument("--servo-dir", required=True)
-    check_parser.add_argument("--manifest", required=True)
-    check_parser.add_argument("--scope", required=True)
-    export_parser = subparsers.add_parser("export")
-    export_parser.add_argument("--servo-dir", required=True)
-    export_parser.add_argument("--manifest", required=True)
-    export_parser.add_argument("--covered", required=True)
-    export_parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
-
-    if args.command == "check":
-        return check_scope(args.servo_dir, args.manifest, args.scope)
-    if args.command == "export":
-        return export_scope(args.servo_dir, args.manifest, args.covered, args.output)
 
     report = scan(args.servo_dir, load_manifest(args.manifest))
     if args.output == "-":

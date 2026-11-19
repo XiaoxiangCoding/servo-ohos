@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -168,6 +169,24 @@ class ScannerTest(unittest.TestCase):
         for tree, expected in cases.items():
             with self.subTest(tree):
                 self.assertEqual(list(scan_scope.parse_use_tree(tree)), expected)
+
+    def test_scope_file_generation_is_not_a_scanner_subcommand(self):
+        """`scope_manifest.py` owns the scope file; this module must not offer to rewrite it."""
+        completed = subprocess.run(
+            [sys.executable, scan_scope.__file__, "--help"],
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("{scan}", completed.stdout)
+        for command in ("check", "export"):
+            refused = subprocess.run(
+                [sys.executable, scan_scope.__file__, command, "--servo-dir", "."],
+                text=True,
+                capture_output=True,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("invalid choice", refused.stderr)
 
 
 if __name__ == "__main__":

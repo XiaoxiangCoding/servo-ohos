@@ -5,6 +5,12 @@ case asserts SpiderMonkey behavior, and the same source also runs against the Qu
 expose divergences. The engine is selected at build time by Servo's `[patch.crates-io]`, so the
 test source never names an engine and never uses `mozjs::quickjs` or `qjs::`.
 
+## Prerequisites
+
+The gate scripts under `tools/` need Bash and Python 3.11 or newer: every tool imports
+`tomllib`, which only exists from 3.11 on. The repository's `.python-version` pins the interpreter
+CI installs; a plain `python3` on your machine must be at least that new.
+
 ## Naming
 
 There are three names to read in a command or path:
@@ -143,6 +149,10 @@ older baseline, a different output path, or a spreadsheet-friendly table.
 
 `generate-mozjs-api-snapshot`, `check-mozjs-api-snapshot`, and `report-mozjs-api-changes` remain available
 for debugging the individual stages.
+
+`tools/scan_scope.py` is the scanner behind `scope_manifest.py`; it only exposes the `scan`
+subcommand. `scope_manifest.py` owns `servo-mozjs-api-usage.toml`, because it merges the reviewed
+usage list and classifies `direct`/`indirect`. Do not generate the scope file from `scan_scope.py`.
 
 ## Upgrading mozjs
 

@@ -72,12 +72,12 @@ use js::rust::wrappers2::{
     JS_NewStringCopyUTF8N, JS_NewStringCopyUTF8Z, JS_NewStringCopyZ, JS_NewUCStringCopyN,
     JS_NewUCStringCopyZ, JS_ParseJSON1, JS_ParseJSON2, JS_ParseJSONWithReviver1,
     JS_PutEscapedString, JS_StringEqualsAscii, JS_StringEqualsAscii1, JS_StringToId,
-    JS_StringifyWithLengthHint, JS_free, JS_malloc, JS_realloc, LossyTwoByteCharsToNewLatin1CharsZ,
-    LossyUTF8CharsToNewTwoByteCharsZ, PropertySpecNameEqualsId, PropertySpecNameToPermanentId,
+    JS_StringifyWithLengthHint, JS_free, JS_malloc, JS_realloc, PropertySpecNameEqualsId,
+    PropertySpecNameToPermanentId,
     RUST_JSID_IS_INT, RUST_JSID_IS_STRING, RUST_JSID_IS_VOID, RUST_JSID_TO_INT,
     RUST_JSID_TO_STRING, StringToLinearStringSlow, ToBooleanSlow, ToInt32Slow, ToInt64Slow,
     ToJSONMaybeSafely, ToNumberSlow, ToObjectSlow, ToStringSlow, ToUint16Slow, ToUint32Slow,
-    ToUint64Slow, UTF8CharsToNewTwoByteCharsZ, int_to_jsid,
+    ToUint64Slow, int_to_jsid,
 };
 use js::rust::{HandleObject, HandleValue, JSEngine, MutableHandle};
 
@@ -428,41 +428,14 @@ mod json_contract {
 //! cannot pass by matching a boolean.
 
 use std::ffi::c_void;
-use std::ptr;
 use std::slice;
 
 use js::context::JSContext;
-use js::conversions::jsstr_to_string;
-use js::glue::{
-    GetFloat32ArrayLengthAndData, GetFloat64ArrayLengthAndData,
-    GetUint8ClampedArrayLengthAndData,
-};
-use js::jsapi::{
-    ClippedTime, GetArrayBufferByteLength, GetArrayBufferData,
-    GetArrayBufferViewLengthAndData, IsDetachedArrayBufferObject, JS_ClearPendingException,
-    JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset,
-    JS_GetTypedArrayByteLength, JS_GetTypedArrayLength, JS_GetTypedArraySharedness,
-    JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsTypedArrayObject, JSObject,
-    RegExpFlag_Global, RegExpFlag_UnicodeSets, RegExpFlags, UnwrapArrayBufferView,
-    UnwrapFloat32Array, UnwrapFloat64Array, UnwrapUint8ClampedArray, jsid,
-};
-use js::jsval::{DoubleValue, Int32Value, JSVal, ObjectValue, UndefinedValue};
+use js::jsapi::{JS_ClearPendingException, JS_IsExceptionPending};
+use js::jsval::{JSVal, UndefinedValue};
 use js::rooted;
-use js::rust::wrappers2::{
-    CheckRegExpSyntax, DateGetMsecSinceEpoch, DetachArrayBuffer, ExecuteRegExpNoStatics,
-    GetPropertyKeys, JS_GetArrayBufferViewBuffer, JS_GetElement, JS_GetProperty,
-    JS_GetPropertyById, JS_IdToValue, JS_IndexToId,
-    JS_NewFloat32ArrayWithBuffer, JS_NewFloat64Array, JS_NewFloat64ArrayWithBuffer,
-    JS_NewPlainObject, JS_NewUint8ClampedArray,
-    JS_NewUint8ArrayWithBuffer, JS_ParseJSON, JS_SetElement, JS_SetProperty, JS_Stringify,
-    JS_ValueToSource, MapClear, MapDelete, MapEntries, MapForEach, MapGet, MapHas, MapKeys,
-    MapSet, MapSize, MapValues, NewArrayBuffer, NewDateObject, NewMapObject, NewSetObject,
-    NewSharedArrayBuffer,
-    NewUCRegExpObject, NewWeakMapObject, ObjectIsDate, ObjectIsRegExp, SameValue, SetAdd,
-    SetClear, SetDelete, SetEntries, SetHas, SetKeys, SetSize, SetValues, SetWeakMapEntry,
-    GetWeakMapEntry, StrictlyEqual,
-};
-use js::rust::{HandleObject, HandleValue, IdVector, JSEngine};
+use js::rust::wrappers2::{JS_ParseJSON, JS_Stringify};
+use js::rust::{HandleObject, HandleValue, JSEngine};
 
 use crate::support::{Observation, Value, eval, record_case, set_global};
 
@@ -1223,59 +1196,24 @@ unsafe fn allocator(cx: &mut JSContext) -> bool {
 }
 
 mod edge_strings_more_contract {
-use crate::support::{Observation, Value, eval, record_case, set_global};
-use std::ptr;
+use crate::support::{Observation, Value, eval, record_case};
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
-use js::glue::{
-    CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer,
-    GetLengthOfJSStructuredCloneData, GetUint8ArrayLengthAndData, NewJSAutoStructuredCloneBuffer,
-    WriteBytesToJSStructuredCloneData,
-};
-use js::jsapi::js::StringIsArrayIndex;
 use js::jsapi::mozilla::Range;
 use js::jsapi::{
-    AtomToLinearString, CloneDataPolicy, GetArrayBufferByteLength, GetArrayBufferData,
-    GetArrayBufferLengthAndData, GetFunctionNativeReserved, GetLinearStringCharAt,
-    GetLinearStringLength, GetStaticPrototype, IsArrayBufferObject, IsCallable, IsConstructor,
-    IsDetachedArrayBufferObject, JS_ClearPendingException, JS_DeprecatedStringHasLatin1Chars,
-    JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset, JS_GetArrayBufferViewType,
-    JS_GetFunctionArity, JS_GetFunctionObject, JS_GetStringLength, JS_GetTypedArrayByteLength,
-    JS_GetTypedArrayLength, JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsGlobalObject,
-    JS_IsTypedArrayObject, JS_STRUCTURED_CLONE_VERSION, JSStructuredCloneData, JSObject,
-    SetFunctionNativeReserved, StructuredCloneScope, UnwrapArrayBuffer, UnwrapInt32Array,
-    UnwrapUint32Array, UnwrapUint8Array, jsid,
+    AtomToLinearString, GetLinearStringCharAt,
+    GetLinearStringLength, JS_DeprecatedStringHasLatin1Chars, JS_GetStringLength, jsid,
 };
-use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::jsval::{JSVal, StringValue};
 use js::rooted;
 use js::rust::wrappers2::{
-    ArrayBufferClone, ArrayBufferCopyData, Construct1, CopyArrayBuffer, DefineFunctionWithReserved,
-    DequeueNextRegularMicroTask, DetachArrayBuffer, EnqueueMicroTask, FromPropertyDescriptor,
-    GetArrayLength, GetCurrentRealmOrNull, GetFunctionRealm, GetObjectProto,
-    GetRealmErrorPrototype, GetRealmFunctionPrototype, GetRealmIteratorPrototype,
-    GetRealmObjectPrototype, GetRegularMicroTaskCount, HasAnyMicroTasks,
-    HasDefinedArrayBufferDetachKey, HasRegularMicroTasks, IsArgumentsObject, IsArrayObject,
     JS_AtomizeAndPinString, JS_AtomizeStringN, JS_CompareStrings, JS_ConcatStrings,
-    JS_DefineProperty, JS_DefineProperty2, JS_DefineUCProperty2, JS_DequeueNextMicroTask,
-    JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo, JS_FreezeObject,
-    JS_GetArrayBufferViewBuffer, JS_GetEmptyString, JS_GetFunctionDisplayId, JS_GetFunctionId,
-    JS_GetLatin1StringCharsAndLength, JS_GetStringCharAt, JS_GetTwoByteStringCharsAndLength,
-    JS_InitializePropertiesFromCompatibleNativeObject, JS_IsIdentifier,
-    JS_LinkConstructorAndPrototype, JS_NewDataView, JS_NewDependentString,
-    JS_NewFloat32ArrayWithBuffer, JS_NewFloat64ArrayWithBuffer, JS_NewInt16ArrayWithBuffer,
-    JS_NewInt32Array, JS_NewInt32ArrayWithBuffer, JS_NewInt8ArrayWithBuffer,
-    JS_NewObjectWithoutMetadata, JS_NewPlainObject, JS_NewStringCopyN, JS_NewStringCopyUTF8N,
-    JS_NewUCStringCopyN, JS_NewUint16ArrayWithBuffer, JS_NewUint32Array,
-    JS_NewUint32ArrayWithBuffer, JS_NewUint8Array, JS_NewUint8ArrayWithBuffer,
-    JS_NewUint8ClampedArrayWithBuffer, JS_ReadStructuredClone, JS_SetImmutablePrototype,
-    JS_TypeOfValue, JS_ValueToFunction, JS_ValueToId, JS_ValueToSource,
-    JS_WriteStructuredClone, NewArrayBuffer, NewArrayBufferWithContents, NewArrayObject,
-    NewArrayObject1, NewExternalArrayBuffer, NewFunctionWithReserved, PeekNextMicroTask,
-    PrependMicroTask, RUST_JSID_IS_VOID, RunJSMicroTask, SameValue, SetArrayLength,
-    SetDataPropertyDescriptor, SetPropertyIgnoringNamedGetter, StealArrayBufferContents,
-    ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToNumberSlow, ToStringSlow, ToUint16Slow,
-    ToUint32Slow, ToUint64Slow,
+    JS_GetEmptyString, JS_GetLatin1StringCharsAndLength, JS_GetStringCharAt,
+    JS_GetTwoByteStringCharsAndLength, JS_NewDependentString, JS_NewStringCopyN,
+    JS_NewStringCopyUTF8N, JS_NewUCStringCopyN, JS_TypeOfValue, JS_ValueToSource,
+    RUST_JSID_IS_VOID, SameValue, ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToNumberSlow,
+    ToStringSlow, ToUint16Slow, ToUint32Slow, ToUint64Slow,
 };
 use js::rust::JSEngine;
 
@@ -1678,48 +1616,18 @@ unsafe fn js_encode_latin1(out: *mut *mut c_char, cx: *mut c_void, string: *mut 
 // Extra typed arrays and external buffer storage.
 // ---------------------------------------------------------------------------
 
-use std::cell::{Cell, RefCell};
 use std::ffi::{c_char, c_void, CStr};
-use std::ops::ControlFlow;
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use js::context::JSContext;
 use js::conversions::jsstr_to_string;
-use js::glue::{CallJitMethodOp, RUST_FUNCTION_VALUE_TO_JITINFO};
-use js::jsapi::{
-    self, CallArgs, CompilationType, ESClass, Handle, HandleString, HandleValue,
-    IsWeakMapObject, JSFunction, JSFunctionSpec, JSJitInfo, JS_GetArrayBufferViewType,
-    JS_GetFunctionObject, JS_GetTypedArrayByteLength, JS_GetTypedArrayLength,
-    JSJitMethodCallArgs, JSNativeWrapper, JSObject, JSPropertySpec, JSPropertySpec_Accessor,
-    JSPropertySpec_AccessorsOrValue, JSPropertySpec_AccessorsOrValue_Accessors,
-    JSPropertySpec_Kind, JSPropertySpec_Name, JSPROP_ENUMERATE, JSString, JSSecurityCallbacks,
-    PromiseRejectionHandlingState, PromiseState, PromiseUserInputEventHandlingState,
-    RuntimeCode, Value as JsValue, jsid,
-};
-use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::jsapi::{self, JSString, jsid};
+use js::jsval::{Int32Value, JSVal, ObjectValue};
 use js::rooted;
 use js::rust::wrappers2::{
-    AddPromiseReactions, Call, CallOriginalPromiseReject, CallOriginalPromiseResolve, Compile,
-    Compile1, CompileFunction, Evaluate, Evaluate2, GetBuiltinClass, GetJobQueue,
-    GetPromiseIsHandled, GetPromiseState,
-    GetRealmKeyObject, JS_DefineFunctions, JS_DefineProperties, JS_DefinePropertyById2,
-    JS_ExecuteScript, JS_GetScriptPrivate,
-    JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer, JS_NewFloat32Array,
-    JS_NewBigInt64ArrayWithBuffer, JS_NewBigUint64ArrayWithBuffer, JS_NewUint32ArrayWithBuffer,
-    JS_NewInt32ArrayWithBuffer, JS_RequestInterruptCallback, JS_SetSecurityCallbacks,
-    JS_AddInterruptCallback, JS_ExecuteScript1, NewPromiseObject, RejectPromise, ResolvePromise,
-    SetAnyPromiseIsHandled,
-    SetPromiseRejectionTrackerCallback, SetPromiseUserInputEventHandlingState,
-    GetWellKnownSymbol, RUST_SYMBOL_TO_JSID, int_to_jsid, NewExternalArrayBuffer,
-    JS_NewGlobalObject,
+    GetWellKnownSymbol, JS_DefinePropertyById2, RUST_SYMBOL_TO_JSID, int_to_jsid,
 };
-use js::rust::{
-    CompileOptionsWrapper, EnvironmentChain, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
-    evaluate_script, for_of, transform_str_to_source_text,
-    transform_u16_to_source_text,
-};
-use js::rust::{HandleObject, IdVector, RootedObjectVectorWrapper};
+use js::rust::{HandleObject, JSEngine};
 
 use crate::support::{Observation, Value, eval, record_case, set_global};
 
