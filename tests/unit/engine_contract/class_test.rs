@@ -343,6 +343,15 @@ static TRACER_CLASS_OPS: JSClassOps = JSClassOps {
     trace: Some(trace_edge_kinds),
 };
 
+static TRACER_CLASS: JSClass = JSClass {
+    name: c"ContractTracer".as_ptr(),
+    flags: (1 & JSCLASS_RESERVED_SLOTS_MASK) << JSCLASS_RESERVED_SLOTS_SHIFT,
+    cOps: &TRACER_CLASS_OPS,
+    spec: ptr::null(),
+    ext: ptr::null(),
+    oOps: ptr::null(),
+};
+
 const RAW_EDGES_SLOT: u32 = 0;
 
 unsafe extern "C" fn trace_edge_kinds(trc: *mut JSTracer, obj: *mut JSObject) {
@@ -407,15 +416,7 @@ fn raw_edges(cx: &mut js::context::JSContext) -> Box<RawEdges> {
 /// first number meaningful rather than "nothing was collected anyway".
 fn edge_tracers(engine: &JSEngine) -> Observation {
     let (traced_finalized, untraced_finalized) = with_global(engine, |cx, _global| unsafe {
-        let class = JSClass {
-            name: c"ContractTracer".as_ptr(),
-            flags: (1 & JSCLASS_RESERVED_SLOTS_MASK) << JSCLASS_RESERVED_SLOTS_SHIFT,
-            cOps: &TRACER_CLASS_OPS,
-            spec: ptr::null(),
-            ext: ptr::null(),
-            oOps: ptr::null(),
-        };
-        let object = JS_NewObject(cx, &class);
+        let object = JS_NewObject(cx, &TRACER_CLASS);
         assert!(!object.is_null(), "creating the traced object");
         rooted!(&in(cx) let object = object);
 

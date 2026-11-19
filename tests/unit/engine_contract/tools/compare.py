@@ -6,7 +6,10 @@ Usage: compare.py SPIDERMONKEY-RESULTS.jsonl QUICKJS-RESULTS.jsonl \
            [--sm-cases SPIDERMONKEY-CASES.json] [--qjs-cases QUICKJS-CASES.json]
 
 Both inputs are JSON Lines produced by `engine_contract_tests`. Cases are matched by `id`; the
-`engine` field is ignored. SpiderMonkey is the reference: a difference listed in
+`engine` field must say `spidermonkey` in the first file and `quickjs` in the second. That check
+is what catches a mis-applied `[patch.crates-io]`, where the "QuickJS" run actually built
+SpiderMonkey and would otherwise compare SpiderMonkey with itself and pass. SpiderMonkey is the
+reference: a difference listed in
 `quickjs-difference-allowlist.toml` with status `accepted` or `wontfix` is reported as a known QuickJS
 defect and does not fail the run. A listed difference with status `pending` or `bug` still fails,
 as does an unlisted difference. When ``CASES.json`` is supplied, both engine runs must contain
@@ -32,19 +35,31 @@ OPTIONAL_FIELDS = ("issue", "steps")
 RELEASED_STATUSES = frozenset(("accepted", "wontfix"))
 
 
-def load(path):
+def load(path, expected_engine):
     cases = {}
+    engines = set()
     with open(path, encoding="utf-8") as file:
         for line_number, line in enumerate(file, 1):
             line = line.strip()
             if not line:
                 continue
             case = json.loads(line)
-            case.pop("engine", None)
+            engines.add(case.pop("engine", None))
             case_id = case["id"]
             if case_id in cases:
                 raise SystemExit(f"{path}:{line_number}: duplicate case id {case_id!r}")
             cases[case_id] = case
+    # An empty run has no engine marker to check; the case inventory checks cover that case.
+    if engines:
+        if len(engines) > 1:
+            raise SystemExit(f"{path}: mixed engine markers {sorted(map(str, engines))}")
+        actual = next(iter(engines))
+        if actual != expected_engine:
+            raise SystemExit(
+                f"{path}: expected {expected_engine!r} results, found {actual!r}. "
+                "A missing [patch.crates-io] makes the QuickJS run build SpiderMonkey, so this "
+                "comparison would be SpiderMonkey against itself."
+            )
     return cases
 
 
@@ -203,8 +218,8 @@ def main(argv):
         raise SystemExit("use either --cases or --sm-cases/--qjs-cases, not both")
     if len(arguments) not in (2, 3):
         raise SystemExit(__doc__)
-    sm = load(arguments[0])
-    qjs = load(arguments[1])
+    sm = load(arguments[0], "spidermonkey")
+    qjs = load(arguments[1], "quickjs")
     differences = load_differences(arguments[2] if len(arguments) == 3 else None)
     expected = load_expected_cases(cases_path) if cases_path else None
     expected_sm = load_expected_cases(sm_cases_path) if sm_cases_path else expected

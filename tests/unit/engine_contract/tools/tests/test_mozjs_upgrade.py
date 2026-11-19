@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -169,6 +170,66 @@ class PinUpdateTest(unittest.TestCase):
             mozjs_upgrade.update_pins(self.servo, self.qjs, "0.26.14")
 
         self.assertIn("expected one", str(raised.exception))
+
+    def test_apply_restores_every_file_when_cargo_update_fails(self):
+        cargo = os.path.join(self.servo, "Cargo.toml")
+        config = os.path.join(self.servo, "support", "quickjs", "cargo-config.toml")
+        lockfile = os.path.join(self.servo, "Cargo.lock")
+        self.write(lockfile, "lockfile before\n")
+        before = {path: self.read(path) for path in (cargo, config, lockfile)}
+        args = mock.Mock(
+            servo_root=self.servo,
+            qjs_dir=self.qjs,
+            version="0.26.14",
+            skip_cargo_update=False,
+        )
+
+        with mock.patch.object(mozjs_upgrade, "update_lockfile", return_value=False):
+            with self.assertRaises(SystemExit) as raised:
+                mozjs_upgrade.apply(args)
+
+        self.assertIn("restored", str(raised.exception))
+        for path, contents in before.items():
+            self.assertEqual(self.read(path), contents)
+
+    def test_apply_restores_earlier_pin_when_the_second_pin_is_missing(self):
+        cargo = os.path.join(self.servo, "Cargo.toml")
+        config = os.path.join(self.servo, "support", "quickjs", "cargo-config.toml")
+        before = self.read(cargo)
+        self.write(config, "# no patch here\n")
+        args = mock.Mock(
+            servo_root=self.servo,
+            qjs_dir=self.qjs,
+            version="0.26.14",
+            skip_cargo_update=False,
+        )
+
+        with self.assertRaises(SystemExit):
+            mozjs_upgrade.apply(args)
+
+        self.assertEqual(self.read(cargo), before)
+
+    def test_apply_removes_a_lockfile_created_by_a_failed_update(self):
+        lockfile = os.path.join(self.servo, "Cargo.lock")
+        self.assertFalse(os.path.exists(lockfile))
+        args = mock.Mock(
+            servo_root=self.servo,
+            qjs_dir=self.qjs,
+            version="0.26.14",
+            skip_cargo_update=False,
+        )
+
+        def create_then_fail(_servo_root):
+            self.write(lockfile, "partial lockfile\n")
+            return False
+
+        with mock.patch.object(
+            mozjs_upgrade, "update_lockfile", side_effect=create_then_fail
+        ):
+            with self.assertRaises(SystemExit):
+                mozjs_upgrade.apply(args)
+
+        self.assertFalse(os.path.exists(lockfile))
 
 
 class UpgradeReportTest(unittest.TestCase):

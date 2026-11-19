@@ -229,7 +229,13 @@ fn stream_observation(engine: &JSEngine) -> Observation {
                     STREAM_ERRORS,
                     SOURCE_MAP_MISSING,
                 );
-                panic!("streaming.consume_callback requires an Itanium C++ ABI test consumer");
+                Observation::new(vec![
+                    ("consumer_abi", Observed::String("unavailable".to_owned())),
+                    (
+                        "streaming_compilation",
+                        Observed::String("msvc_vtable_unsupported".to_owned()),
+                    ),
+                ])
             }
         }
     })

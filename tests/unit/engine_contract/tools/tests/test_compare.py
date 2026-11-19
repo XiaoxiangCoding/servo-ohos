@@ -32,12 +32,17 @@ class CompareTest(unittest.TestCase):
             handle.write(textwrap.dedent(content))
         return path
 
+    @staticmethod
+    def engine_of(name):
+        return "spidermonkey" if name.startswith("spidermonkey") else "quickjs"
+
     def coverage(self, name, fields):
         return self.write(
             name,
             json.dumps(
                 {
                     "id": "case.one",
+                    "engine": self.engine_of(name),
                     "fields": fields,
                     "exception": None,
                     "apis": ["JS_Test"],
@@ -52,6 +57,7 @@ class CompareTest(unittest.TestCase):
             json.dumps(
                 {
                     "id": case_id,
+                    "engine": self.engine_of(name),
                     "fields": fields or {"value": True},
                     "exception": None,
                     "apis": ["JS_Test"],

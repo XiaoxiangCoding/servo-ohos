@@ -471,6 +471,15 @@ static LAZY_CLASS_OPS: JSClassOps = JSClassOps {
     trace: None,
 };
 
+static LAZY_CLASS: JSClass = JSClass {
+    name: c"ContractLazyClass".as_ptr(),
+    flags: 0,
+    cOps: &LAZY_CLASS_OPS,
+    spec: ptr::null(),
+    ext: ptr::null(),
+    oOps: ptr::null(),
+};
+
 fn standard_classes(engine: &JSEngine) {
     let apis = &[
         "JS_AtomizeStringN",
@@ -567,15 +576,7 @@ fn standard_classes(engine: &JSEngine) {
     });
     steps.step("may_resolve", || {
         with_global(engine, |cx, global| unsafe {
-            let class = JSClass {
-                name: c"ContractLazyClass".as_ptr(),
-                flags: 0,
-                cOps: &LAZY_CLASS_OPS,
-                spec: ptr::null(),
-                ext: ptr::null(),
-                oOps: ptr::null(),
-            };
-            let lazy = JS_NewObject(cx, &class);
+            let lazy = JS_NewObject(cx, &LAZY_CLASS);
             assert!(!lazy.is_null(), "creating the lazy object");
             rooted!(&in(cx) let lazy = lazy);
             crate::support::set_global(

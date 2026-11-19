@@ -44,12 +44,35 @@ unsafe extern "C" {
 /// Captures a C `printf`/Rust `println!` stack dump by redirecting fd 1 to a pipe.
 #[cfg(unix)]
 fn capture_stdout(f: impl FnOnce()) -> String {
+    struct RestoreStdout {
+        saved: c_int,
+        active: bool,
+    }
+
+    impl Drop for RestoreStdout {
+        fn drop(&mut self) {
+            if self.active {
+                unsafe {
+                    fflush(stdout);
+                    let _ = dup2(self.saved, 1);
+                    close(self.saved);
+                }
+            }
+        }
+    }
+
     unsafe {
         let mut fds = [0; 2];
         assert_eq!(pipe(fds.as_mut_ptr()), 0);
         fflush(stdout);
         let saved = dup(1);
         assert!(saved >= 0);
+        // From here on a panic must still put fd 1 back: otherwise later output goes into a pipe
+        // nobody reads and the suite hangs once that pipe fills.
+        let mut restore = RestoreStdout {
+            saved,
+            active: true,
+        };
         assert_eq!(dup2(fds[1], 1), 1);
         close(fds[1]);
 
@@ -58,7 +81,8 @@ fn capture_stdout(f: impl FnOnce()) -> String {
         let _ = std::io::stdout().flush();
         fflush(stdout);
         assert_eq!(dup2(saved, 1), 1);
-        close(saved);
+        restore.active = false;
+        close(restore.saved);
 
         let mut output = Vec::new();
         let mut pipe = std::fs::File::from_raw_fd(fds[0]);

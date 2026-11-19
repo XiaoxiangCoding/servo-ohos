@@ -60,20 +60,6 @@ is reported separately. Such a case still asserts SpiderMonkey behavior; on Quic
 no-op or `qjs_todo!` panic is recorded and must be settled by an entry in
 `quickjs-difference-allowlist.toml`, so a missing capability can never silently drop its case.
 
-| Area | Cases | Source |
-| --- | --- | --- |
-| Buffer and typed arrays | 6 | `buffer_test.rs` |
-| Objects and properties | 7 | `objects_test.rs`, `property_test.rs` |
-| Modules and clone | 7 | `module_test.rs`, `clone_test.rs` |
-| Strings, eval and stencil | 5 | `strings_test.rs`, `eval_test.rs`, `stencil_test.rs` |
-| Promises, realm and runtime | 6 | `promises_test.rs`, `realm_test.rs`, `runtime_test.rs` |
-| Class, misc and errors | 13 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
-| Calls and rooters | 2 | `contract_test.rs` |
-| Proxies, realms and principals | 8 | `proxy_test.rs` |
-| Debugger object and hooks | 2 | `debugger_test.rs` |
-| Event-loop dispatch | 2 | `event_loop_test.rs` |
-| Streaming callbacks | 1 | `streaming_test.rs` |
-
 Every case records the `apis` it calls. The coverage gate compares those names with
 `mozjs-api-snapshot.toml` for status and with `servo-mozjs-api-usage.toml` for the required set.
 
@@ -116,6 +102,9 @@ The check reads `QJS_DIR/mozjs/Cargo.toml`, so a sparse checkout must include it
 `mozjs/src/engine` is not enough: the usage scan follows calls through the wrapper bodies in
 `mozjs/src/{rust,conversions,...}.rs`, so a checkout that stops at `engine` reports every
 indirect entry as removed.
+
+Running the quickjs leg also needs the `servo-quickjs` directory (the crate that builds vendored
+QuickJS).
 
 It then checks that `mozjs-api-snapshot.toml` still matches the bindgen and
 QuickJS shim, then checks that `servo-mozjs-api-usage.toml` still matches Servo's usage, and finally
@@ -176,9 +165,10 @@ does the mechanical work; only the affected cases are left to edit.
    together with the cases to `ADD` or `UPDATE`. Pass `--baseline REV:PATH` to compare against another
    snapshot.
 
-   It does not touch `Cargo.lock`: the shim is wired in through `[patch.crates-io]`, so a new shim
-   `rev` never appears there. Only a change to the `mozjs` version number itself needs a lockfile
-   update, and Cargo reports that on the next build.
+   It updates `Cargo.lock` with `cargo update -p mozjs` so the new version is actually selected.
+   Pass `--skip-cargo-update` when you want to update the lockfile yourself; that flag is the only
+   mode that leaves `Cargo.lock` alone. If `cargo update` fails, the script restores both pins and
+   `Cargo.lock`, so a failed upgrade leaves the checkout unchanged.
 
 3. **Edit only the listed cases.** Open the file printed next to each `UPDATE` or `ADD` line, keep
    the case id, declare the entry in `apis`, and assert what the entry actually does. If the output
@@ -335,10 +325,11 @@ engine defect cannot hide the cases that follow it.
 Cases for `empty`/`todo` entries record the shim precondition or divergence; the QuickJS diff must
 already have the corresponding entry in `quickjs-difference-allowlist.toml`.
 
-CI runs `check-contract-case-coverage` after the unit tests, with `CONTRACT_OUT` pointing at the JSONL of that run. It
-checks out the `servo-quickjs` revision pinned in `support/quickjs/cargo-config.toml` and passes it
-as `QJS_DIR`, so a mozjs or shim update cannot land with a stale manifest, a stale usage scope, or
-a used scoped entry that has no case.
+CI runs `run-contract-gate` after the unit tests; the unit-test step's JSONL is not reused because
+that build uses the registry `mozjs`, not the pinned shim. The gate checks out the `servo-quickjs`
+revision pinned in `support/quickjs/cargo-config.toml` and passes it as `QJS_DIR`, so a mozjs or
+shim update cannot land with a stale manifest, a stale usage scope, or a used scoped entry that has
+no case, and a mis-applied patch cannot compare SpiderMonkey with itself.
 
 `run.sh run-contract-gate` runs `run-spidermonkey-contract → run-quickjs-contract → compare-engine-results → check-quickjs-shim-fixes → check-contract-case-coverage` without stopping at the first failure. It reports
 every failed step at the end and exits non-zero if any step failed, so a known QuickJS failure
@@ -346,7 +337,7 @@ still produces `quickjs-contract-results.jsonl`, the diff, and the coverage resu
 `run-quickjs-contract` is deliberately not a gate failure on its own: an assertion failure is how a
 QuickJS difference is recorded, and `compare-engine-results` decides whether every one is accepted.
 The gate only fails on the QuickJS run when the comparison also fails. When `--case`/`--cases` is used,
-`run-contract-gate` skips coverage because a single case cannot cover the full 410-entry scope; the skip is
+`run-contract-gate` skips coverage because a single case cannot cover the full scope; the skip is
 reported explicitly.
 
 ## Comparing

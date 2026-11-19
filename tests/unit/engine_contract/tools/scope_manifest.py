@@ -399,6 +399,8 @@ def render_scope(result):
     for name in sorted(result["used"]):
         entries = by_name[name]
         status = status_of(entries)
+        reviewed = result["reviewed"].get(name)
+        mode = reviewed["mode"] if reviewed else ("direct" if name in direct else "indirect")
         evidence = []
         if name in direct:
             evidence.extend(direct[name])
@@ -407,7 +409,7 @@ def render_scope(result):
         lines.append("\n[[entry]]\n")
         lines.append(f"name = {quote(name)}\n")
         lines.append(f"status = {quote(status)}\n")
-        lines.append(f"mode = {quote('direct' if name in direct else 'indirect')}\n")
+        lines.append(f"mode = {quote(mode)}\n")
         lines.append("provenance = [\n")
         for item in sorted(set(evidence)):
             lines.append(f"  {quote(item)},\n")

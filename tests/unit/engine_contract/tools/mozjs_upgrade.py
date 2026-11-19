@@ -127,10 +127,45 @@ def update_pins(servo_root, qjs_dir, version):
 def update_lockfile(servo_root):
     completed = subprocess.run(["cargo", "update", "-p", "mozjs"], cwd=servo_root)
     if completed.returncode != 0:
-        raise SystemExit(
-            "cargo update -p mozjs failed; run it with network access, or pass "
-            "--skip-cargo-update and update Cargo.lock yourself"
-        )
+        return False
+    return True
+
+
+def apply(args):
+    cargo_toml = os.path.join(args.servo_root, "Cargo.toml")
+    cargo_config = os.path.join(args.servo_root, "support", "quickjs", "cargo-config.toml")
+    lockfile = os.path.join(args.servo_root, "Cargo.lock")
+    backups = {}
+    existed = {}
+    for path in (cargo_toml, cargo_config, lockfile):
+        existed[path] = os.path.isfile(path)
+        if os.path.isfile(path):
+            with open(path, "rb") as file:
+                backups[path] = file.read()
+
+    def restore():
+        for path, contents in backups.items():
+            with open(path, "wb") as file:
+                file.write(contents)
+        for path, present in existed.items():
+            if not present and os.path.isfile(path):
+                os.unlink(path)
+
+    try:
+        update_pins(args.servo_root, args.qjs_dir, args.version)
+    except BaseException:
+        restore()
+        raise
+    if args.skip_cargo_update:
+        print("skipped cargo update -p mozjs; Cargo.lock was not changed")
+        return 0
+    if update_lockfile(args.servo_root):
+        return 0
+    restore()
+    raise SystemExit(
+        "cargo update -p mozjs failed; restored Cargo.toml, "
+        "support/quickjs/cargo-config.toml and Cargo.lock"
+    )
 
 
 def load_table(path, section):
@@ -207,14 +242,6 @@ def main(argv):
     apply_parser.add_argument("--qjs-dir", required=True)
     apply_parser.add_argument("--version", required=True)
     apply_parser.add_argument("--skip-cargo-update", action="store_true")
-
-    def apply(args):
-        update_pins(args.servo_root, args.qjs_dir, args.version)
-        if args.skip_cargo_update:
-            print("skipped cargo update -p mozjs")
-        else:
-            update_lockfile(args.servo_root)
-        return 0
 
     apply_parser.set_defaults(func=apply)
 

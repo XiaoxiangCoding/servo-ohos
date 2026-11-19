@@ -145,6 +145,12 @@ unsafe extern "C" fn trace_global(trc: *mut jsapi::JSTracer, global: *mut JSObje
 }
 
 fn realm_entry_identity_and_private(engine: &JSEngine) {
+    crate::support::isolate_case("edge.realm.entry_identity_and_private", || {
+        realm_entry_identity_and_private_inner(engine);
+    });
+}
+
+fn realm_entry_identity_and_private_inner(engine: &JSEngine) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
     unsafe {

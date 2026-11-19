@@ -175,7 +175,7 @@ jobs:
           LANG: en-US
           # The engine contract test records the API entries each case calls here.
           CONTRACT_ENGINE: spidermonkey
-          CONTRACT_OUT: ${{ github.workspace }}/target/contract/sm.jsonl
+          CONTRACT_OUT: ${{ github.workspace }}/target/contract/spidermonkey-contract-results.jsonl
         run: |
           mkdir -p target/contract
           ./mach test-unit --profile ${{ inputs.profile }} --nextest-profile ci
@@ -190,10 +190,13 @@ jobs:
           git clone --quiet --filter=blob:none --no-checkout \
             https://github.com/openharmony-rs/servo-quickjs "$qjs_dir"
           git -C "$qjs_dir" sparse-checkout set --no-cone \
-            mozjs/upstream-bindgen mozjs/src mozjs/stub_bindings.py mozjs/Cargo.toml
+            mozjs/upstream-bindgen mozjs/src mozjs/stub_bindings.py mozjs/Cargo.toml \
+            servo-quickjs
           git -C "$qjs_dir" checkout --quiet "$rev"
+          # The gate re-runs SpiderMonkey itself; do not rely on the JSONL from the unit-test step,
+          # whose run used the registry mozjs rather than this checkout.
           QJS_DIR="$qjs_dir" OUT_DIR="${{ github.workspace }}/target/contract" \
-            tests/unit/engine_contract/tools/run.sh coverage
+            tests/unit/engine_contract/tools/run.sh run-contract-gate
       # We upload the test-results to Codecov to help us identify flaky unit-tests.
       - name: Upload test results to Codecov
         # Upload test results to Codecov, also for failed unit-tests, but only

@@ -202,9 +202,9 @@ class CaseInventoryTest(unittest.TestCase):
         )
 
     def write_observations(self, output_dir, cases):
-        for name in (
-            "spidermonkey-contract-results.jsonl",
-            "quickjs-contract-results.jsonl",
+        for name, engine in (
+            ("spidermonkey-contract-results.jsonl", "spidermonkey"),
+            ("quickjs-contract-results.jsonl", "quickjs"),
         ):
             with open(os.path.join(output_dir, name), "w", encoding="utf-8") as file:
                 for case_id in cases:
@@ -212,6 +212,7 @@ class CaseInventoryTest(unittest.TestCase):
                         json.dumps(
                             {
                                 "id": case_id,
+                                "engine": engine,
                                 "fields": {"value": True},
                                 "exception": None,
                                 "apis": ["JS_Test"],
@@ -286,8 +287,8 @@ fi
 cat >"${{CONTRACT_CASES_OUT:?}}" <<'JSON'
 {{"version": 1, "cases": ["module.one"]}}
 JSON
-cat >"${{CONTRACT_OUT:?}}" <<'JSONL'
-{{"id": "module.one", "fields": {{"value": true}}, "exception": null, "apis": ["JS_Test"]}}
+cat >"${{CONTRACT_OUT:?}}" <<JSONL
+{{"id": "module.one", "engine": "${{CONTRACT_ENGINE:-unknown}}", "fields": {{"value": true}}, "exception": null, "apis": ["JS_Test"]}}
 JSONL
 """
         with open(path, "w", encoding="utf-8") as file:
@@ -307,8 +308,8 @@ echo "${CONTRACT_ISOLATE_CASES:-<unset>}" >>"${ISOLATION_LOG:?}"
 cat >"${CONTRACT_CASES_OUT:?}" <<'JSON'
 {"version": 1, "cases": ["module.one"]}
 JSON
-cat >"${CONTRACT_OUT:?}" <<'JSONL'
-{"id": "module.one", "fields": {"value": true}, "exception": null, "apis": ["JS_Test"]}
+cat >"${CONTRACT_OUT:?}" <<JSONL
+{"id": "module.one", "engine": "${CONTRACT_ENGINE:-unknown}", "fields": {"value": true}, "exception": null, "apis": ["JS_Test"]}
 JSONL
 """
             )
@@ -463,8 +464,8 @@ set -eu
 cat >"${CONTRACT_CASES_OUT:?}" <<'JSON'
 {"version": 1, "cases": ["module.one"]}
 JSON
-cat >"${CONTRACT_OUT:?}" <<'JSONL'
-{"id": "module.one", "fields": {"value": true}, "exception": null, "apis": ["JS_Test"]}
+cat >"${CONTRACT_OUT:?}" <<JSONL
+{"id": "module.one", "engine": "${CONTRACT_ENGINE:-unknown}", "fields": {"value": true}, "exception": null, "apis": ["JS_Test"]}
 JSONL
 if [[ "$*" == *"js-quickjs"* ]]; then
     exit 1

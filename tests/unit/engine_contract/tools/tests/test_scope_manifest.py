@@ -45,6 +45,37 @@ class ReviewedUsageTest(unittest.TestCase):
                 {"JS_NewPlainObject"},
             )
 
+    def test_rendered_mode_matches_the_checker_for_reviewed_entries(self):
+        by_name = {
+            "AddAssociatedMemory": [{
+                "status": "implemented",
+                "kind": "function",
+                "signature": "AddAssociatedMemory()",
+            }],
+            "Other": [{
+                "status": "implemented",
+                "kind": "function",
+                "signature": "Other()",
+            }],
+        }
+        result = {
+            "manifest": by_name,
+            "direct": {"AddAssociatedMemory": ["servo/a.rs:1"]},
+            "via": {"AddAssociatedMemory": {"reviewed: wrap.rs:1"}},
+            "used": {"AddAssociatedMemory"},
+            "reviewed": {
+                "AddAssociatedMemory": {
+                    "mode": "indirect",
+                    "evidence": "reviewed: wrap.rs:1",
+                }
+            },
+        }
+
+        rendered = scope_manifest.render_scope(result)
+
+        self.assertIn('mode = "indirect"', rendered)
+        self.assertIn("reviewed: wrap.rs:1", rendered)
+
 class ScanMozjsTest(unittest.TestCase):
     def scan(self, files):
         import tempfile

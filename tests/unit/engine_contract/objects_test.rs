@@ -3400,6 +3400,12 @@ static DEEP_SECURITY_CALLBACKS: JSSecurityCallbacks = JSSecurityCallbacks {
 };
 
 fn for_of_and_stack_vectors(engine: &JSEngine) {
+    crate::support::isolate_case("edge.objects.for_of_and_stack_vectors", || {
+        for_of_and_stack_vectors_inner(engine);
+    });
+}
+
+fn for_of_and_stack_vectors_inner(engine: &JSEngine) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
     unsafe {

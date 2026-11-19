@@ -83,7 +83,7 @@ use js::rust::{HandleObject, HandleValue, JSEngine, MutableHandle};
 
 use crate::support::{Observation, Value, eval, record_case, set_global};
 
-#[cfg(not(feature = "js-quickjs"))]
+#[cfg(all(not(feature = "js-quickjs"), not(target_env = "msvc")))]
 mod encode_abi {
     use std::ffi::{c_char, c_void};
     use std::ptr;
@@ -96,6 +96,9 @@ mod encode_abi {
     };
 
     unsafe extern "C" {
+        // These C++ functions return a non-trivial `UniqueChars`, so the platform ABI passes a
+        // hidden result pointer. Declaring that explicitly is required; the bindgen signature
+        // returns a plain integer and crashes when called this way.
         #[link_name = "_Z22JS_EncodeStringToASCIIP9JSContextP8JSString"]
         fn js_encode_string_to_ascii(out: *mut *mut c_char, cx: *mut c_void, string: *mut JSString);
         #[link_name = "_Z23JS_EncodeStringToLatin1P9JSContextP8JSString"]
@@ -262,6 +265,78 @@ mod encode_abi {
         out_len: &mut usize,
     ) -> TwoByteCharsZ {
         LossyUTF8CharsToNewTwoByteCharsZ(cx, chars, out_len, 0)
+    }
+}
+
+/// MSVC uses a different C++ ABI for the hidden `UniqueChars` return value, and the generated
+/// bindings declare it as a scalar. Keep the module present so the rest of the file type-checks;
+/// the two cases that use it record an unsupported-platform observation before calling it.
+#[cfg(all(not(feature = "js-quickjs"), target_env = "msvc"))]
+mod encode_abi {
+    use std::ffi::c_char;
+
+    use js::context::JSContext;
+    use js::jsapi::mozilla::Range;
+    use js::jsapi::{
+        Handle, JSString, Latin1CharsZ, MutableHandle as RawMutableHandle, TwoByteChars,
+        TwoByteCharsZ, UTF8Chars, jsid,
+    };
+
+    fn unsupported() -> ! {
+        unreachable!("string encoding ABI is not available on MSVC")
+    }
+
+    pub unsafe fn encode_string_to_ascii(cx: &mut JSContext, string: *mut JSString) -> *mut c_char {
+        let _ = (cx, string);
+        unsupported()
+    }
+
+    pub unsafe fn encode_string_to_latin1(
+        cx: &mut JSContext,
+        string: *mut JSString,
+    ) -> *mut c_char {
+        let _ = (cx, string);
+        unsupported()
+    }
+
+    pub unsafe fn encode_string_to_utf8(
+        cx: &mut JSContext,
+        string: Handle<*mut JSString>,
+    ) -> *mut c_char {
+        let _ = (cx, string);
+        unsupported()
+    }
+
+    pub unsafe fn chars_to_id(
+        cx: &mut JSContext,
+        chars: TwoByteChars,
+        id: RawMutableHandle<jsid>,
+    ) -> bool {
+        let _ = (cx, chars, id);
+        unsupported()
+    }
+
+    pub unsafe fn lossy_two_byte_to_latin1(cx: &mut JSContext, chars: &Range<u16>) -> Latin1CharsZ {
+        let _ = (cx, chars);
+        unsupported()
+    }
+
+    pub unsafe fn utf8_to_two_byte(
+        cx: &mut JSContext,
+        chars: &UTF8Chars,
+        out_len: &mut usize,
+    ) -> TwoByteCharsZ {
+        let _ = (cx, chars, out_len);
+        unsupported()
+    }
+
+    pub unsafe fn lossy_utf8_to_two_byte(
+        cx: &mut JSContext,
+        chars: &UTF8Chars,
+        out_len: &mut usize,
+    ) -> TwoByteCharsZ {
+        let _ = (cx, chars, out_len);
+        unsupported()
     }
 }
 
@@ -690,6 +765,15 @@ pub fn run(engine: &JSEngine) {
         "strings.atoms_ids_json_and_memory",
         APIS,
         |cx, global| unsafe {
+            #[cfg(target_env = "msvc")]
+            {
+                let _ = (cx, global);
+                return Observation::new(vec![(
+                    "unsupported_platform",
+                    Observed::String("msvc_cxx_abi".to_owned()),
+                )]);
+            }
+
             let mut utf8 = *b"a\xe2\x82\xac";
             let utf8_chars = js::jsapi::JS::UTF8Chars {
                 _base: range(utf8.as_mut_ptr(), utf8.len()),
@@ -1494,6 +1578,15 @@ fn strings_symbols_ids_and_encoding(engine: &JSEngine) {
             "int_to_jsid",
         ],
         |cx, global| unsafe {
+            #[cfg(target_env = "msvc")]
+            {
+                let _ = (cx, global);
+                return Observation::new(vec![(
+                    "unsupported_platform",
+                    Value::String("msvc_cxx_abi".to_owned()),
+                )]);
+            }
+
             let iterator = GetWellKnownSymbol(cx, jsapi::SymbolCode::iterator);
             assert!(!iterator.is_null());
             let async_iterator = GetWellKnownSymbol(cx, jsapi::SymbolCode::asyncIterator);
@@ -1561,11 +1654,18 @@ fn strings_symbols_ids_and_encoding(engine: &JSEngine) {
 
 #[cfg(not(feature = "js-quickjs"))]
 unsafe fn js_encode_latin1(out: *mut *mut c_char, cx: *mut c_void, string: *mut JSString) {
-    unsafe extern "C" {
-        #[link_name = "_Z23JS_EncodeStringToLatin1P9JSContextP8JSString"]
-        fn encode(out: *mut *mut c_char, cx: *mut c_void, string: *mut JSString);
+    #[cfg(not(target_env = "msvc"))]
+    {
+        unsafe extern "C" {
+            #[link_name = "_Z23JS_EncodeStringToLatin1P9JSContextP8JSString"]
+            fn encode(out: *mut *mut c_char, cx: *mut c_void, string: *mut JSString);
+        }
+        encode(out, cx, string);
     }
-    encode(out, cx, string);
+    #[cfg(target_env = "msvc")]
+    {
+        let _ = (out, cx, string);
+    }
 }
 
 #[cfg(feature = "js-quickjs")]

@@ -35,12 +35,11 @@ entry needs no case until Servo uses it.
    `target/contract/mozjs-api-changes.toml`, then the entry's `status` (`implemented` / `empty`
    / `todo`) and `provenance` in `servo-mozjs-api-usage.toml`.
 
-2. Put the case in the existing area file: `buffer_test.rs`, `objects_test.rs`,
-   `objects_extra_test.rs`, `property_test.rs`, `strings_test.rs`, `strings_extra_test.rs`,
-   `eval_test.rs`, `eval_ext_test.rs`, `stencil_test.rs`, `module_test.rs`, `promises_test.rs`,
-   `realm_test.rs`, `runtime_test.rs`, `misc_test.rs`, `errors_test.rs`, `class_test.rs`,
-   `clone_test.rs`, `debugger_test.rs`, `event_loop_test.rs`, `streaming_test.rs`,
-   `proxy_test.rs`, or `contract_test.rs`. Reuse that file's case-id prefix. A new module needs
+2. Put the case in the existing area file: `buffer_test.rs`, `class_test.rs`, `clone_test.rs`,
+   `contract_test.rs`, `debugger_test.rs`, `errors_test.rs`, `eval_test.rs`, `event_loop_test.rs`,
+   `misc_test.rs`, `module_test.rs`, `objects_test.rs`, `promises_test.rs`, `property_test.rs`,
+   `proxy_test.rs`, `realm_test.rs`, `runtime_test.rs`, `stencil_test.rs`, `streaming_test.rs`,
+   or `strings_test.rs`. Reuse that file's case-id prefix. A new module needs
    `mod <area>_test;` and `run_module` registration in `lib.rs`.
 
 3. Write the case:
