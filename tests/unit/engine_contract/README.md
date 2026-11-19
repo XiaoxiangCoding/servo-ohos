@@ -190,6 +190,10 @@ does the mechanical work; only the affected cases are left to edit.
    git status --short
    ```
 
+   `run-contract-gate` starts with `run-tool-tests`, which runs the manifest tool tests in
+   `tools/tests`. Those tests decide which entries are required and which differences are
+   accepted, so a regression there can weaken the gate without failing a contract case.
+
    `./mach fmt` runs rustfmt with `binop_separator=Back`, `imports_granularity=Module` and
    `group_imports=StdExternalCrate`, so it can rewrite files that the upgrade did not touch. Keep
    those changes: `./mach test-tidy`, which the `lint` workflow runs, uses the same configuration
@@ -216,11 +220,15 @@ does the mechanical work; only the affected cases are left to edit.
 
 ## Tool tests
 
-Run the manifest tool tests with:
+Run the manifest tool tests on their own with either command:
 
 ```bash
+tests/unit/engine_contract/tools/run.sh run-tool-tests
 python3 -m unittest discover -s tests/unit/engine_contract/tools/tests
 ```
+
+`run-contract-gate` runs them first, so a broken manifest tool fails the gate before either engine
+run produces a result.
 
 ## Engine policy
 
@@ -251,6 +259,8 @@ tests/unit/engine_contract/tools/run.sh scan-servo-mozjs-api-usage # internal: u
 tests/unit/engine_contract/tools/run.sh check-servo-mozjs-api-usage # servo-mozjs-api-usage.toml matches Servo usage
 tests/unit/engine_contract/tools/run.sh check-contract-case-coverage # inventory, usage, and case coverage
 tests/unit/engine_contract/tools/run.sh check-quickjs-shim-fixes # removed differences have fix records
+tests/unit/engine_contract/tools/run.sh run-tool-tests # manifest tool tests in tools/tests
+tests/unit/engine_contract/tools/run.sh run-contract-gate # tool tests, both engines, compare, fixes, coverage
 ```
 
 `scan-mozjs-surface` passes scan options to the mozjs stage; it defaults to

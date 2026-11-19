@@ -24,8 +24,10 @@
 #                               check inventory + usage + contract case coverage
 #   tools/run.sh check-quickjs-shim-fixes
 #                               verify removed allowlist entries have fix records
+#   tools/run.sh run-tool-tests
+#                               run the manifest tool tests under tools/tests
 #   tools/run.sh run-contract-gate
-#                               run both engines, compare, check fixes and coverage
+#                               run tool tests, both engines, compare, check fixes and coverage
 #
 # Internal commands (kept for troubleshooting and compatibility):
 #   scan-mozjs-api, scan-servo-mozjs-api-usage, generate-mozjs-api-snapshot,
@@ -296,6 +298,15 @@ check_quickjs_shim_fixes_after_diff() {
     fi
 }
 
+# The manifest tools decide which entries are required and which differences are accepted, so a
+# regression there can silently weaken the gate. Run their tests before trusting any engine result.
+run_tool_tests() {
+    local tests_dir="$repo_root/tests/unit/engine_contract/tools/tests"
+    [[ -d "$tests_dir" ]] || return 0
+    cd "$repo_root"
+    python3 -m unittest discover -s tests/unit/engine_contract/tools/tests
+}
+
 run_all() {
     parse_contract_args "$@" || return
     local selection="$CASE_SELECTION"
@@ -307,8 +318,13 @@ run_all() {
     local quickjs_failed=0
     local compare_failed=0
     local step
-    for step in run-spidermonkey-contract run-quickjs-contract compare-engine-results \
+    for step in run-tool-tests run-spidermonkey-contract run-quickjs-contract compare-engine-results \
         check-quickjs-shim-fixes check-contract-case-coverage; do
+        if [[ "$step" == "run-tool-tests" ]] \
+            && [[ ! -d "$repo_root/tests/unit/engine_contract/tools/tests" ]]; then
+            echo "==> run-tool-tests (skipped: no tests/unit/engine_contract/tools/tests)"
+            continue
+        fi
         if [[ "$step" == "check-contract-case-coverage" && -n "$selection" ]]; then
             echo "==> check-contract-case-coverage (skipped: coverage requires the full case set)"
             continue
@@ -329,6 +345,7 @@ run_all() {
         fi
         local runner
         case "$step" in
+            run-tool-tests) runner=run_tool_tests ;;
             run-spidermonkey-contract) runner=run_spidermonkey_contract ;;
             run-quickjs-contract) runner=run_quickjs_contract ;;
             compare-engine-results) runner=run_compare_engine_results ;;
@@ -783,6 +800,7 @@ case "$command" in
     check-servo-mozjs-api-usage) check_servo_mozjs_api_usage ;;
     check-contract-case-coverage) check_contract_case_coverage ;;
     check-quickjs-shim-fixes) check_quickjs_shim_fixes "$@" ;;
+    run-tool-tests) run_tool_tests ;;
     run-contract-gate) run_all "$@" ;;
     # Compatibility aliases. Keep them until all callers migrate.
     run-sm) run_spidermonkey_contract "$@" ;;
@@ -809,7 +827,7 @@ case "$command" in
     fix-check) check_quickjs_shim_fixes "$@" ;;
     all) run_all "$@" ;;
     *)
-        echo "usage: $0 {run-spidermonkey-contract|run-quickjs-contract|compare-engine-results|scan-mozjs-surface|prepare-mozjs-upgrade|check-servo-mozjs-api-usage|check-contract-case-coverage|check-quickjs-shim-fixes|run-contract-gate} [--case ID|--cases ID[,ID...]] [cargo test args...]" >&2
+        echo "usage: $0 {run-spidermonkey-contract|run-quickjs-contract|compare-engine-results|scan-mozjs-surface|prepare-mozjs-upgrade|check-servo-mozjs-api-usage|check-contract-case-coverage|check-quickjs-shim-fixes|run-tool-tests|run-contract-gate} [--case ID|--cases ID[,ID...]] [cargo test args...]" >&2
         echo "internal commands: scan-mozjs-api scan-servo-mozjs-api-usage generate-mozjs-api-snapshot check-mozjs-api-snapshot report-mozjs-api-changes" >&2
         echo "legacy aliases: sm qjs diff api-scan generate manifest scope scope-check coverage report fix-check run-sm run-qjs compare-engines scan-mozjs-api-inventory scan-servo-usage check-servo-usage check-contract-coverage check-quickjs-fixes generate-mozjs-inventory check-mozjs-inventory report-mozjs-changes generate-mozjs-api-inventory check-mozjs-api-inventory report-mozjs-api-inventory-changes all" >&2
         exit 2
