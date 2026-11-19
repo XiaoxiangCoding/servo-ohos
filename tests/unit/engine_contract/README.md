@@ -63,9 +63,9 @@ no-op or `qjs_todo!` panic is recorded and must be settled by an entry in
 | Area | Cases | Source |
 | --- | --- | --- |
 | Buffer and typed arrays | 6 | `buffer_test.rs` |
-| Objects and properties | 7 | `objects_test.rs`, `objects_extra_test.rs`, `property_test.rs` |
+| Objects and properties | 7 | `objects_test.rs`, `property_test.rs` |
 | Modules and clone | 7 | `module_test.rs`, `clone_test.rs` |
-| Strings, eval and stencil | 5 | `strings_test.rs`, `strings_extra_test.rs`, `eval_test.rs`, `eval_ext_test.rs`, `stencil_test.rs` |
+| Strings, eval and stencil | 5 | `strings_test.rs`, `eval_test.rs`, `stencil_test.rs` |
 | Promises, realm and runtime | 6 | `promises_test.rs`, `realm_test.rs`, `runtime_test.rs` |
 | Class, misc and errors | 13 | `class_test.rs`, `misc_test.rs`, `errors_test.rs` |
 | Calls and rooters | 2 | `contract_test.rs` |
@@ -292,10 +292,32 @@ When `CONTRACT_OUT` is unset the tests still assert their expectations, but no J
 The file is truncated at the start of each `run-spidermonkey-contract`/`run-quickjs-contract` run and appended per case. A selected run
 therefore cannot leave an old full-suite JSONL behind.
 
-Cases are isolated from each other. A failed assertion records
-`{"fields": {"panic": "<message>"}, "apis": []}` for that case and the run continues with the
-next case. The test still fails after every case has run, and the failure summary lists each
-failed case, so one engine defect cannot hide the cases that follow it.
+Cases are isolated from each other at two levels.
+
+At the process level, `run.sh` sets `CONTRACT_ISOLATE_CASES=1` by default. The test entry then
+re-executes the binary once per case and merges each child's JSONL record into one file, so a
+segfault, abort or `panic = "abort"` in one case cannot hide the cases after it. A child that dies
+without recording is written as a failure observation with its exit status, and a child that exits
+non-zero makes the parent exit non-zero even when it did record an observation. Set
+`CONTRACT_ISOLATE_CASES=0` to run everything in one process for debugging; a crash then truncates
+the run.
+
+At the scenario level, compound cases use `support::Steps`, which catches each sub-scenario's
+panic, runs a fresh realm/global for it, and continues with the remaining sub-scenarios. The first
+panic becomes `fields.panic` (the existing comparison fingerprint) and all of them are listed in
+`fields.step_failures`:
+
+```json
+"step_failures": [{"step": "weak_map_objects", "panic": "assertion failed: ..."}]
+```
+
+`CONTRACT_STEP` narrows a case to named sub-scenarios, which lets one API group be traced with
+`QJS_CALL_LOG` without the other groups' calls polluting the log.
+
+A case that fails before it can record (for example a panic outside any `Steps` block) records
+`{"fields": {"panic": "<message>"}, "apis": []}` and the run continues with the next case. The
+test still fails after every case has run, and the failure summary lists each failed case, so one
+engine defect cannot hide the cases that follow it.
 
 Cases for `empty`/`todo` entries record the shim precondition or divergence; the QuickJS diff must
 already have the corresponding entry in `quickjs-difference-allowlist.toml`.
@@ -326,7 +348,11 @@ released as accepted or wontfix. An unlisted or malformed entry fails the run. A
 `issue` may point at the tracking issue for a difference that is still present; `pending` and
 `bug` entries must have one, while accepted/wontfix entries may omit it. `panic` is an optional
 exact fingerprint for a panicking case: when present, the QuickJS `panic` text must match it
-character for character, and a QuickJS panic on an entry without one is a mismatch. A fixed
+character for character, and a QuickJS panic on an entry without one is a mismatch. `steps` is an
+optional list of sub-scenario names: every `fields.step_failures` entry on either engine must name
+a step in that list. Because a case-level `fields` entry would otherwise absorb a newly exposed
+step, add `steps` to every allowlist entry for a compound case so a new failing sub-scenario fails
+the comparison instead of hiding behind an old first panic. A fixed
 difference is removed from this file and recorded in `quickjs-shim-fix-records.md`; `check-quickjs-shim-fixes` rejects a removed
 entry without a complete record, and rejects a record whose case id is not in the runtime
 inventory. An entry for a case that participated in both runs but no longer differs is stale and

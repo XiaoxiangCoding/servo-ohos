@@ -11,6 +11,10 @@
 # Optional: `issue` links the tracking issue for a difference that is still present. `pending`
 # and `bug` entries must name a real tracking issue; accepted/wontfix entries may omit it.
 #
+# Optional: `steps` names the sub-scenarios whose failures this entry covers. Every
+# `fields.step_failures` entry in either result must appear here; without it a newly exposed
+# sub-scenario would be absorbed by a case-level `fields` entry.
+#
 # Optional: `panic` is an exact QuickJS panic fingerprint. Use it instead of relying on
 # `fields = ["fields"]` for a case that aborts: panic text that changes, or a panic where none is
 # listed, fails the comparison. When a difference is fixed, add a record to
@@ -28,6 +32,7 @@ severity = "P3"
 [[difference]]
 id = "eval.environment_chain"
 fields = ["fields", "apis"]
+steps = ["environment_chain"]
 panic = """assertion `left == right` failed
   left: 12
  right: 13"""
@@ -39,6 +44,7 @@ severity = "P2"
 [[difference]]
 id = "objects.core"
 fields = ["fields", "apis"]
+steps = ["property_keys", "get_weak_map_entry"]
 panic = """assertion `left == right` failed
   left: ([3], 1)
  right: ([], 0)"""
@@ -50,6 +56,7 @@ severity = "P3"
 [[difference]]
 id = "strings.core"
 fields = ["fields", "apis"]
+steps = ["value_to_source"]
 panic = '''assertion `left == right` failed: ValueToSource(({a: 1, 'b c': [2], 3: undefined, [Symbol.iterator]: 0}))
   left: "({3:(void 0), a:1, \"b c\":[2], [Symbol.iterator]:0})"
  right: "({3:(void 0), a:1, 'b c':[2], [Symbol.iterator]:0})"'''
@@ -62,8 +69,8 @@ severity = "P3"
 id = "misc.gc_state"
 fields = ["fields", "apis"]
 panic = """assertion `left == right` failed
-  left: Ok("Object")
- right: Ok("JS Object")"""
+  left: "Object"
+ right: "JS Object\""""
 reason = "GCTraceKindToAscii returns QuickJS class names such as Object; SpiderMonkey returns JS Object"
 owner = "servo-quickjs"
 status = "accepted"
@@ -72,6 +79,14 @@ severity = "P3"
 [[difference]]
 id = "errors.core"
 fields = ["fields", "apis"]
+steps = [
+    "report_thrown_error_location",
+    "report_error_from_exception",
+    "stacks",
+    "build_stack_string",
+    "get_saved_frame_column",
+    "describe_scripted_caller",
+]
 panic = """assertion `left == right` failed
   left: (2, 22)
  right: (2, 9)"""
@@ -81,17 +96,90 @@ status = "accepted"
 severity = "P3"
 
 [[difference]]
-id = "debugger.new_global_object_hook"
+id = "edge.eval.compile_and_environment"
+fields = ["fields", "apis"]
+panic = """assertion `left == right` failed: inner scope must shadow the later appended outer scope
+  left: 12
+ right: 13"""
+reason = "QuickJS appends environment-chain scopes in the opposite order; the compiled function therefore sees 12 instead of 13"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P2"
+
+[[difference]]
+id = "edge.promise.states_and_queue"
 fields = ["fields"]
-reason = "JS_FireOnNewGlobalObject is a no-op in QuickJS: the debugger emulation declares Debugger.onNewGlobalObject but never calls it, so the hook fires 0 times instead of 1"
+reason = "QuickJS does not run the interrupt callback requested by JS_RequestInterruptCallback; the script still completes with result 1000"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P3"
+
+[[difference]]
+id = "edge.typed_arrays_shared_detach"
+fields = ["fields"]
+reason = "QuickJS supports SharedArrayBuffer and SharedArrayBuffer-backed views; this SpiderMonkey build reports shared memory as unavailable"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P3"
+
+[[difference]]
+id = "edge.weakmap"
+fields = ["fields"]
+panic = "assertion failed: GetWeakMapEntry(cx, weak.handle(), key.handle(), out.handle_mut())"
+reason = "QuickJS holder maps only accept realm key objects; GetWeakMapEntry with an ordinary object key returns false"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P3"
+
+[[difference]]
+id = "edge.weakmap_overwrite"
+fields = ["fields"]
+panic = "assertion failed: SetWeakMapEntry(cx, weak.handle(), key.handle(), one.handle())"
+reason = "QuickJS holder maps only accept realm key objects; SetWeakMapEntry with an ordinary object key returns false"
 owner = "servo-quickjs"
 status = "accepted"
 severity = "P3"
 
 [[difference]]
 id = "misc.gc_callbacks"
-fields = ["fields"]
+fields = ["fields", "apis"]
+panic = "assertion failed: gc_callback_calls.parse::<u32>().unwrap_or(0) > 0"
 reason = "QuickJS keeps JS_SetGCCallback, SetGCSliceCallback, JS_AddExtraGCRootsTracer and JS_Get/SetGCParameter as silent no-ops: registered callbacks and extra-root tracers never run during JS_GC, the slice slot reports itself as already installed (the shim returns None), and GC parameters read back as 0"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P3"
+
+[[difference]]
+id = "misc.roots_options_memory"
+fields = ["fields", "apis"]
+panic = """assertion `left == right` failed: RemoveRawValueRoot did not release the object
+  left: 0
+ right: 1"""
+reason = "QuickJS's raw-value root retains an extra reference after RemoveRawValueRoot, so the object is not finalized by the following JS_GC"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P2"
+
+[[difference]]
+id = "realm.enter_exit_and_private"
+fields = ["fields"]
+reason = "QuickJS invokes the global trace hook twice for one explicit collection; SpiderMonkey invokes it once"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P3"
+
+[[difference]]
+id = "runtime.context_lifecycle"
+fields = ["fields"]
+reason = "QuickJS's JS_Get/SetGCParameter do not persist the SpiderMonkey GC parameter values; reads return 0 and writes are not reflected back"
+owner = "servo-quickjs"
+status = "accepted"
+severity = "P3"
+
+[[difference]]
+id = "debugger.new_global_object_hook"
+fields = ["fields"]
+reason = "JS_FireOnNewGlobalObject is a no-op in QuickJS: the debugger emulation declares Debugger.onNewGlobalObject but never calls it, so the hook fires 0 times instead of 1"
 owner = "servo-quickjs"
 status = "accepted"
 severity = "P3"
@@ -115,6 +203,7 @@ severity = "P3"
 [[difference]]
 id = "misc.standard_classes"
 fields = ["fields"]
+steps = ["enumerate", "atomize_and_resolve"]
 panic = "standard class enumeration returned no names"
 reason = "QuickJS implements JS_NewEnumerateStandardClasses, JS_ResolveStandardClass and JS_MayResolveStandardClass as no-ops, so no lazily resolved standard class names are enumerated"
 owner = "servo-quickjs"

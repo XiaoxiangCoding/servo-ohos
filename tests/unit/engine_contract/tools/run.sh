@@ -43,6 +43,8 @@
 #   OUT_DIR         output directory (default: target/contract)
 #   CONTRACT_CASES  comma/space separated case ids; normally set by --case/--cases
 #   CONTRACT_CASES_OUT  runtime case inventory written by the test harness
+#   CONTRACT_ISOLATE_CASES  run each case in its own process (default 1); 0 runs them all in one
+#                       process, where a crash hides every case after it
 #   FIX_CHECK_BASELINE  baseline quickjs-difference-allowlist.toml for fix-record checks
 #                       (default: HEAD)
 
@@ -211,6 +213,7 @@ run_spidermonkey_contract() {
         CONTRACT_ENGINE=spidermonkey \
         CONTRACT_OUT="$(spidermonkey_results_path)" \
         CONTRACT_CASES_OUT="$(spidermonkey_case_inventory_path)" \
+        CONTRACT_ISOLATE_CASES="${CONTRACT_ISOLATE_CASES:-1}" \
         cargo test --locked --offline --release -p engine_contract_tests "${cargo_args[@]}"
 }
 
@@ -232,6 +235,8 @@ run_quickjs_contract() {
         CONTRACT_ENGINE=quickjs \
         CONTRACT_OUT="$(quickjs_results_path)" \
         CONTRACT_CASES_OUT="$(quickjs_case_inventory_path)" \
+        CONTRACT_REFERENCE_OUT="$(spidermonkey_results_path)" \
+        CONTRACT_ISOLATE_CASES="${CONTRACT_ISOLATE_CASES:-1}" \
         cargo test --offline --release -p engine_contract_tests --features js-quickjs \
         --config "patch.crates-io.mozjs.path=\"$qjs_dir/mozjs\"" \
         --config 'env.SERVO_QUICKJS_DEBUGGER="1"' "${cargo_args[@]}"
@@ -430,6 +435,15 @@ check_engine_versions() {
 
 locate_mozjs() {
     cd "$repo_root"
+    # The usage baseline is generated against the servo-quickjs shim: its wrapper bodies expose
+    # forwarding edges that the registry mozjs crate's generated `wrap!` declarations do not.
+    # Prefer the build's QJS_DIR so a registry package selected by cargo metadata cannot silently
+    # drop those edges from the scope manifest.
+    if [[ -f "$qjs_dir/mozjs/Cargo.toml" ]]; then
+        mozjs_manifest="$qjs_dir/mozjs/Cargo.toml"
+        mozjs_sys_manifest="$qjs_dir/mozjs/Cargo.toml"
+        return 0
+    fi
     local registries
     registries=$(cargo metadata --locked --offline --format-version 1 | python3 -c '
 import json, sys

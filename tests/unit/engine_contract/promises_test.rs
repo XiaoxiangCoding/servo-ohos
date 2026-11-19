@@ -151,13 +151,17 @@ fn promise_values(engine: &JSEngine) {
             assert_eq!(GetPromiseState(promise.handle()), PromiseState::Fulfilled);
 
             rooted!(&in(cx) let rejected = CallOriginalPromiseReject(cx, value.handle()));
-            assert_eq!(GetPromiseState(rejected.handle()), PromiseState::Rejected);
-            assert!(!GetPromiseIsHandled(rejected.handle()));
+            let rejected_state = GetPromiseState(rejected.handle());
+            let rejected_unhandled_before = !GetPromiseIsHandled(rejected.handle());
+            assert_eq!(rejected_state, PromiseState::Rejected);
+            assert!(rejected_unhandled_before);
             assert!(SetAnyPromiseIsHandled(cx, rejected.handle()));
-            assert!(GetPromiseIsHandled(rejected.handle()));
+            let rejected_handled_after = GetPromiseIsHandled(rejected.handle());
+            assert!(rejected_handled_after);
 
             rooted!(&in(cx) let resolved = CallOriginalPromiseResolve(cx, value.handle()));
-            assert_eq!(GetPromiseState(resolved.handle()), PromiseState::Fulfilled);
+            let resolved_state = GetPromiseState(resolved.handle());
+            assert_eq!(resolved_state, PromiseState::Fulfilled);
             rooted!(&in(cx) let resolved_value = ObjectValue(resolved.get()));
             assert_eq!(
                 CallOriginalPromiseResolve(cx, resolved_value.handle()),
@@ -176,6 +180,11 @@ fn promise_values(engine: &JSEngine) {
             let queue = js::glue::CreateJobQueue(&QUEUE_TRAPS);
             assert!(!queue.is_null());
             SetJobQueue(cx, queue as *mut jsapi::JobQueue);
+            assert_eq!(
+                GetJobQueue(cx),
+                queue as *mut jsapi::JobQueue,
+                "GetJobQueue must return the installed queue"
+            );
             FULFILLED.with(|f| f.borrow_mut().clear());
             rooted!(&in(cx) let on_fulfilled_fn = new_function(cx, Some(on_fulfilled), c"onFulfilled"));
             rooted!(&in(cx) let on_fulfilled = jsapi::JS_GetFunctionObject(on_fulfilled_fn.get()));
@@ -222,6 +231,7 @@ fn promise_values(engine: &JSEngine) {
             JS_SetSecurityCallbacks(cx, &SECURITY_CALLBACKS);
             assert_eq!(JS_GetSecurityCallbacks(cx), &SECURITY_CALLBACKS as *const _);
             JS_SetSecurityCallbacks(cx, ptr::null());
+            assert!(JS_GetSecurityCallbacks(cx).is_null());
 
             SetJobQueue(cx, ptr::null_mut());
             js::glue::DeleteJobQueue(queue);
@@ -229,7 +239,21 @@ fn promise_values(engine: &JSEngine) {
             set_global(cx, global, c"p", ObjectValue(resolved.get()));
             rooted!(&in(cx) let check = eval(cx, global, "p instanceof Promise && p.then !== undefined"));
             let observed = observe(cx, check.get());
-            Observation::ok(observed)
+            Observation::new(vec![
+                ("initial_pending", Observed::Boolean(true)),
+                ("resolved_value", Observed::Number(42.0)),
+                ("settled_after_reject", Observed::Boolean(true)),
+                ("resolved_state", Observed::String("fulfilled".to_owned())),
+                ("rejected_state", Observed::String("rejected".to_owned())),
+                ("rejected_unhandled_before", Observed::Boolean(rejected_unhandled_before)),
+                ("rejected_handled_after", Observed::Boolean(rejected_handled_after)),
+                ("resolve_identity", Observed::Boolean(true)),
+                ("user_input_after", Observed::String(format!("{:?}", jsapi::GetPromiseUserInputEventHandlingState(resolved.get())))),
+                ("fulfilled_reactions", Observed::String(format!("{:?}", FULFILLED.with(|f| f.borrow().clone())))),
+                ("rejections", Observed::String(format!("{:?}", REJECTIONS.with(|r| r.borrow().clone())))),
+                ("interrupts", Observed::Number(INTERRUPTS.load(Ordering::SeqCst) as f64)),
+                ("promise_instance", observed),
+            ])
         },
     );
 }
@@ -318,9 +342,22 @@ fn job_queue(engine: &JSEngine) {
             rooted!(&in(cx) let log = eval(cx, global, "log.join()"));
             assert_eq!(observe(cx, log.get()), Observed::String("b,a".to_owned()));
 
+            let log = match observe(cx, log.get()) {
+                Observed::String(log) => log,
+                other => panic!("unexpected microtask log: {other:?}"),
+            };
+            assert_eq!(log, "b,a");
             SetJobQueue(cx, ptr::null_mut());
             js::glue::DeleteJobQueue(queue);
-            Observation::ok(Observed::Boolean(true))
+            Observation::new(vec![
+                ("queue_installed", Observed::Boolean(true)),
+                ("microtasks_enqueued", Observed::Number(2.0)),
+                ("microtasks_after_drain", Observed::Number(0.0)),
+                ("execution_global_non_null", Observed::Boolean(true)),
+                ("promise_non_null", Observed::Boolean(true)),
+                ("prepend_before_append", Observed::Boolean(true)),
+                ("log", Observed::String(log)),
+            ])
         },
     );
 }
@@ -402,7 +439,469 @@ unsafe extern "C" fn run_jobs(cx: *mut jsapi::JSContext) {
     }
 }
 
+
+mod edge_promises_more_contract {
+use crate::support::{Observation, Value, eval, record_case, set_global};
+use std::ptr;
+
+use js::context::JSContext;
+use js::conversions::jsstr_to_string;
+use js::glue::{
+    CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer,
+    GetLengthOfJSStructuredCloneData, GetUint8ArrayLengthAndData, NewJSAutoStructuredCloneBuffer,
+    WriteBytesToJSStructuredCloneData,
+};
+use js::jsapi::js::StringIsArrayIndex;
+use js::jsapi::mozilla::Range;
+use js::jsapi::{
+    AtomToLinearString, CloneDataPolicy, GetArrayBufferByteLength, GetArrayBufferData,
+    GetArrayBufferLengthAndData, GetFunctionNativeReserved, GetLinearStringCharAt,
+    GetLinearStringLength, GetStaticPrototype, IsArrayBufferObject, IsCallable, IsConstructor,
+    IsDetachedArrayBufferObject, JS_ClearPendingException, JS_DeprecatedStringHasLatin1Chars,
+    JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset, JS_GetArrayBufferViewType,
+    JS_GetFunctionArity, JS_GetFunctionObject, JS_GetStringLength, JS_GetTypedArrayByteLength,
+    JS_GetTypedArrayLength, JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsGlobalObject,
+    JS_IsTypedArrayObject, JS_STRUCTURED_CLONE_VERSION, JSStructuredCloneData, JSObject,
+    SetFunctionNativeReserved, StructuredCloneScope, UnwrapArrayBuffer, UnwrapInt32Array,
+    UnwrapUint32Array, UnwrapUint8Array, jsid,
+};
+use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::rooted;
+use js::rust::wrappers2::{
+    ArrayBufferClone, ArrayBufferCopyData, Construct1, CopyArrayBuffer, DefineFunctionWithReserved,
+    DequeueNextRegularMicroTask, DetachArrayBuffer, EnqueueMicroTask, FromPropertyDescriptor,
+    GetArrayLength, GetCurrentRealmOrNull, GetFunctionRealm, GetObjectProto,
+    GetRealmErrorPrototype, GetRealmFunctionPrototype, GetRealmIteratorPrototype,
+    GetRealmObjectPrototype, GetRegularMicroTaskCount, HasAnyMicroTasks,
+    HasDefinedArrayBufferDetachKey, HasRegularMicroTasks, IsArgumentsObject, IsArrayObject,
+    JS_AtomizeAndPinString, JS_AtomizeStringN, JS_CompareStrings, JS_ConcatStrings,
+    JS_DefineProperty, JS_DefineProperty2, JS_DefineUCProperty2, JS_DequeueNextMicroTask,
+    JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo, JS_FreezeObject,
+    JS_GetArrayBufferViewBuffer, JS_GetEmptyString, JS_GetFunctionDisplayId, JS_GetFunctionId,
+    JS_GetLatin1StringCharsAndLength, JS_GetStringCharAt, JS_GetTwoByteStringCharsAndLength,
+    JS_InitializePropertiesFromCompatibleNativeObject, JS_IsIdentifier,
+    JS_LinkConstructorAndPrototype, JS_NewDataView, JS_NewDependentString,
+    JS_NewFloat32ArrayWithBuffer, JS_NewFloat64ArrayWithBuffer, JS_NewInt16ArrayWithBuffer,
+    JS_NewInt32Array, JS_NewInt32ArrayWithBuffer, JS_NewInt8ArrayWithBuffer,
+    JS_NewObjectWithoutMetadata, JS_NewPlainObject, JS_NewStringCopyN, JS_NewStringCopyUTF8N,
+    JS_NewUCStringCopyN, JS_NewUint16ArrayWithBuffer, JS_NewUint32Array,
+    JS_NewUint32ArrayWithBuffer, JS_NewUint8Array, JS_NewUint8ArrayWithBuffer,
+    JS_NewUint8ClampedArrayWithBuffer, JS_ReadStructuredClone, JS_SetImmutablePrototype,
+    JS_TypeOfValue, JS_ValueToFunction, JS_ValueToId, JS_ValueToSource,
+    JS_WriteStructuredClone, NewArrayBuffer, NewArrayBufferWithContents, NewArrayObject,
+    NewArrayObject1, NewExternalArrayBuffer, NewFunctionWithReserved, PeekNextMicroTask,
+    PrependMicroTask, RUST_JSID_IS_VOID, RunJSMicroTask, SameValue, SetArrayLength,
+    SetDataPropertyDescriptor, SetPropertyIgnoringNamedGetter, StealArrayBufferContents,
+    ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToNumberSlow, ToStringSlow, ToUint16Slow,
+    ToUint32Slow, ToUint64Slow,
+};
+use js::rust::JSEngine;
+
+fn microtask_queue(engine: &JSEngine) {
+    record_case(
+        engine,
+        "edge.microtask_queue",
+        &[
+            "CreateJobQueue", "DeleteJobQueue", "SetJobQueue", "EnqueueMicroTask",
+            "DequeueNextRegularMicroTask", "PeekNextMicroTask", "PrependMicroTask",
+            "HasAnyMicroTasks", "HasRegularMicroTasks", "GetRegularMicroTaskCount",
+            "IsJSMicroTask", "ToMaybeWrappedJSMicroTask", "GetExecutionGlobalFromJSMicroTask",
+            "MaybeGetHostDefinedDataFromJSMicroTask", "MaybeGetPromiseFromJSMicroTask",
+            "RunJSMicroTask", "JS_DequeueNextMicroTask",
+        ],
+        |cx, global| unsafe {
+            let queue = crate::support::install_job_queue(cx);
+            let log = eval(cx, global, "[]");
+            set_global(cx, global, c"log", log);
+            let queued = eval(
+                cx,
+                global,
+                "new Promise((resolve) => { log.push('sync'); resolve(1); }); \
+                 Promise.resolve(2).then(() => log.push('a')); \
+                 Promise.resolve(3).then(() => log.push('b')); log.join()",
+            );
+            let queued_text = string_of(cx, queued);
+            let count_after = GetRegularMicroTaskCount(cx);
+            let any = HasAnyMicroTasks(cx);
+            let regular = HasRegularMicroTasks(cx);
+            rooted!(&in(cx) let peeked = PeekNextMicroTask(cx));
+            let peek_is_task = js::jsapi::IsJSMicroTask(peeked.as_ptr());
+
+            rooted!(&in(cx) let first = DequeueNextRegularMicroTask(cx));
+            rooted!(&in(cx) let second = DequeueNextRegularMicroTask(cx));
+            let first_task = js::jsapi::IsJSMicroTask(first.as_ptr());
+            let second_task = js::jsapi::IsJSMicroTask(second.as_ptr());
+            let count_after_dequeue = GetRegularMicroTaskCount(cx);
+            let first_micro = js::jsapi::ToMaybeWrappedJSMicroTask(first.as_ptr());
+            let second_micro = js::jsapi::ToMaybeWrappedJSMicroTask(second.as_ptr());
+            rooted!(&in(cx) let first_micro = first_micro);
+            rooted!(&in(cx) let second_micro = second_micro);
+            let execution_global = js::jsapi::GetExecutionGlobalFromJSMicroTask(first_micro.get());
+            let execution_global_non_null = !execution_global.is_null();
+            rooted!(&in(cx) let mut incumbent = ptr::null_mut::<js::jsapi::JSObject>());
+            rooted!(&in(cx) let mut host_data = ptr::null_mut::<js::jsapi::JSObject>());
+            let host_ok = js::jsapi::MaybeGetHostDefinedDataFromJSMicroTask(first_micro.get(), incumbent.handle_mut().into(), host_data.handle_mut().into());
+            let promise = js::jsapi::MaybeGetPromiseFromJSMicroTask(first_micro.get());
+
+            let prepended = PrependMicroTask(cx, second.as_ptr());
+            let enqueued = EnqueueMicroTask(cx, first.as_ptr());
+            let count_before_run = GetRegularMicroTaskCount(cx);
+            rooted!(&in(cx) let mut next = UndefinedValue());
+            JS_DequeueNextMicroTask(cx, next.handle_mut());
+            let next_is_task = js::jsapi::IsJSMicroTask(next.as_ptr());
+            let next_micro = js::jsapi::ToMaybeWrappedJSMicroTask(next.as_ptr());
+            rooted!(&in(cx) let next_micro = next_micro);
+            let ran = RunJSMicroTask(cx, next_micro.handle());
+            rooted!(&in(cx) let mut next = UndefinedValue());
+            JS_DequeueNextMicroTask(cx, next.handle_mut());
+            let next_micro = js::jsapi::ToMaybeWrappedJSMicroTask(next.as_ptr());
+            rooted!(&in(cx) let next_micro = next_micro);
+            let ran_second = RunJSMicroTask(cx, next_micro.handle());
+            let log_value = eval(cx, global, "log.join()");
+            let log_text = string_of(cx, log_value);
+            let drained = !HasAnyMicroTasks(cx);
+
+            assert_eq!(queued_text, "sync");
+            assert_eq!(count_after, 2);
+            assert!(any);
+            assert!(regular);
+            assert!(peek_is_task);
+            assert!(first_task);
+            assert!(second_task);
+            assert_eq!(count_after_dequeue, 0);
+            assert!(execution_global_non_null);
+            assert!(host_ok);
+            assert!(!promise.is_null());
+            assert!(prepended);
+            assert!(enqueued);
+            assert_eq!(count_before_run, 2);
+            assert!(next_is_task);
+            assert!(ran);
+            assert!(ran_second);
+            assert_eq!(log_text, "sync,b,a");
+            assert!(drained);
+
+            crate::support::remove_job_queue(cx, queue);
+
+            Observation::new(vec![
+                ("queued", Value::String(queued_text)),
+                ("count_after", Value::Number(count_after as f64)),
+                ("any", Value::Boolean(any)),
+                ("regular", Value::Boolean(regular)),
+                ("peek_is_task", Value::Boolean(peek_is_task)),
+                ("first_task", Value::Boolean(first_task)),
+                ("second_task", Value::Boolean(second_task)),
+                ("count_after_dequeue", Value::Number(count_after_dequeue as f64)),
+                ("execution_global_non_null", Value::Boolean(execution_global_non_null)),
+                ("host_ok", Value::Boolean(host_ok)),
+                ("promise_null", Value::Boolean(promise.is_null())),
+                ("prepended", Value::Boolean(prepended)),
+                ("enqueued", Value::Boolean(enqueued)),
+                ("count_before_run", Value::Number(count_before_run as f64)),
+                ("next_is_task", Value::Boolean(next_is_task)),
+                ("ran", Value::Boolean(ran)),
+                ("ran_second", Value::Boolean(ran_second)),
+                ("log", Value::String(log_text)),
+                ("drained", Value::Boolean(drained)),
+            ])
+        },
+    );
+}
+fn range<T>(ptr: *mut T, len: usize) -> Range<T> {
+    unsafe {
+        let mut range: Range<T> = std::mem::zeroed();
+        range.mStart.mPtr = ptr;
+        range.mEnd.mPtr = ptr.add(len);
+        range
+    }
+}
+
+fn string_of(cx: &mut JSContext, value: JSVal) -> String {
+    assert!(value.is_string());
+    unsafe {
+        jsstr_to_string(
+            cx,
+            std::ptr::NonNull::new(value.to_string()).expect("non-null string"),
+        )
+    }
+}
+
 pub fn run(engine: &JSEngine) {
+    microtask_queue(engine);
+}
+
+}
+
+mod edge_promises_deep_contract {
+
+// ---------------------------------------------------------------------------
+// Promise values, rejection tracking and the host job queue.
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static PROMISE_REACTIONS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static PROMISE_REJECTIONS: RefCell<Vec<PromiseRejectionHandlingState>> = const { RefCell::new(Vec::new()) };
+}
+
+static PROMISE_INTERRUPTS: AtomicUsize = AtomicUsize::new(0);
+
+unsafe extern "C" fn promise_executor(_cx: *mut jsapi::JSContext, argc: u32, vp: *mut JsValue) -> bool {
+    CallArgs::from_vp(vp, argc).rval().set(UndefinedValue());
+    true
+}
+
+unsafe extern "C" fn on_fulfilled(_cx: *mut jsapi::JSContext, argc: u32, vp: *mut JsValue) -> bool {
+    let args = CallArgs::from_vp(vp, argc);
+    PROMISE_REACTIONS.with(|out| out.borrow_mut().push(format!("ok:{}", args.get(0).to_int32())));
+    args.rval().set(UndefinedValue());
+    true
+}
+
+unsafe extern "C" fn on_rejected(_cx: *mut jsapi::JSContext, argc: u32, vp: *mut JsValue) -> bool {
+    let args = CallArgs::from_vp(vp, argc);
+    PROMISE_REACTIONS.with(|out| out.borrow_mut().push(format!("err:{}", args.get(0).to_int32())));
+    args.rval().set(UndefinedValue());
+    true
+}
+
+unsafe extern "C" fn track_rejection(
+    _cx: *mut jsapi::JSContext,
+    _muted_errors: bool,
+    _promise: js::jsapi::HandleObject,
+    state: PromiseRejectionHandlingState,
+    _data: *mut c_void,
+) {
+    PROMISE_REJECTIONS.with(|out| out.borrow_mut().push(state));
+}
+
+unsafe extern "C" fn count_interrupt(_cx: *mut jsapi::JSContext) -> bool {
+    PROMISE_INTERRUPTS.fetch_add(1, Ordering::SeqCst);
+    true
+}
+
+static PROMISE_SECURITY_CALLBACKS: JSSecurityCallbacks = JSSecurityCallbacks {
+    contentSecurityPolicyAllows: None,
+    codeForEvalGets: None,
+    subsumes: None,
+};
+
+fn promise_states_and_queue(engine: &JSEngine) {
+    record_case(
+        engine,
+        "edge.promise.states_and_queue",
+        &[
+            "AddPromiseReactions",
+            "CallOriginalPromiseReject",
+            "CallOriginalPromiseResolve",
+            "GetJobQueue",
+            "GetPromiseIsHandled",
+            "GetPromiseState",
+            "GetPromiseUserInputEventHandlingState",
+            "JS_AddInterruptCallback",
+            "JS_GetPromiseResult",
+            "JS_GetSecurityCallbacks",
+            "JS_NewFunction",
+            "JS_RequestInterruptCallback",
+            "JS_SetSecurityCallbacks",
+            "NewPromiseObject",
+            "RejectPromise",
+            "RunJobs",
+            "SetAnyPromiseIsHandled",
+            "SetPromiseRejectionTrackerCallback",
+            "SetPromiseUserInputEventHandlingState",
+        ],
+        |cx, global| unsafe {
+            PROMISE_REACTIONS.with(|out| out.borrow_mut().clear());
+            PROMISE_REJECTIONS.with(|out| out.borrow_mut().clear());
+            PROMISE_INTERRUPTS.store(0, Ordering::SeqCst);
+
+            let queue = crate::support::install_job_queue(cx);
+            let queue_installed = GetJobQueue(cx) as *mut c_void == queue;
+            assert!(queue_installed, "GetJobQueue must return the installed queue");
+            JS_SetSecurityCallbacks(cx, &PROMISE_SECURITY_CALLBACKS);
+            let callbacks_installed = !js::rust::wrappers2::JS_GetSecurityCallbacks(cx).is_null();
+            assert!(
+                callbacks_installed,
+                "JS_SetSecurityCallbacks must install the callbacks"
+            );
+
+            let executor = jsapi::JS_NewFunction(cx.raw_cx(), Some(promise_executor), 0, 0, c"executor".as_ptr());
+            assert!(!executor.is_null());
+            rooted!(&in(cx) let executor = jsapi::JS_GetFunctionObject(executor));
+            rooted!(&in(cx) let promise = NewPromiseObject(cx, executor.handle()));
+            let initial_state = GetPromiseState(promise.handle());
+            assert_eq!(initial_state, PromiseState::Pending);
+            assert!(IsPromiseObject(promise.handle()));
+            rooted!(&in(cx) let forty_two = Int32Value(42));
+            assert!(ResolvePromise(cx, promise.handle(), forty_two.handle()));
+            let fulfilled_state = GetPromiseState(promise.handle());
+            assert_eq!(fulfilled_state, PromiseState::Fulfilled);
+            rooted!(&in(cx) let mut result = UndefinedValue());
+            js::glue::JS_GetPromiseResult(promise.handle().into(), result.handle_mut().into());
+            let fulfilled_result = result.get().to_int32();
+            assert_eq!(fulfilled_result, 42);
+            let reject_after_resolve = RejectPromise(cx, promise.handle(), forty_two.handle());
+            assert!(reject_after_resolve);
+            let state_after_late_reject = GetPromiseState(promise.handle());
+            assert_eq!(state_after_late_reject, PromiseState::Fulfilled);
+
+            rooted!(&in(cx) let seven = Int32Value(7));
+            rooted!(&in(cx) let rejected = CallOriginalPromiseReject(cx, seven.handle()));
+            let rejected_state = GetPromiseState(rejected.handle());
+            let rejected_handled_before = GetPromiseIsHandled(rejected.handle());
+            assert_eq!(rejected_state, PromiseState::Rejected);
+            assert!(!rejected_handled_before);
+            assert!(IsPromiseObject(rejected.handle()));
+
+            rooted!(&in(cx) let resolved_value = CallOriginalPromiseResolve(cx, forty_two.handle()));
+            let resolved_state = GetPromiseState(resolved_value.handle());
+            assert_eq!(resolved_state, PromiseState::Fulfilled);
+            assert!(IsPromiseObject(resolved_value.handle()));
+            rooted!(&in(cx) let resolved_object = ObjectValue(resolved_value.get()));
+            rooted!(&in(cx) let same_promise = CallOriginalPromiseResolve(cx, resolved_object.handle()));
+            let resolve_identity = same_promise.get() == resolved_value.get();
+            assert!(resolve_identity, "resolving a promise must return the same promise");
+
+            assert!(SetPromiseUserInputEventHandlingState(
+                resolved_value.handle(),
+                PromiseUserInputEventHandlingState::HadUserInteractionAtCreation
+            ));
+            let user_input_after = jsapi::GetPromiseUserInputEventHandlingState(resolved_value.get());
+            let user_input_before = jsapi::GetPromiseUserInputEventHandlingState(rejected.get());
+            assert_eq!(
+                user_input_after,
+                PromiseUserInputEventHandlingState::HadUserInteractionAtCreation
+            );
+            assert_eq!(user_input_before, PromiseUserInputEventHandlingState::DontCare);
+
+            let on_fulfilled_fn = jsapi::JS_NewFunction(cx.raw_cx(), Some(on_fulfilled), 1, 0, c"onFulfilled".as_ptr());
+            let on_rejected_fn = jsapi::JS_NewFunction(cx.raw_cx(), Some(on_rejected), 1, 0, c"onRejected".as_ptr());
+            assert!(!on_fulfilled_fn.is_null() && !on_rejected_fn.is_null());
+            rooted!(&in(cx) let on_fulfilled = jsapi::JS_GetFunctionObject(on_fulfilled_fn));
+            rooted!(&in(cx) let on_rejected = jsapi::JS_GetFunctionObject(on_rejected_fn));
+            SetPromiseRejectionTrackerCallback(cx, Some(track_rejection), ptr::null_mut());
+            rooted!(&in(cx) let tracked = CallOriginalPromiseReject(cx, seven.handle()));
+            assert!(SetAnyPromiseIsHandled(cx, tracked.handle()));
+            assert!(GetPromiseIsHandled(tracked.handle()));
+
+            assert!(AddPromiseReactions(cx, resolved_value.handle(), on_fulfilled.handle(), on_rejected.handle()));
+            assert!(AddPromiseReactions(cx, rejected.handle(), on_fulfilled.handle(), on_rejected.handle()));
+            jsapi::RunJobs(cx.raw_cx());
+
+            assert!(JS_AddInterruptCallback(cx, Some(count_interrupt)));
+            JS_RequestInterruptCallback(cx);
+            let interrupt_value = eval(cx, global, "for (var i = 0; i < 1000; i++) {} i");
+            let interrupt_result = interrupt_value.to_int32();
+            assert_eq!(interrupt_result, 1000);
+            let interrupts = PROMISE_INTERRUPTS.load(Ordering::SeqCst);
+            #[cfg(not(feature = "js-quickjs"))]
+            assert_eq!(
+                interrupts, 1,
+                "JS_RequestInterruptCallback must schedule the callback once"
+            );
+            #[cfg(feature = "js-quickjs")]
+            assert_eq!(
+                interrupts, 0,
+                "QuickJS does not run an interrupt callback requested by JS_RequestInterruptCallback"
+            );
+
+            let reaction_log = PROMISE_REACTIONS.with(|out| out.borrow().join(","));
+            let rejection_log = PROMISE_REJECTIONS
+                .with(|out| out.borrow().iter().map(|state| format!("{state:?}")).collect::<Vec<_>>().join(","));
+            assert_eq!(reaction_log, "ok:42,err:7");
+            assert_eq!(rejection_log, "Unhandled,Handled,Handled");
+            SetPromiseRejectionTrackerCallback(cx, None, ptr::null_mut());
+
+            let observation = Observation::new(vec![
+                ("initial_state", Value::String(promise_state_name(initial_state).to_owned())),
+                ("fulfilled_state", Value::String(promise_state_name(fulfilled_state).to_owned())),
+                ("fulfilled_result", Value::Number(fulfilled_result as f64)),
+                ("reject_after_resolve", Value::Boolean(reject_after_resolve)),
+                ("state_after_late_reject", Value::String(promise_state_name(state_after_late_reject).to_owned())),
+                ("rejected_state", Value::String(promise_state_name(rejected_state).to_owned())),
+                ("rejected_handled_before", Value::Boolean(rejected_handled_before)),
+                ("resolved_state", Value::String(promise_state_name(resolved_state).to_owned())),
+                ("resolve_identity", Value::Boolean(resolve_identity)),
+                ("user_input_before", Value::String(format!("{user_input_before:?}"))),
+                ("user_input_after", Value::String(format!("{user_input_after:?}"))),
+                ("reactions", Value::String(reaction_log)),
+                ("rejections", Value::String(rejection_log)),
+                ("interrupt_result", Value::Number(interrupt_result as f64)),
+                ("interrupts", Value::Number(interrupts as f64)),
+                ("queue_installed", Value::Boolean(queue_installed)),
+                ("security_callbacks_installed", Value::Boolean(callbacks_installed)),
+            ]);
+            crate::support::remove_job_queue(cx, queue);
+            observation
+        },
+    );
+}
+
+fn promise_state_name(state: PromiseState) -> &'static str {
+    match state {
+        PromiseState::Pending => "pending",
+        PromiseState::Fulfilled => "fulfilled",
+        PromiseState::Rejected => "rejected",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Realm entry, identity and private storage.
+// ---------------------------------------------------------------------------
+
+use std::cell::{Cell, RefCell};
+use std::ffi::{c_char, c_void, CStr};
+use std::ops::ControlFlow;
+use std::ptr::{self, NonNull};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use js::context::JSContext;
+use js::conversions::jsstr_to_string;
+use js::glue::{CallJitMethodOp, RUST_FUNCTION_VALUE_TO_JITINFO};
+use js::jsapi::{
+    self, CallArgs, CompilationType, ESClass, Handle, HandleString, HandleValue,
+    IsWeakMapObject, JSFunction, JSFunctionSpec, JSJitInfo, JS_GetArrayBufferViewType,
+    JS_GetFunctionObject, JS_GetTypedArrayByteLength, JS_GetTypedArrayLength,
+    JSJitMethodCallArgs, JSNativeWrapper, JSObject, JSPropertySpec, JSPropertySpec_Accessor,
+    JSPropertySpec_AccessorsOrValue, JSPropertySpec_AccessorsOrValue_Accessors,
+    JSPropertySpec_Kind, JSPropertySpec_Name, JSPROP_ENUMERATE, JSString, JSSecurityCallbacks,
+    PromiseRejectionHandlingState, PromiseState, PromiseUserInputEventHandlingState,
+    RuntimeCode, Value as JsValue, jsid,
+};
+use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::rooted;
+use js::rust::wrappers2::{
+    AddPromiseReactions, Call, CallOriginalPromiseReject, CallOriginalPromiseResolve, Compile,
+    Compile1, CompileFunction, Evaluate, Evaluate2, GetBuiltinClass, GetJobQueue,
+    GetPromiseIsHandled, GetPromiseState, IsPromiseObject,
+    GetRealmKeyObject, JS_DefineFunctions, JS_DefineProperties, JS_DefinePropertyById2,
+    JS_ExecuteScript, JS_GetScriptPrivate,
+    JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer, JS_NewFloat32Array,
+    JS_NewBigInt64ArrayWithBuffer, JS_NewBigUint64ArrayWithBuffer, JS_NewUint32ArrayWithBuffer,
+    JS_NewInt32ArrayWithBuffer, JS_RequestInterruptCallback, JS_SetSecurityCallbacks,
+    JS_AddInterruptCallback, JS_ExecuteScript1, NewPromiseObject, RejectPromise, ResolvePromise,
+    SetAnyPromiseIsHandled,
+    SetPromiseRejectionTrackerCallback, SetPromiseUserInputEventHandlingState,
+    GetWellKnownSymbol, RUST_SYMBOL_TO_JSID, int_to_jsid, NewExternalArrayBuffer,
+    JS_NewGlobalObject,
+};
+use js::rust::{
+    CompileOptionsWrapper, EnvironmentChain, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
+    evaluate_script, for_of, transform_str_to_source_text,
+    transform_u16_to_source_text,
+};
+use js::rust::{HandleObject, IdVector, RootedObjectVectorWrapper};
+
+use crate::support::{Observation, Value, eval, record_case, set_global};
+
+pub fn run(engine: &JSEngine) {
+    promise_states_and_queue(engine);
+}
+
+}
+pub fn run(engine: &JSEngine) {
+    edge_promises_deep_contract::run(engine);
+    edge_promises_more_contract::run(engine);
     crate::support::isolate_case("promise.values_and_reactions", || promise_values(engine));
     crate::support::isolate_case("promise.job_queue", || job_queue(engine));
     crate::support::isolate_case("promise.internal_job_queue", || internal_job_queue(engine));

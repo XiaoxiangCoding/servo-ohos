@@ -57,15 +57,35 @@ fn call_cases(engine: &JSEngine) {
                     rval.handle_mut()
                 ));
                 assert!(JS_IsExceptionPending(cx));
+                let pending_before_clear = JS_IsExceptionPending(cx);
+                assert_eq!(
+                    pending_before_clear, true,
+                    "the thrown exception is not pending"
+                );
                 assert!(JS_GetPendingException(cx, exception.handle_mut()));
                 let name = get_property(cx, exception.get(), c"name");
                 let name = match observe(cx, name) {
                     Value::String(name) => name,
                     other => panic!("exception name is not a string: {other:?}"),
                 };
+                assert_eq!(name, "TypeError", "unexpected pending exception");
                 JS_ClearPendingException(cx);
-                assert!(!JS_IsExceptionPending(cx));
-                Observation::exception(&name)
+                let pending_after_clear = JS_IsExceptionPending(cx);
+                assert_eq!(
+                    pending_after_clear, false,
+                    "JS_ClearPendingException left the exception pending"
+                );
+                Observation::new(vec![
+                    ("exception_name", Value::String(name)),
+                    (
+                        "pending_before_clear",
+                        Value::Boolean(pending_before_clear),
+                    ),
+                    (
+                        "pending_after_clear",
+                        Value::Boolean(pending_after_clear),
+                    ),
+                ])
             },
         );
     });
@@ -89,11 +109,18 @@ fn rooter_cases(engine: &JSEngine) {
             // SpiderMonkey runs CustomAutoRooter trace callbacks during an explicit collection.
             // This suite treats that as the contract; a shim that does not call them is non-conforming.
             let traced = guard.0.get();
-            assert!(
-                traced || cfg!(feature = "js-quickjs"),
-                "custom rooter trace was not called"
+            assert_eq!(
+                traced,
+                !cfg!(feature = "js-quickjs"),
+                "custom rooter trace callback count differs"
             );
-            Observation::ok(Value::Boolean(traced))
+            Observation::new(vec![
+                ("gc_trace_calls", Value::Number(u32::from(traced) as f64)),
+                (
+                    "trace_state",
+                    Value::String(if traced { "called" } else { "not_called" }.to_owned()),
+                ),
+            ])
         })
     });
 }

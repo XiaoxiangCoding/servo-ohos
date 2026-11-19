@@ -136,6 +136,10 @@ class CaseInventoryTest(unittest.TestCase):
             os.path.join(tools, "fix_record.py"),
             os.path.join(contract, "tools", "fix_record.py"),
         )
+        shutil.copy(
+            os.path.join(tools, "scope_manifest.py"),
+            os.path.join(contract, "tools", "scope_manifest.py"),
+        )
         with open(
             os.path.join(contract, "quickjs-difference-allowlist.toml"), "w", encoding="utf-8"
         ):
@@ -281,6 +285,51 @@ JSONL
         with open(path, "w", encoding="utf-8") as file:
             file.write(script)
         os.chmod(path, 0o755)
+
+    def test_run_sh_enables_per_case_isolation_by_default(self):
+        repository, contract = self.write_run_sh_repo("repo-isolation")
+        bin_dir = os.path.join(self.temporary.name, "bin-isolation")
+        os.makedirs(bin_dir)
+        fake_cargo = os.path.join(bin_dir, "cargo")
+        with open(fake_cargo, "w", encoding="utf-8") as file:
+            file.write(
+                """#!/usr/bin/env bash
+set -eu
+echo "${CONTRACT_ISOLATE_CASES:-<unset>}" >>"${ISOLATION_LOG:?}"
+cat >"${CONTRACT_CASES_OUT:?}" <<'JSON'
+{"version": 1, "cases": ["module.one"]}
+JSON
+cat >"${CONTRACT_OUT:?}" <<'JSONL'
+{"id": "module.one", "fields": {"value": true}, "exception": null, "apis": ["JS_Test"]}
+JSONL
+"""
+            )
+        os.chmod(fake_cargo, 0o755)
+        log = os.path.join(self.temporary.name, "isolation.log")
+        for expected, extra in (("1", {}), ("0", {"CONTRACT_ISOLATE_CASES": "0"})):
+            with open(log, "w", encoding="utf-8"):
+                pass
+            completed = subprocess.run(
+                [
+                    os.path.join(contract, "tools", "run.sh"),
+                    "run-spidermonkey-contract",
+                    "--case",
+                    "module.one",
+                ],
+                cwd=repository,
+                env={
+                    **os.environ,
+                    **extra,
+                    "OUT_DIR": os.path.join(self.temporary.name, "out-isolation"),
+                    "ISOLATION_LOG": log,
+                    "PATH": bin_dir + os.pathsep + os.environ["PATH"],
+                },
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            with open(log, encoding="utf-8") as file:
+                self.assertEqual(file.read().strip(), expected)
 
     def test_run_sh_all_checks_records_when_sm_writes_no_inventory(self):
         repository, contract = self.write_run_sh_repo("repo-no-inventory")

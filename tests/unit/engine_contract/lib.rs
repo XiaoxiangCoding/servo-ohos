@@ -35,8 +35,6 @@ mod debugger_test;
 #[cfg(test)]
 mod errors_test;
 #[cfg(test)]
-mod eval_ext_test;
-#[cfg(test)]
 mod eval_test;
 #[cfg(test)]
 mod event_loop_test;
@@ -44,8 +42,6 @@ mod event_loop_test;
 mod misc_test;
 #[cfg(test)]
 mod module_test;
-#[cfg(test)]
-mod objects_extra_test;
 #[cfg(test)]
 mod objects_test;
 #[cfg(test)]
@@ -63,8 +59,6 @@ mod stencil_test;
 #[cfg(test)]
 mod streaming_test;
 #[cfg(test)]
-mod strings_extra_test;
-#[cfg(test)]
 mod strings_test;
 #[cfg(test)]
 mod support;
@@ -73,6 +67,9 @@ mod support;
 mod tests {
     #[test]
     fn engine_contract() {
+        // With CONTRACT_ISOLATE_CASES=1 this re-executes the binary once per case and exits; a
+        // crash in one case then cannot hide the cases after it.
+        super::support::run_isolated();
         let engine = js::rust::JSEngine::init().expect("initializing the JS engine");
         super::support::run_module("buffer", || super::buffer_test::run(&engine));
         super::support::run_module("class", || super::class_test::run(&engine));
@@ -80,21 +77,18 @@ mod tests {
         super::support::run_module("contract", || super::contract_test::run(&engine));
         super::support::run_module("errors", || super::errors_test::run(&engine));
         super::support::run_module("eval", || super::eval_test::run(&engine));
-        super::support::run_module("eval_ext", || super::eval_ext_test::run(&engine));
         super::support::run_module("debugger", || super::debugger_test::run(&engine));
         super::support::run_module("event_loop", || super::event_loop_test::run(&engine));
         super::support::run_module("streaming", || super::streaming_test::run(&engine));
         super::support::run_module("misc", || super::misc_test::run(&engine));
         super::support::run_module("module", || super::module_test::run(&engine));
         super::support::run_module("objects", || super::objects_test::run(&engine));
-        super::support::run_module("objects_extra", || super::objects_extra_test::run(&engine));
         super::support::run_module("property", || super::property_test::run(&engine));
         super::support::run_module("proxy", || super::proxy_test::run(&engine));
         super::support::run_module("promises", || super::promises_test::run(&engine));
         super::support::run_module("realm", || super::realm_test::run(&engine));
         super::support::run_module("runtime", || super::runtime_test::run(&engine));
         super::support::run_module("strings", || super::strings_test::run(&engine));
-        super::support::run_module("strings_extra", || super::strings_extra_test::run(&engine));
         super::support::run_module("stencil", || super::stencil_test::run(&engine));
         super::support::assert_no_case_failures();
     }

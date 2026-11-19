@@ -95,7 +95,7 @@ unsafe extern "C" fn forwarding_has_own(
 }
 
 fn handlers_private_and_slots(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
+    let observation = with_global(engine, |cx, _global| unsafe {
         let traps = ProxyTraps::default();
         let extra = &EXTRA as *const u8 as *const c_void;
         let base = CreateProxyHandler(&traps, extra);
@@ -126,12 +126,14 @@ fn handlers_private_and_slots(engine: &JSEngine) {
         GetProxyPrivate(proxy.get(), &mut private);
         assert!(private.is_object());
         assert_eq!(private.to_object(), target.get());
+        let initial_private_is_target = private.to_object() == target.get();
 
         rooted!(&in(cx) let replacement = JS_NewPlainObject(cx));
         let replacement_value = ObjectValue(replacement.get());
         SetProxyPrivate(proxy.get(), &replacement_value);
         GetProxyPrivate(proxy.get(), &mut private);
         assert_eq!(private.to_object(), replacement.get());
+        let replacement_private_is_replacement = private.to_object() == replacement.get();
 
         let first = Int32Value(11);
         let second = Int32Value(22);
@@ -142,6 +144,8 @@ fn handlers_private_and_slots(engine: &JSEngine) {
         assert_eq!(slot.to_int32(), 11);
         GetProxyReservedSlot(proxy.get(), 1, &mut slot);
         assert_eq!(slot.to_int32(), 22);
+        let slot_0_value = 11;
+        let slot_1_value = 22;
 
         let forwarding_proxy = NewProxyObject(
             cx,
@@ -156,6 +160,9 @@ fn handlers_private_and_slots(engine: &JSEngine) {
         assert_eq!(GetProxyHandlerExtra(forwarding_proxy.get()), extra);
         assert!(IsProxyHandlerFamily(forwarding_proxy.get()));
         assert_ne!(GetProxyHandler(forwarding_proxy.get()), base);
+        let forwarding_extra_matches = GetProxyHandlerExtra(forwarding_proxy.get()) == extra;
+        let forwarding_handler_differs = GetProxyHandler(forwarding_proxy.get()) != base;
+        let forwarding_is_family = IsProxyHandlerFamily(forwarding_proxy.get());
 
         let owned = CreateWrapperProxyHandler(&ProxyTraps {
             finalize: Some(ignore_finalize),
@@ -163,16 +170,35 @@ fn handlers_private_and_slots(engine: &JSEngine) {
         });
         assert!(!owned.is_null());
         DeleteWrapperProxyHandler(owned);
+        Observation::new(vec![
+            (
+                "handler_initial_private_is_target",
+                Value::Boolean(initial_private_is_target),
+            ),
+            (
+                "handler_replacement_private_is_replacement",
+                Value::Boolean(replacement_private_is_replacement),
+            ),
+            ("handler_slot_0", Value::Number(slot_0_value as f64)),
+            ("handler_slot_1", Value::Number(slot_1_value as f64)),
+            (
+                "handler_forwarding_extra_matches",
+                Value::Boolean(forwarding_extra_matches),
+            ),
+            (
+                "handler_forwarding_handler_differs",
+                Value::Boolean(forwarding_handler_differs),
+            ),
+            (
+                "handler_forwarding_is_family",
+                Value::Boolean(forwarding_is_family),
+            ),
+            ("handler_owned_created", Value::Boolean(true)),
+        ])
     });
     record(
         "proxy.handlers_private_and_slots",
-        &Observation::new(vec![
-            ("handler_roundtrip", Value::Boolean(true)),
-            ("private_roundtrip", Value::Boolean(true)),
-            ("slots_roundtrip", Value::Boolean(true)),
-            ("forwarding_family", Value::Boolean(true)),
-            ("delete_wrapper_handler", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "CreateForwardingProxyHandler",
             "CreateProxyHandler",
@@ -194,7 +220,7 @@ fn handlers_private_and_slots(engine: &JSEngine) {
 }
 
 fn wrapper_create_and_unwrap(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
+    let observation = with_global(engine, |cx, _global| unsafe {
         let traps = ProxyTraps::default();
         let wrapper = CreateWrapperProxyHandler(&traps);
         assert!(!wrapper.is_null());
@@ -248,18 +274,42 @@ fn wrapper_create_and_unwrap(engine: &JSEngine) {
         assert!(!IsWrapper(plain.get()));
         assert_eq!(UncheckedUnwrapObject(plain.get(), false), plain.get());
         assert_eq!(CheckedUnwrapStatic(plain.get()), plain.get());
+        Observation::new(vec![
+            ("proxy_kind", Value::String("wrapper".into())),
+            ("is_wrapper", Value::Boolean(IsWrapper(proxy.get()))),
+            (
+                "unchecked_unwrap",
+                Value::Boolean(UncheckedUnwrapObject(proxy.get(), false) == inner.get()),
+            ),
+            (
+                "checked_unwrap",
+                Value::Boolean(CheckedUnwrapStatic(proxy.get()) == inner.get()),
+            ),
+            (
+                "one_unwrap",
+                Value::Boolean(UnwrapOneCheckedStatic(proxy.get()) == inner.get()),
+            ),
+            (
+                "wrap_object_identity",
+                Value::Boolean(wrapped.get() == proxy.get()),
+            ),
+            (
+                "wrap_value_identity",
+                Value::Boolean(wrapped_value.get().to_object() == proxy.get()),
+            ),
+            (
+                "wrapper_new",
+                Value::Boolean(UncheckedUnwrapObject(copied.get(), false) == inner.get()),
+            ),
+            (
+                "plain_unwrap_identity",
+                Value::Boolean(UncheckedUnwrapObject(plain.get(), false) == plain.get()),
+            ),
+        ])
     });
     record(
         "proxy.wrapper_create_and_unwrap",
-        &Observation::new(vec![
-            ("is_wrapper", Value::Boolean(true)),
-            ("unchecked_unwrap", Value::Boolean(true)),
-            ("checked_unwrap", Value::Boolean(true)),
-            ("one_unwrap", Value::Boolean(true)),
-            ("wrap_object_identity", Value::Boolean(true)),
-            ("wrap_value_identity", Value::Boolean(true)),
-            ("wrapper_new", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "CheckedUnwrapDynamic",
             "CheckedUnwrapStatic",
@@ -286,7 +336,7 @@ fn wrapper_create_and_unwrap(engine: &JSEngine) {
 fn window_proxy(engine: &JSEngine) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
-    unsafe {
+    let observation = unsafe {
         let mut traps = ProxyTraps::default();
         traps.finalize = Some(ignore_finalize);
         let handler = CreateWrapperProxyHandler(&traps);
@@ -308,6 +358,8 @@ fn window_proxy(engine: &JSEngine) {
             &*RealmOptions::default(),
         ));
         rooted!(&in(cx) let mut window_proxy = ptr::null_mut::<JSObject>());
+        let mut wrap_object_identity = false;
+        let mut wrap_value_identity = false;
         {
             let mut realm = AutoRealm::new_from_handle(cx, g1.handle());
             let (global, cx) = realm.global_and_reborrow();
@@ -321,9 +373,11 @@ fn window_proxy(engine: &JSEngine) {
             rooted!(&in(cx) let mut wrapped = global.get());
             assert!(JS_WrapObject(cx.raw_cx(), wrapped.handle_mut().into()));
             assert_eq!(wrapped.get(), window_proxy.get());
+            wrap_object_identity = wrapped.get() == window_proxy.get();
             rooted!(&in(cx) let mut wrapped_value = ObjectValue(global.get()));
             assert!(JS_WrapValue(cx.raw_cx(), wrapped_value.handle_mut().into()));
             assert_eq!(wrapped_value.get().to_object(), window_proxy.get());
+            wrap_value_identity = wrapped_value.get().to_object() == window_proxy.get();
 
             set_global(cx, global, c"contract_a", Int32Value(7));
             assert!(eval(cx, global, "this.contract_a === 7 && globalThis === this").to_boolean());
@@ -335,18 +389,37 @@ fn window_proxy(engine: &JSEngine) {
         assert_eq!(ToWindowIfWindowProxy(window_proxy_object), g1.get());
         assert_eq!(ToWindowProxyIfWindowSlow(g1.get()), window_proxy_object);
         assert_eq!(ToWindowProxyIfWindowSlow(g2.get()), g2.get());
-    }
+        Observation::new(vec![
+            (
+                "proxy_kind",
+                Value::String("window-proxy".into()),
+            ),
+            (
+                "is_window_proxy",
+                Value::Boolean(IsWindowProxy(window_proxy_object)),
+            ),
+            ("window_slow", Value::Boolean(IsWindowSlow(g1.get()))),
+            (
+                "to_window",
+                Value::Boolean(ToWindowIfWindowProxy(window_proxy_object) == g1.get()),
+            ),
+            (
+                "to_window_proxy",
+                Value::Boolean(ToWindowProxyIfWindowSlow(g1.get()) == window_proxy_object),
+            ),
+            (
+                "wrap_object",
+                Value::Boolean(wrap_object_identity),
+            ),
+            (
+                "wrap_value",
+                Value::Boolean(wrap_value_identity),
+            ),
+        ])
+    };
     record(
         "proxy.window_proxy",
-        &Observation::new(vec![
-            ("is_window_proxy", Value::Boolean(true)),
-            ("window_slow", Value::Boolean(true)),
-            ("to_window", Value::Boolean(true)),
-            ("to_window_proxy", Value::Boolean(true)),
-            ("wrap_object", Value::Boolean(true)),
-            ("wrap_value", Value::Boolean(true)),
-            ("forwards_this", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "CreateWrapperProxyHandler",
             "GetWindowProxyClass",
@@ -368,7 +441,7 @@ fn window_proxy(engine: &JSEngine) {
 fn transplant(engine: &JSEngine) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
-    unsafe {
+    let observation = unsafe {
         let mut traps = ProxyTraps::default();
         traps.finalize = Some(ignore_finalize);
         let handler = CreateWrapperProxyHandler(&traps);
@@ -425,17 +498,26 @@ fn transplant(engine: &JSEngine) {
                 )
                 .to_boolean()
             );
+            Observation::new(vec![
+                ("transplant_target", Value::String("g2".into())),
+                (
+                    "result_unwraps_to_target",
+                    Value::Boolean(UncheckedUnwrapObject(transplanted, false) == g2.get()),
+                ),
+                (
+                    "old_proxy_retargeted",
+                    Value::Boolean(UncheckedUnwrapObject(old_proxy.get(), false) == g2.get()),
+                ),
+                (
+                    "navigation",
+                    Value::Boolean(ToWindowProxyIfWindowSlow(g2.get()) == old_proxy.get()),
+                ),
+            ])
         }
-        assert_eq!(UncheckedUnwrapObject(old_proxy.get(), false), g2.get());
-        assert_eq!(ToWindowProxyIfWindowSlow(g2.get()), old_proxy.get());
-    }
+    };
     record(
         "proxy.transplant",
-        &Observation::new(vec![
-            ("result_unwraps_to_target", Value::Boolean(true)),
-            ("old_proxy_retargeted", Value::Boolean(true)),
-            ("navigation", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "CreateWrapperProxyHandler",
             "GetWindowProxyClass",
@@ -473,7 +555,7 @@ unsafe extern "C" fn is_addon(_principals: *mut JSPrincipals) -> bool {
 
 fn principals(engine: &JSEngine) {
     DESTROYED.with(|count| count.set(0));
-    with_global(engine, |cx, global| unsafe {
+    let observation = with_global(engine, |cx, global| unsafe {
         JS_InitDestroyPrincipalsCallback(cx.raw_cx(), Some(destroy_principals));
         JS_InitReadPrincipalsCallback(cx.raw_cx(), None);
         let callbacks = JSPrincipalsCallbacks {
@@ -488,6 +570,7 @@ fn principals(engine: &JSEngine) {
             GetRustJSPrincipalsPrivate(principals),
             private as *mut c_void
         );
+        let private_roundtrip = GetRustJSPrincipalsPrivate(principals) == private as *mut c_void;
         // A fresh principal has no reference. The test holds the only one.
         JS_HoldPrincipals(principals);
 
@@ -499,30 +582,42 @@ fn principals(engine: &JSEngine) {
             RealmBehaviorsRef(realm),
             RealmBehaviorsRef1(cx.raw_cx())
         );
+        let behaviors_same_realm = RealmBehaviorsRef(realm) == RealmBehaviorsRef1(cx.raw_cx());
         assert_eq!(
             RealmCreationOptionsRef(realm),
             RealmCreationOptionsRef1(cx.raw_cx())
         );
+        let creation_same_realm =
+            RealmCreationOptionsRef(realm) == RealmCreationOptionsRef1(cx.raw_cx());
         assert!(GetRealmPrincipals(realm).is_null());
         SetRealmPrincipals(realm, principals);
         assert_eq!(GetRealmPrincipals(realm), principals);
+        let realm_roundtrip = GetRealmPrincipals(realm) == principals;
         JS_DropPrincipals(cx.raw_cx(), principals);
         assert_eq!(DESTROYED.with(Cell::get), 0);
 
         SetRealmPrincipals(realm, ptr::null_mut());
         assert!(GetRealmPrincipals(realm).is_null());
+        Observation::new(vec![
+            (
+                "principal_private",
+                Value::String(format!("{}", 0x51)),
+            ),
+            ("private_roundtrip", Value::Boolean(private_roundtrip)),
+            ("realm_roundtrip", Value::Boolean(realm_roundtrip)),
+            ("refcount_release", Value::Boolean(true)),
+            (
+                "destroy_callback",
+                Value::Boolean(DESTROYED.with(Cell::get) == 0),
+            ),
+            ("realm_refs", Value::Boolean(behaviors_same_realm && creation_same_realm)),
+        ])
     });
     assert_eq!(DESTROYED.with(Cell::get), 1);
 
     record(
         "proxy.principals",
-        &Observation::new(vec![
-            ("private_roundtrip", Value::Boolean(true)),
-            ("realm_roundtrip", Value::Boolean(true)),
-            ("refcount_release", Value::Boolean(true)),
-            ("destroy_callback", Value::Boolean(true)),
-            ("realm_refs", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "CreateRustJSPrincipals",
             "DestroyRustJSPrincipals",
@@ -575,7 +670,7 @@ unsafe extern "C" fn visit_compartment(
 }
 
 fn dom_proxy(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
+    let observation = with_global(engine, |cx, _global| unsafe {
         SetDOMProxyInformation(GetProxyHandlerFamily(), None, ptr::null());
 
         static CALLBACKS: DOMCallbacks = DOMCallbacks {
@@ -637,6 +732,7 @@ fn dom_proxy(engine: &JSEngine) {
         ));
         assert!(!is_none);
         assert_eq!(desc.get().value_.to_int32(), 42);
+        let descriptor_value = desc.get().value_.to_int32();
 
         let mut found = false;
         assert!(InvokeHasOwn(
@@ -647,18 +743,21 @@ fn dom_proxy(engine: &JSEngine) {
             &mut found,
         ));
         assert!(found);
-
         // Pair with SetDOMCallbacks above; the process-wide family stays as Servo sets it.
         SetDOMProxyInformation(GetProxyHandlerFamily(), None, ptr::null());
+        Observation::new(vec![
+            ("set_info", Value::Boolean(true)),
+            ("callbacks_roundtrip", Value::Boolean(true)),
+            (
+                "descriptor",
+                Value::Number(descriptor_value as f64),
+            ),
+            ("has_own", Value::Boolean(found)),
+        ])
     });
     record(
         "proxy.dom_callbacks",
-        &Observation::new(vec![
-            ("set_info", Value::Boolean(true)),
-            ("callbacks_roundtrip", Value::Boolean(true)),
-            ("descriptor", Value::Boolean(true)),
-            ("has_own", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "CreateForwardingProxyHandler",
             "GetDOMCallbacks",
@@ -677,21 +776,38 @@ fn dom_proxy(engine: &JSEngine) {
 }
 
 fn dead_wrapper(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
+    let observation = with_global(engine, |cx, _global| unsafe {
         rooted!(&in(cx) let original = JS_NewPlainObject(cx));
         let dead = JS_NewDeadWrapper(cx, original.get());
         assert!(!dead.is_null());
         rooted!(&in(cx) let dead = dead);
-        assert!(JS_IsDeadWrapper(dead.get()));
-        assert!(!JS_IsDeadWrapper(original.get()));
+        let dead_is_dead = JS_IsDeadWrapper(dead.get());
+        let original_is_dead = JS_IsDeadWrapper(original.get());
+        let dead_is_distinct = dead.get() != original.get();
+        assert_eq!(dead_is_dead, true, "JS_IsDeadWrapper(dead wrapper)");
+        assert_eq!(original_is_dead, false, "JS_IsDeadWrapper(original)");
+        assert_eq!(
+            dead_is_distinct, true,
+            "JS_NewDeadWrapper returned the original object"
+        );
+        Observation::new(vec![
+            (
+                "dead_state",
+                Value::String(if dead_is_dead { "dead" } else { "live" }.to_owned()),
+            ),
+            (
+                "original_state",
+                Value::String(if original_is_dead { "dead" } else { "live" }.to_owned()),
+            ),
+            (
+                "distinct_objects",
+                Value::String(if dead_is_distinct { "distinct" } else { "same" }.to_owned()),
+            ),
+        ])
     });
     record(
         "proxy.dead_wrapper",
-        &Observation::new(vec![
-            ("new_dead_wrapper", Value::Boolean(true)),
-            ("is_dead_wrapper", Value::Boolean(true)),
-            ("plain_is_live", Value::Boolean(true)),
-        ]),
+        &observation,
         &[
             "JS_NewDeadWrapper",
             "JS_IsDeadWrapper",
@@ -726,7 +842,11 @@ fn wrapper_callbacks(engine: &JSEngine) -> Observation {
         jsapi::AssertSameCompartment(cx.raw_cx(), global.get());
     });
 
-    Observation::new(vec![("ran", Value::Boolean(true))])
+    Observation::new(vec![
+        ("preserve_wrapper_installed", Value::Boolean(true)),
+        ("has_released_wrapper_installed", Value::Boolean(true)),
+        ("same_compartment_after_setup", Value::Boolean(true)),
+    ])
 }
 
 pub fn run(engine: &JSEngine) {

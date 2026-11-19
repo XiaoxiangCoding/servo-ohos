@@ -49,6 +49,9 @@ thread_local! {
     static ADD_REFS: Cell<u32> = const { Cell::new(0) };
     static RELEASE_REFS: Cell<u32> = const { Cell::new(0) };
     static PREPARED: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
+    static STATIC_SPECIFIER: RefCell<String> = const { RefCell::new(String::new()) };
+    static STATIC_FINISHED: Cell<bool> = const { Cell::new(false) };
+    static DYNAMIC_FINISHED: Cell<bool> = const { Cell::new(false) };
 }
 
 fn string_of(cx: &JSContext, string: *mut JSString) -> String {
@@ -120,6 +123,11 @@ unsafe extern "C" fn finish_static_load(
     _line: u32,
     _column: ColumnNumberOneOrigin,
 ) -> bool {
+    let specifier = {
+        let context = JSContext::from_ptr(NonNull::new(cx).unwrap());
+        string_of(&context, jsapi::GetModuleRequestSpecifier(cx, request))
+    };
+    STATIC_SPECIFIER.with(|captured| *captured.borrow_mut() = specifier);
     let source = STATIC_SOURCE.with(|source| source.borrow().clone());
     let module = compile_dependency(cx, &source);
     if module.is_null() {
@@ -127,7 +135,9 @@ unsafe extern "C" fn finish_static_load(
     }
     STATIC_MODULE.with(|slot| *slot.borrow_mut() = Some(Heap::boxed(module)));
     let result = Handle::from_marked_location(&module);
-    jsapi::FinishLoadingImportedModule(cx, referrer, request, payload, result, true)
+    let finished = jsapi::FinishLoadingImportedModule(cx, referrer, request, payload, result, true);
+    STATIC_FINISHED.with(|done| done.set(finished));
+    finished
 }
 
 unsafe extern "C" fn capture_and_fail(
@@ -147,7 +157,9 @@ unsafe extern "C" fn capture_and_fail(
     CAPTURED.with(|captured| captured.borrow_mut().push((specifier, module_type)));
     let error = UndefinedValue();
     let error = Handle::from_marked_location(&error);
-    jsapi::FinishLoadingImportedModuleFailed(cx, payload, error)
+    let failed = jsapi::FinishLoadingImportedModuleFailed(cx, payload, error);
+    STATIC_FINISHED.with(|done| done.set(failed));
+    failed
 }
 
 unsafe extern "C" fn fail_with_pending(
@@ -162,7 +174,9 @@ unsafe extern "C" fn fail_with_pending(
     let error = Int32Value(42);
     let error = Handle::from_marked_location(&error);
     jsapi::JS_SetPendingException(cx, error, jsapi::ExceptionStackBehavior::Capture);
-    jsapi::FinishLoadingImportedModuleFailedWithPendingException(cx, payload)
+    let failed = jsapi::FinishLoadingImportedModuleFailedWithPendingException(cx, payload);
+    STATIC_FINISHED.with(|done| done.set(failed));
+    failed
 }
 
 unsafe extern "C" fn finish_dynamic_load(
@@ -198,7 +212,9 @@ unsafe extern "C" fn finish_dynamic_load(
     DYNAMIC_PROMISE.with(|slot| *slot.borrow_mut() = Some(Heap::boxed(promise)));
     DYNAMIC_MODULE.with(|slot| *slot.borrow_mut() = Some(Heap::boxed(module)));
     let result = Handle::from_marked_location(&module);
-    jsapi::FinishLoadingDynamicImportedModule(cx, referrer, request, payload, result)
+    let finished = jsapi::FinishLoadingDynamicImportedModule(cx, referrer, request, payload, result);
+    DYNAMIC_FINISHED.with(|done| done.set(finished));
+    finished
 }
 
 unsafe extern "C" fn load_resolved(_cx: *mut RawJSContext, host_defined: HandleValue) -> bool {
@@ -267,6 +283,7 @@ fn json_and_synthetic(engine: &JSEngine) {
             let list = crate::support::get_property(cx, default, c"list");
             let length = crate::support::get_property(cx, list, c"length");
             let list_length = observe(cx, length);
+            assert_eq!(list_length, crate::support::Value::Number(2.0));
 
             let options = CompileOptionsWrapper::new(cx, c"contract-json-utf16.js".to_owned(), 1);
             let source: Vec<u16> = "{\"ok\": true}".encode_utf16().collect();
@@ -283,12 +300,15 @@ fn json_and_synthetic(engine: &JSEngine) {
             let default = crate::support::get_property(cx, ObjectValue(namespace), c"default");
             let ok = crate::support::get_property(cx, default, c"ok");
             let ok = observe(cx, ok);
+            assert_eq!(ok, crate::support::Value::Boolean(true));
 
             let options = CompileOptionsWrapper::new(cx, c"contract-bad-json.js".to_owned(), 1);
             let bad =
                 CompileJsonModule1(cx, options.ptr, &mut transform_str_to_source_text("{ nope"));
             let bad_json_compile_failed = bad.is_null();
             let bad_json_has_pending_exception = jsapi::JS_IsExceptionPending(cx.raw_cx());
+            assert!(bad_json_compile_failed, "CompileJsonModule1 must reject invalid JSON");
+            assert!(bad_json_has_pending_exception, "invalid JSON must leave a pending exception");
             if bad_json_has_pending_exception {
                 jsapi::JS_ClearPendingException(cx.raw_cx());
             }
@@ -310,6 +330,8 @@ fn json_and_synthetic(engine: &JSEngine) {
             let namespace = GetModuleNamespace(cx, synthetic.handle());
             assert!(!namespace.is_null());
             let value = crate::support::get_property(cx, ObjectValue(namespace), c"default");
+            let synthetic_default = observe(cx, value);
+            assert_eq!(synthetic_default, crate::support::Value::Number(7.0));
             Observation::new(vec![
                 ("json.list_length", list_length),
                 ("json.ok", ok),
@@ -321,7 +343,7 @@ fn json_and_synthetic(engine: &JSEngine) {
                     "bad_json_has_pending_exception",
                     Observed::Boolean(bad_json_has_pending_exception),
                 ),
-                ("synthetic_default", observe(cx, value)),
+                ("synthetic_default", synthetic_default),
             ])
         },
     );
@@ -419,6 +441,7 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
                 ("note.txt", "text"),
             ];
             let mut requests = Vec::new();
+            STATIC_FINISHED.with(|done| done.set(false));
             for (specifier, attribute) in cases {
                 let source = format!(
                     "import value from './{specifier}' with {{ type: '{attribute}' }}; export {{ value }};"
@@ -454,6 +477,10 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
                     Observed::String(promise_state_name(load_state).to_owned()),
                 ]));
             }
+            assert!(
+                STATIC_FINISHED.with(Cell::get),
+                "FinishLoadingImportedModuleFailed must report failure"
+            );
             jsapi::SetModuleLoadHook(rt, None);
             Observation::new(vec![
                 ("private_after_set", private_after_set),
@@ -473,6 +500,10 @@ fn privates_hooks_and_requests(engine: &JSEngine) {
                 ),
                 ("import_meta_marker", import_meta_marker),
                 ("request_captures", Observed::Array(requests)),
+                (
+                    "import_failure_reported",
+                    Observed::Boolean(STATIC_FINISHED.with(Cell::get)),
+                ),
             ])
         },
     );
@@ -498,6 +529,8 @@ fn load_requested(engine: &JSEngine) {
             STATIC_SOURCE
                 .with(|source| *source.borrow_mut() = "export const value = 41;".to_owned());
             STATIC_MODULE.with(|slot| *slot.borrow_mut() = None);
+            STATIC_SPECIFIER.with(|specifier| specifier.borrow_mut().clear());
+            STATIC_FINISHED.with(|done| done.set(false));
             RESOLVED.with(|resolved| resolved.set(false));
             REJECTED.with(|rejected| rejected.set(false));
             let rt = jsapi::JS_GetRuntime(cx.raw_cx());
@@ -536,6 +569,12 @@ fn load_requested(engine: &JSEngine) {
             ));
             let callback_resolved = RESOLVED.with(Cell::get);
             let callback_rejected = REJECTED.with(Cell::get);
+            let imported_specifier = STATIC_SPECIFIER.with(|specifier| specifier.borrow().clone());
+            assert_eq!(imported_specifier, "./dep.js");
+            assert!(
+                STATIC_FINISHED.with(Cell::get),
+                "FinishLoadingImportedModule must report success"
+            );
 
             STATIC_MODULE.with(|slot| *slot.borrow_mut() = None);
             jsapi::SetModuleLoadHook(rt, None);
@@ -547,6 +586,11 @@ fn load_requested(engine: &JSEngine) {
                 ("total", total),
                 ("callback_resolved", Observed::Boolean(callback_resolved)),
                 ("callback_rejected", Observed::Boolean(callback_rejected)),
+                ("imported_specifier", Observed::String(imported_specifier)),
+                (
+                    "imported_module_finished",
+                    Observed::Boolean(STATIC_FINISHED.with(Cell::get)),
+                ),
             ])
         },
     );
@@ -577,6 +621,7 @@ fn dynamic_import(engine: &JSEngine) {
         |cx, _global| unsafe {
             DYNAMIC_PROMISE.with(|slot| *slot.borrow_mut() = None);
             DYNAMIC_MODULE.with(|slot| *slot.borrow_mut() = None);
+            DYNAMIC_FINISHED.with(|done| done.set(false));
             CAPTURED.with(|captured| captured.borrow_mut().clear());
             let rt = jsapi::JS_GetRuntime(cx.raw_cx());
             jsapi::SetModuleLoadHook(rt, Some(finish_dynamic_load));
@@ -595,6 +640,10 @@ fn dynamic_import(engine: &JSEngine) {
 
             let captured = CAPTURED.with(|captured| captured.borrow().clone());
             assert_eq!(captured.len(), 1);
+            assert!(
+                DYNAMIC_FINISHED.with(Cell::get),
+                "FinishLoadingDynamicImportedModule must report success"
+            );
 
             let import_promise = DYNAMIC_PROMISE.with(|slot| {
                 slot.borrow()
@@ -659,6 +708,10 @@ fn dynamic_import(engine: &JSEngine) {
                 (
                     "resolved_is_namespace",
                     Observed::Boolean(resolved_is_namespace),
+                ),
+                (
+                    "dynamic_module_finished",
+                    Observed::Boolean(DYNAMIC_FINISHED.with(Cell::get)),
                 ),
             ])
         },
@@ -740,6 +793,7 @@ fn failures_and_evaluation(engine: &JSEngine) {
             jsapi::JS_ClearPendingException(cx.raw_cx());
 
             jsapi::SetModuleLoadHook(rt, Some(fail_with_pending));
+            STATIC_FINISHED.with(|done| done.set(false));
             let options = CompileOptionsWrapper::new(cx, c"contract-missing.js".to_owned(), 1);
             let module = CompileModule1(
                 cx,
@@ -765,6 +819,10 @@ fn failures_and_evaluation(engine: &JSEngine) {
                 destination,
             );
             let missing_reason = observe(cx, reason);
+            assert!(
+                STATIC_FINISHED.with(Cell::get),
+                "FinishLoadingImportedModuleFailedWithPendingException must report failure"
+            );
             jsapi::SetModuleLoadHook(rt, None);
 
             RegisterScriptEnvironmentPreparer(cx.raw_cx(), Some(prepare_and_run));
@@ -817,6 +875,10 @@ fn failures_and_evaluation(engine: &JSEngine) {
                     Observed::String(promise_state_name(missing_load_state).to_owned()),
                 ),
                 ("missing_reason", missing_reason),
+                (
+                    "missing_failure_reported",
+                    Observed::Boolean(STATIC_FINISHED.with(Cell::get)),
+                ),
                 ("tla_async_result", Observed::Boolean(tla_async_result)),
                 (
                     "tla_promise_state",

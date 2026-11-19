@@ -28,7 +28,7 @@ import tomllib
 DIFFERENCE_STATUSES = ("pending", "bug", "accepted", "wontfix")
 DIFFERENCE_SEVERITIES = ("P0", "P1", "P2", "P3")
 REQUIRED_FIELDS = ("id", "fields", "reason", "owner", "status", "severity")
-OPTIONAL_FIELDS = ("issue",)
+OPTIONAL_FIELDS = ("issue", "steps")
 RELEASED_STATUSES = frozenset(("accepted", "wontfix"))
 
 
@@ -102,11 +102,22 @@ def load_differences(path):
                 f"{path}: difference {case_id!r} cannot release a {severity} defect; "
                 "fix it or keep its status pending/bug"
             )
-        for field in OPTIONAL_FIELDS:
-            if field in entry and (not isinstance(entry[field], str) or not entry[field].strip()):
+        if "issue" in entry and (
+            not isinstance(entry["issue"], str) or not entry["issue"].strip()
+        ):
+            raise SystemExit(
+                f"{path}: difference {case_id!r} has an empty issue; omit it or fill it in"
+            )
+        if "steps" in entry:
+            steps = entry["steps"]
+            if not isinstance(steps, list) or not steps or not all(
+                isinstance(step, str) and step for step in steps
+            ):
                 raise SystemExit(
-                    f"{path}: difference {case_id!r} has an empty {field}; omit it or fill it in"
+                    f"{path}: difference {case_id!r} must list non-empty step names"
                 )
+            if len(steps) != len(set(steps)):
+                raise SystemExit(f"{path}: difference {case_id!r} repeats a step name")
         if "panic" in entry and (not isinstance(entry["panic"], str) or not entry["panic"]):
             raise SystemExit(
                 f"{path}: difference {case_id!r} has an empty panic fingerprint"
@@ -119,6 +130,21 @@ def load_differences(path):
             raise SystemExit(f"{path}: duplicate difference id {case_id!r}")
         differences[case_id] = entry
     return differences
+
+
+def failed_steps(case):
+    """The sub-scenarios that panicked in `case`, in execution order."""
+    fields = case.get("fields")
+    if not isinstance(fields, dict):
+        return []
+    failures = fields.get("step_failures")
+    if not isinstance(failures, list):
+        return []
+    steps = []
+    for failure in failures:
+        if isinstance(failure, dict) and isinstance(failure.get("step"), str):
+            steps.append(failure["step"])
+    return steps
 
 
 def panic_message(case):
@@ -143,7 +169,12 @@ def matches_difference(left, right, difference):
         return False
     remaining_left = {key: value for key, value in left.items() if key not in fields}
     remaining_right = {key: value for key, value in right.items() if key not in fields}
-    return remaining_left == remaining_right
+    if remaining_left != remaining_right:
+        return False
+    # `fields = ["fields"]` must not silently absorb a new sub-scenario failure. Every step that
+    # failed on either engine has to be named in the allowlist so the divergence stays visible.
+    observed_steps = set(failed_steps(left)) | set(failed_steps(right))
+    return observed_steps <= set(difference.get("steps", ()))
 
 
 def main(argv):

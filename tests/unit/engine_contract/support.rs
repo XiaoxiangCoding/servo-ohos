@@ -26,6 +26,56 @@ use js::rust::{
     evaluate_script,
 };
 
+/// Collects the observations of a `Steps`-based case, so a step can record the values it checked
+/// without changing its signature or moving the assertions.
+///
+/// `Steps::finish` used to record only a `value: true` sentinel. That made the case fail on the
+/// reference engine but left the cross-engine comparison with a single boolean to diff, so a
+/// QuickJS defect that returned a wrong-but-truthy value compared equal. Steps now call
+/// [`observe_field`] with the value they already asserted, and [`Steps::finish`] records those
+/// fields instead of the sentinel.
+mod observed_fields {
+    use super::Value;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static FIELDS: RefCell<Vec<(&'static str, Value)>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub fn push(name: &'static str, value: Value) {
+        FIELDS.with(|fields| fields.borrow_mut().push((name, value)));
+    }
+
+    pub fn take() -> Vec<(&'static str, Value)> {
+        FIELDS.with(|fields| std::mem::take(&mut *fields.borrow_mut()))
+    }
+
+    pub fn len() -> usize {
+        FIELDS.with(|fields| fields.borrow().len())
+    }
+
+    pub fn truncate(len: usize) {
+        FIELDS.with(|fields| fields.borrow_mut().truncate(len));
+    }
+
+    pub fn clear() {
+        FIELDS.with(|fields| fields.borrow_mut().clear());
+    }
+}
+
+/// Records one observation of the running `Steps` case.
+///
+/// A repeated name keeps both entries; `Observation::to_json` maps fields into an object, so
+/// duplicate names would silently collapse. Steps therefore use distinct, step-prefixed names.
+pub fn observe_field(name: &'static str, value: Value) {
+    observed_fields::push(name, value);
+}
+
+/// Discards any observations left over from a case that ran earlier in this process.
+pub fn clear_observed_fields() {
+    observed_fields::clear();
+}
+
 /// The normalized, engine-independent observation of one contract case.
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -59,6 +109,10 @@ impl Value {
 pub struct Observation {
     pub fields: Vec<(&'static str, Value)>,
     pub exception: Option<String>,
+    /// Failures from independent sub-scenarios, in execution order. `fields["panic"]` keeps the
+    /// first failure as the comparison fingerprint, while this list makes every later failure
+    /// visible instead of silently reducing the case to its first bad assertion.
+    pub step_failures: Vec<(String, String)>,
 }
 
 impl Observation {
@@ -66,6 +120,7 @@ impl Observation {
         Observation {
             fields,
             exception: None,
+            step_failures: Vec::new(),
         }
     }
 
@@ -73,6 +128,7 @@ impl Observation {
         Observation {
             fields: vec![("value", value)],
             exception: None,
+            step_failures: Vec::new(),
         }
     }
 
@@ -80,6 +136,7 @@ impl Observation {
         Observation {
             fields: Vec::new(),
             exception: Some(name.to_owned()),
+            step_failures: Vec::new(),
         }
     }
 
@@ -87,15 +144,34 @@ impl Observation {
         Observation {
             fields: vec![("panic", Value::String(message.to_owned()))],
             exception: None,
+            step_failures: Vec::new(),
         }
     }
 
+    pub fn with_step_failures(mut self, step_failures: Vec<(String, String)>) -> Self {
+        self.step_failures = step_failures;
+        self
+    }
+
     pub fn to_json(&self) -> serde_json::Value {
-        let fields = self
+        let mut fields = self
             .fields
             .iter()
             .map(|(name, value)| ((*name).to_owned(), value.to_json()))
             .collect::<serde_json::Map<_, _>>();
+        if !self.step_failures.is_empty() {
+            fields.insert(
+                "step_failures".to_owned(),
+                serde_json::Value::Array(
+                    self.step_failures
+                        .iter()
+                        .map(|(name, message)| {
+                            serde_json::json!({ "step": name, "panic": message })
+                        })
+                        .collect(),
+                ),
+            );
+        }
         serde_json::json!({
             "fields": fields,
             "exception": self.exception,
@@ -124,6 +200,7 @@ pub fn with_realm_options<R>(
             OnNewGlobalHookOption::FireOnNewGlobalHook,
             &*options,
         ));
+        assert!(!global.get().is_null(), "JS_NewGlobalObject returned null");
         let mut realm = AutoRealm::new_from_handle(cx, global.handle());
         f(&mut realm, global.handle())
     }
@@ -275,7 +352,7 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     static RESET: Once = Once::new();
 
     register_case(case);
-    if !case_selected(case) {
+    if !case_selected(case) || dry_run() {
         return;
     }
     mark_observed(case);
@@ -286,9 +363,13 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
     if let Some(parent) = Path::new(&path).parent() {
         std::fs::create_dir_all(parent).expect("creating CONTRACT_OUT parent directory");
     }
-    RESET.call_once(|| {
-        std::fs::write(&path, b"").expect("truncating CONTRACT_OUT");
-    });
+    // A per-case process must append to a file the driver owns; only an in-process run creates
+    // (and therefore truncates) the file itself.
+    if std::env::var_os("CONTRACT_OUT_APPEND").is_none() {
+        RESET.call_once(|| {
+            std::fs::write(&path, b"").expect("truncating CONTRACT_OUT");
+        });
+    }
     let engine = std::env::var("CONTRACT_ENGINE").unwrap_or_else(|_| "unknown".to_owned());
     let observation = observation.to_json();
     let line = serde_json::json!({
@@ -308,6 +389,7 @@ pub fn record(case: &str, observation: &Observation, apis: &[&str]) {
 
 static CASE_FAILURES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static SELECTED_CASES: OnceLock<Option<HashSet<String>>> = OnceLock::new();
+static SELECTED_STEPS: OnceLock<Option<HashSet<String>>> = OnceLock::new();
 static OBSERVED_CASES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 static REGISTERED_CASES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
@@ -327,6 +409,32 @@ fn selected_cases() -> &'static Option<HashSet<String>> {
         );
         Some(cases)
     })
+}
+
+fn selected_steps() -> &'static Option<HashSet<String>> {
+    SELECTED_STEPS.get_or_init(|| {
+        let Ok(value) = std::env::var("CONTRACT_STEP") else {
+            return None;
+        };
+        let steps = value
+            .split([',', ' ', '\t', '\n'])
+            .filter(|step| !step.is_empty())
+            .map(str::to_owned)
+            .collect::<HashSet<_>>();
+        assert!(
+            !steps.is_empty(),
+            "CONTRACT_STEP is set but does not name any step"
+        );
+        Some(steps)
+    })
+}
+
+/// Returns whether `step` should run. `CONTRACT_STEP` narrows a compound case to one or more
+/// sub-scenarios, which is how an interface-level run attributes a failure to a single API group.
+pub fn step_selected(step: &str) -> bool {
+    selected_steps()
+        .as_ref()
+        .is_none_or(|steps| steps.contains(step))
 }
 
 /// Returns whether `case` should run in this invocation.
@@ -392,11 +500,16 @@ fn panic_message(payload: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
+/// True while the harness is only collecting the case ids an isolated run should execute.
+fn dry_run() -> bool {
+    std::env::var_os("CONTRACT_DRY_RUN").is_some()
+}
+
 /// Runs one case in isolation. A panic is recorded as that case's observation and collected for
 /// the final test failure, so every later case still runs on the same engine.
 pub fn run_case(case: &str, apis: &[&str], f: impl FnOnce() -> Observation) {
     register_case(case);
-    if !case_selected(case) {
+    if !case_selected(case) || dry_run() {
         return;
     }
     match catch_unwind(AssertUnwindSafe(f)) {
@@ -414,22 +527,331 @@ pub fn run_case(case: &str, apis: &[&str], f: impl FnOnce() -> Observation) {
 }
 
 /// Isolates a case that records itself on success. On panic, a failure observation is written
-/// under the same case id with no API list; the failed run is therefore never silently compared
-/// as a match, and later cases still execute.
+/// under the same case id; the failed run is therefore never silently compared as a match, and
+/// later cases still execute.
+///
+/// The case cannot record after it panics, so its `apis` list is copied from the reference
+/// engine's result. That keeps a failed case attributable at the interface level instead of
+/// dropping its coverage evidence.
 pub fn isolate_case(case: &str, f: impl FnOnce()) {
     register_case(case);
-    if !case_selected(case) {
+    if !case_selected(case) || dry_run() {
         return;
     }
     if let Err(payload) = catch_unwind(AssertUnwindSafe(f)) {
         let message = panic_message(payload);
         eprintln!("case {case} failed: {message}");
-        record(case, &Observation::failure(&message), &[]);
+        let reference = reference_apis(case);
+        let apis = reference.iter().map(String::as_str).collect::<Vec<_>>();
+        record(case, &Observation::failure(&message), &apis);
         CASE_FAILURES
             .lock()
             .expect("case failure list")
             .push(format!("{case}: {message}"));
     }
+}
+
+/// Runs the independent scenarios of one case so a panic in one cannot hide the rest.
+///
+/// The first panic is recorded as the case observation, so its message stays the comparison
+/// fingerprint, while every remaining step still runs. Calling the steps one after another would
+/// instead let the first failing assertion end the case and silently drop all later coverage.
+pub struct Steps<'a> {
+    case: &'a str,
+    apis: &'a [&'a str],
+    failures: Vec<(String, String)>,
+}
+
+impl<'a> Steps<'a> {
+    pub fn new(case: &'a str, apis: &'a [&'a str]) -> Self {
+        register_case(case);
+        observed_fields::clear();
+        Steps {
+            case,
+            apis,
+            failures: Vec::new(),
+        }
+    }
+
+    /// Runs one scenario. A panic is reported with the scenario name and remembered; the
+    /// remaining scenarios still run.
+    pub fn step(&mut self, name: &str, f: impl FnOnce()) {
+        if !case_selected(self.case) || !step_selected(name) || dry_run() {
+            return;
+        }
+        // A step that panics halfway may already have recorded some of its observations. Drop
+        // them so a failed step cannot leave a partial payload that looks like a passing one;
+        // the failure itself is reported through `step_failures`.
+        let mark = observed_fields::len();
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(f)) {
+            let message = panic_message(payload);
+            eprintln!("case {} step {name} failed: {message}", self.case);
+            observed_fields::truncate(mark);
+            self.failures.push((name.to_owned(), message));
+        }
+    }
+
+    /// Turns the run into one observation, without recording it. The caller records it through
+    /// [`run_case`], which is how a case keeps control of its own observation shape.
+    pub fn into_observation(self) -> Observation {
+        let Some((_, first)) = self.failures.first() else {
+            return Observation::ok(Value::Boolean(true));
+        };
+        eprintln!("case {} failed: {first}", self.case);
+        Observation::failure(first).with_step_failures(self.failures)
+    }
+
+    /// Records the case after every scenario has run, using the observations its steps recorded
+    /// through [`observe_field`].
+    pub fn finish(self) {
+        let fields = observed_fields::take();
+        self.finish_with_fields(fields);
+    }
+
+    /// Records the case with the observations collected by its successful scenarios.
+    ///
+    /// A scenario that panics still contributes its failure through `step_failures`; the
+    /// surviving observations remain in the record so one bad sub-scenario does not erase the
+    /// evidence gathered by the others.
+    pub fn finish_with_fields(self, mut fields: Vec<(&'static str, Value)>) {
+        if !case_selected(self.case) || dry_run() {
+            return;
+        }
+        // `Steps::new` starts a case; earlier cases in this process may have left observations
+        // behind when they were filtered out or panicked before `finish`.
+        fields.extend(observed_fields::take());
+        let case = self.case;
+        let apis = self.apis;
+        let failures = self.failures.clone();
+        let mut observation = self.into_observation();
+        observation.fields.extend(fields);
+        record(case, &observation, apis);
+        if !failures.is_empty() {
+            let summary = failures
+                .iter()
+                .map(|(step, message)| format!("{step}: {message}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            CASE_FAILURES
+                .lock()
+                .expect("case failure list")
+                .push(format!("{case}: {summary}"));
+        }
+    }
+}
+
+/// Re-executes the current test binary once per case so that a crash cannot hide later cases.
+///
+/// `catch_unwind` in [`run_case`] covers Rust panics, but not SIGSEGV, SIGABRT, or a panic that
+/// aborts: any of those kills the process and would silently drop every case after the crashing
+/// one. When `CONTRACT_ISOLATE_CASES=1` is set, the test entry calls this instead of running the
+/// suite in-process. Each case gets its own process, and a case that dies without writing a record
+/// is reported with the exit status as its observation, so the run stays attributable.
+///
+/// Returns `false` when isolation is not requested, so the caller runs the suite normally.
+pub fn run_isolated() -> bool {
+    if std::env::var("CONTRACT_ISOLATE_CASES").as_deref() != Ok("1") {
+        return false;
+    }
+    let Ok(results) = std::env::var("CONTRACT_OUT") else {
+        eprintln!("CONTRACT_ISOLATE_CASES=1 needs CONTRACT_OUT");
+        std::process::exit(2);
+    };
+    let engine = std::env::var("CONTRACT_ENGINE").unwrap_or_else(|_| "unknown".to_owned());
+    let selection = std::env::var("CONTRACT_CASES").unwrap_or_default();
+
+    let cases = collect_cases(&selection);
+    if cases.is_empty() {
+        eprintln!("no contract cases selected for an isolated run");
+        std::process::exit(2);
+    }
+
+    let mut crashed = Vec::new();
+    let mut failed = Vec::new();
+    let mut records = Vec::new();
+    for case in &cases {
+        let record = run_one_isolated_case(case, &engine, &results);
+        if record.crashed {
+            crashed.push(case.clone());
+        }
+        if record.failed {
+            failed.push(case.clone());
+        }
+        records.push(record.line);
+    }
+
+    if let Some(parent) = Path::new(&results).parent() {
+        std::fs::create_dir_all(parent).expect("creating CONTRACT_OUT parent directory");
+    }
+    let body = records.join("\n");
+    std::fs::write(&results, format!("{body}\n")).expect("writing merged CONTRACT_OUT");
+    flush_case_inventory_for(&cases);
+
+    for case in &crashed {
+        eprintln!("case {case} crashed without recording a result");
+    }
+    for case in &failed {
+        eprintln!("case {case} exited non-zero; its recorded observation is still compared");
+    }
+    eprintln!(
+        "recorded {} cases, {} failed, {} crashed",
+        cases.len(),
+        failed.len(),
+        crashed.len()
+    );
+    // Exit here: the parent process must not also run the suite in-process, which would double
+    // every observation and re-run cases that already failed or crashed. A failed child is still
+    // an error even when it wrote an observation: the assertion failure must not look like a
+    // successful runner.
+    std::process::exit(if failed.is_empty() { 0 } else { 1 });
+}
+
+/// Runs the suite once without executing any case to learn which ids the selection covers.
+fn collect_cases(selection: &str) -> Vec<String> {
+    let dir = std::env::temp_dir().join(format!("engine-contract-cases-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let inventory = dir.join("cases.json");
+    let _ = std::fs::remove_file(&inventory);
+
+    let exe = std::env::current_exe().expect("locating the test binary");
+    let mut command = std::process::Command::new(exe);
+    command
+        .args(["tests::engine_contract", "--exact"])
+        .env("CONTRACT_DRY_RUN", "1")
+        .env("CONTRACT_CASES_OUT", &inventory)
+        .env_remove("CONTRACT_ISOLATE_CASES")
+        .env_remove("CONTRACT_OUT")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    if !selection.is_empty() {
+        command.env("CONTRACT_CASES", selection);
+    }
+    let _ = command.status();
+
+    let cases = std::fs::read_to_string(&inventory)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|document| {
+            document.get("cases").and_then(|value| value.as_array()).map(|list| {
+                list.iter()
+                    .filter_map(|value| value.as_str().map(str::to_owned))
+                    .collect()
+            })
+        })
+        .unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+    cases
+}
+
+fn flush_case_inventory_for(cases: &[String]) {
+    let Ok(path) = std::env::var("CONTRACT_CASES_OUT") else {
+        return;
+    };
+    let document = serde_json::json!({
+        "version": 1,
+        "cases": cases,
+        "complete": std::env::var_os("CONTRACT_CASES").is_none(),
+    });
+    if let Some(parent) = Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, format!("{document}\n"));
+}
+
+struct IsolatedRecord {
+    line: String,
+    crashed: bool,
+    failed: bool,
+}
+
+
+fn run_one_isolated_case(case: &str, engine: &str, results: &str) -> IsolatedRecord {
+    let dir = Path::new(results)
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("isolated-cases");
+    std::fs::create_dir_all(&dir).expect("creating the isolated case directory");
+    let output = dir.join(format!("{case}.jsonl"));
+    let log = dir.join(format!("{case}.log"));
+    let _ = std::fs::remove_file(&output);
+
+    let exe = std::env::current_exe().expect("locating the test binary");
+    let log_file = std::fs::File::create(&log).expect("creating the isolated case log");
+    let log_err = log_file.try_clone().expect("cloning the isolated case log");
+    let status = std::process::Command::new(exe)
+        .args(["tests::engine_contract", "--exact", "--nocapture"])
+        .env("CONTRACT_ENGINE", engine)
+        .env("CONTRACT_CASES", case)
+        .env("CONTRACT_OUT", &output)
+        .env_remove("CONTRACT_CASES_OUT")
+        .env_remove("CONTRACT_ISOLATE_CASES")
+        .env("CONTRACT_OUT_APPEND", "1")
+        .stdout(log_file)
+        .stderr(log_err)
+        .status()
+        .expect("running an isolated contract case");
+
+    if let Ok(text) = std::fs::read_to_string(&output) {
+        if let Some(line) = text.lines().rev().find(|line| !line.trim().is_empty()) {
+            return IsolatedRecord {
+                line: line.trim().to_owned(),
+                crashed: false,
+                failed: !status.success(),
+            };
+        }
+    }
+
+    let description = match status.code() {
+        Some(code) => format!("exit {code}"),
+        None => "terminated by a signal".to_owned(),
+    };
+    let reference_apis = reference_apis(case);
+    let line = serde_json::json!({
+        "id": case,
+        "engine": engine,
+        "fields": {
+            "panic": format!("case process exited without recording a result ({description})"),
+        },
+        "exception": serde_json::Value::Null,
+        "apis": reference_apis,
+    })
+    .to_string();
+    IsolatedRecord {
+        line,
+        crashed: true,
+        failed: true,
+    }
+}
+
+/// Copies `apis` from the other engine's results so a crashed case stays comparable.
+fn reference_apis(case: &str) -> Vec<String> {
+    let Ok(path) = std::env::var("CONTRACT_REFERENCE_OUT") else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(record) = serde_json::from_str::<serde_json::Value>(line) {
+            if record.get("id").and_then(|value| value.as_str()) == Some(case) {
+                return record
+                    .get("apis")
+                    .and_then(|value| value.as_array())
+                    .map(|values| {
+                        values
+                            .iter()
+                            .filter_map(|value| value.as_str().map(str::to_owned))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+            }
+        }
+    }
+    Vec::new()
 }
 
 /// Fails the enclosing test after every case has had a chance to run.
