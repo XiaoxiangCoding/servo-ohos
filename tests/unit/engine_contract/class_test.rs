@@ -97,6 +97,9 @@ static CLASS: JSClass = JSClass {
 };
 
 fn reserved_slots_and_tracing(engine: &JSEngine) {
+    let mut slot_pointer_after_gc = false;
+    let mut slot_cleared = false;
+    let mut trace_count = 0;
     with_global(engine, |cx, global| unsafe {
         let object = JS_NewObject(cx, &CLASS);
         assert!(!object.is_null());
@@ -134,22 +137,29 @@ fn reserved_slots_and_tracing(engine: &JSEngine) {
         // The rooted object keeps the class live; its trace hook must visit every heap edge.
         TRACED.with(|count| count.set(0));
         JS_GC(cx, GCReason::API);
+        trace_count = TRACED.with(Cell::get);
         assert!(
-            TRACED.with(Cell::get) > 0,
+            trace_count > 0,
             "class trace hook did not run during JS_GC"
         );
         JS_GetReservedSlot(object.get(), SLOT, &mut slot);
-        assert_eq!(slot.to_private(), raw.cast::<c_void>());
+        slot_pointer_after_gc = slot.to_private() == raw.cast::<c_void>();
+        assert!(slot_pointer_after_gc);
 
         jsapi::JS_SetReservedSlot(object.get(), SLOT, &NullValue());
         JS_GetReservedSlot(object.get(), SLOT, &mut slot);
-        assert!(slot.is_null());
+        slot_cleared = slot.is_null();
+        assert!(slot_cleared);
         drop(Box::from_raw(raw));
     });
 
     record(
         "class.reserved_slots_trace",
-        &Observation::ok(Value::Boolean(true)),
+        &Observation::new(vec![
+            ("slot_pointer_after_gc", Value::Boolean(slot_pointer_after_gc)),
+            ("slot_cleared", Value::Boolean(slot_cleared)),
+            ("trace_count", Value::Number(trace_count as f64)),
+        ]),
         &[
             "CallFunctionTracer",
             "CallObjectTracer",
@@ -166,6 +176,8 @@ fn reserved_slots_and_tracing(engine: &JSEngine) {
 }
 
 fn write_barriers(engine: &JSEngine) {
+    let mut slot_kinds_live = 0u32;
+    let mut barrier_calls_stable = 0u32;
     with_global(engine, |cx, global| unsafe {
         let object = JS_NewObject(cx, ptr::null());
         assert!(!object.is_null());
@@ -203,6 +215,32 @@ fn write_barriers(engine: &JSEngine) {
         value_slot.set(ObjectValue(object));
         assert_eq!(value_slot.get(), ObjectValue(object));
 
+        // Call the public combined pre/post-write barriers directly. They return void and do not
+        // write the slot themselves, so the strongest observable contract is that each call
+        // leaves the stable slot unchanged; a no-op remains indistinguishable here.
+        let null_object: *mut JSObject = ptr::null_mut();
+        jsapi::HeapObjectWriteBarriers(object_slot.get_unsafe(), null_object, object);
+        barrier_calls_stable += (object_slot.get() == object) as u32;
+
+        let function_as_object_slot = function_slot.get_unsafe().cast::<*mut JSObject>();
+        jsapi::HeapObjectWriteBarriers(function_as_object_slot, null_object, function.cast());
+        barrier_calls_stable += (function_slot.get() == function) as u32;
+
+        jsapi::HeapStringWriteBarriers(string_slot.get_unsafe(), ptr::null_mut(), string);
+        barrier_calls_stable += (string_slot.get() == string) as u32;
+
+        jsapi::HeapBigIntWriteBarriers(bigint_slot.get_unsafe(), ptr::null_mut(), bigint);
+        barrier_calls_stable += (bigint_slot.get() == bigint) as u32;
+
+        jsapi::HeapScriptWriteBarriers(script_slot.get_unsafe(), ptr::null_mut(), script);
+        barrier_calls_stable += (script_slot.get() == script) as u32;
+
+        let prev_value = UndefinedValue();
+        let next_value = ObjectValue(object);
+        jsapi::HeapValueWriteBarriers(value_slot.get_unsafe(), &prev_value, &next_value);
+        barrier_calls_stable += (value_slot.get() == ObjectValue(object)) as u32;
+        assert_eq!(barrier_calls_stable, 6, "write barriers must leave their slots unchanged");
+
         // Keep the slots rooted across a GC so the recorded edges are traced while alive. GC may
         // move the referents, so only check that each slot still holds a live value.
         jsapi::JS_GC(cx.raw_cx(), GCReason::API);
@@ -212,11 +250,28 @@ fn write_barriers(engine: &JSEngine) {
         assert!(!bigint_slot.get().is_null());
         assert!(!script_slot.get().is_null());
         assert!(!value_slot.get().is_undefined());
+        slot_kinds_live = [
+            !object_slot.get().is_null(),
+            !function_slot.get().is_null(),
+            !string_slot.get().is_null(),
+            !bigint_slot.get().is_null(),
+            !script_slot.get().is_null(),
+            !value_slot.get().is_undefined(),
+        ]
+        .into_iter()
+        .filter(|live| *live)
+        .count() as u32;
     });
 
     record(
         "class.heap_write_barriers",
-        &Observation::ok(Value::Boolean(true)),
+        &Observation::new(vec![
+            (
+                "slot_kinds_live_after_gc",
+                Value::Number(slot_kinds_live as f64),
+            ),
+            ("barrier_calls_stable", Value::Number(barrier_calls_stable as f64)),
+        ]),
         &[
             "Compile1",
             "HeapBigIntWriteBarriers",

@@ -25,7 +25,9 @@ use js::rust::{
     RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS, transform_str_to_source_text,
 };
 
-use crate::support::{Observation, Value as Observed, record};
+use crate::support::{Value as Observed, observe_field};
+
+
 
 fn with_global(engine: &JSEngine, f: impl FnOnce(&mut js::context::JSContext, SafeHandleObject)) {
     let mut runtime = Runtime::new(engine.handle());
@@ -38,6 +40,7 @@ fn with_global(engine: &JSEngine, f: impl FnOnce(&mut js::context::JSContext, Sa
             OnNewGlobalHookOption::FireOnNewGlobalHook,
             &*RealmOptions::default(),
         ));
+        assert!(!global.get().is_null(), "JS_NewGlobalObject returned null");
         let mut realm = AutoRealm::new_from_handle(cx, global.handle());
         let (global, cx) = realm.global_and_reborrow();
         f(cx, global);
@@ -82,12 +85,16 @@ fn offthread_success(engine: &JSEngine) {
         let script =
             InstantiateGlobalStencil(cx, &instantiate_options, *stencil, storage.as_mut_ptr());
         assert!(!script.is_null());
-        assert_eq!(execute(cx, script).unwrap().to_int32(), 42);
+        let instantiated_result = execute(cx, script).unwrap().to_int32();
+        assert_eq!(instantiated_result, 42);
+        observe_field("offthread_result", Observed::Number(instantiated_result as f64));
 
         rooted!(&in(cx) let script = script);
         rooted!(&in(cx) let mut rval = UndefinedValue());
         assert!(JS_ExecuteScript(cx, script.handle(), rval.handle_mut()));
-        assert_eq!(rval.get().to_int32(), 42);
+        let executed_result = rval.get().to_int32();
+        assert_eq!(executed_result, 42);
+        observe_field("offthread_executed", Observed::Number(executed_result as f64));
 
         jsapi::StencilAddRef(*stencil);
         jsapi::StencilRelease(*stencil);
@@ -108,13 +115,16 @@ fn offthread_failure(engine: &JSEngine) {
             ..
         } = result;
         assert!(stencil.is_none());
+        observe_field("failed_stencil_absent", Observed::Boolean(stencil.is_none()));
         assert!(HadFrontendErrors(*fc));
+        observe_field("failed_had_errors", Observed::Boolean(HadFrontendErrors(*fc)));
         assert!(ConvertFrontendErrorsToRuntimeErrors(
             cx,
             *fc,
             compile_options.read_only()
         ));
         take_exception(cx);
+        observe_field("failed_has_exception", Observed::Boolean(true));
     });
 }
 
@@ -129,36 +139,37 @@ fn explicit_stencil(engine: &JSEngine) {
         CompileGlobalScriptToStencil_C(*fc, owning.read_only(), &mut source, stencil.as_mut_ptr());
         let stencil = stencil.assume_init();
         assert!(!HadFrontendErrors(*fc));
+        observe_field("explicit_had_errors", Observed::Boolean(HadFrontendErrors(*fc)));
         assert!(!stencil.mRawPtr.is_null());
+        observe_field("explicit_stencil_non_null", Observed::Boolean(!stencil.mRawPtr.is_null()));
         jsapi::StencilAddRef(stencil.mRawPtr);
         jsapi::StencilRelease(stencil.mRawPtr);
         jsapi::StencilRelease(stencil.mRawPtr);
+        observe_field("explicit_refcount_balanced", Observed::Boolean(true));
     });
 }
 
 pub fn run(engine: &JSEngine) {
-    crate::support::isolate_case("stencil.offthread_compile_instantiate", || {
-        offthread_success(engine);
-        offthread_failure(engine);
-        explicit_stencil(engine);
-        record(
-            "stencil.offthread_compile_instantiate",
-            &Observation::ok(Observed::Boolean(true)),
-            &[
-                "CompileGlobalScriptToStencil_C",
-                "ConvertFrontendErrorsToRuntimeErrors",
-                "DeleteOwningCompileOptions",
-                "DestroyFrontendContext",
-                "HadFrontendErrors",
-                "InstantiateGlobalStencil",
-                "NewFrontendContext",
-                "OwningCompileOptions_for_fc",
-                "PrepareForInstantiate",
-                "SetNativeStackQuota",
-                "StencilAddRef",
-                "StencilRelease",
-                "ThreadStackQuotaForSize",
-            ],
-        );
-    });
+    let mut steps = crate::support::Steps::new(
+        "stencil.offthread_compile_instantiate",
+        &[
+            "CompileGlobalScriptToStencil_C",
+            "ConvertFrontendErrorsToRuntimeErrors",
+            "DeleteOwningCompileOptions",
+            "DestroyFrontendContext",
+            "HadFrontendErrors",
+            "InstantiateGlobalStencil",
+            "NewFrontendContext",
+            "OwningCompileOptions_for_fc",
+            "PrepareForInstantiate",
+            "SetNativeStackQuota",
+            "StencilAddRef",
+            "StencilRelease",
+            "ThreadStackQuotaForSize",
+        ],
+    );
+    steps.step("offthread_success", || offthread_success(engine));
+    steps.step("offthread_failure", || offthread_failure(engine));
+    steps.step("explicit_stencil", || explicit_stencil(engine));
+    steps.finish();
 }

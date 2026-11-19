@@ -6,7 +6,7 @@
 
 //! Structured clone buffers, the callback API and the convenience clone entry point.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::ptr::{self, NonNull};
 
@@ -57,6 +57,8 @@ thread_local! {
     static WRITES: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     static READS: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
     static SCOPES: RefCell<Vec<StructuredCloneScope>> = const { RefCell::new(Vec::new()) };
+    static CLONE_BYTES: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    static CLONE_PAIR: Cell<(u32, u32)> = const { Cell::new((0, 0)) };
 }
 
 fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, SafeHandleObject)) {
@@ -70,6 +72,7 @@ fn with_global(engine: &JSEngine, f: impl FnOnce(&mut JSContext, SafeHandleObjec
             OnNewGlobalHookOption::FireOnNewGlobalHook,
             &*RealmOptions::default(),
         ));
+        assert!(!global.get().is_null(), "JS_NewGlobalObject returned null");
         let mut realm = AutoRealm::new_from_handle(cx, global.handle());
         let (global, cx) = realm.global_and_reborrow();
         f(cx, global);
@@ -165,6 +168,7 @@ unsafe extern "C" fn read_callback(
         bytes.len()
     ));
     assert_eq!(&bytes, b"payload!");
+    CLONE_BYTES.with(|captured| *captured.borrow_mut() = bytes.to_vec());
 
     let mut text: *mut JSString = ptr::null_mut();
     assert!(js::jsapi::JS_ReadString(reader, raw_mutable(&mut text)));
@@ -186,6 +190,7 @@ unsafe extern "C" fn read_callback(
     let mut p2 = 0;
     assert!(js::jsapi::JS_ReadUint32Pair(reader, &mut p1, &mut p2));
     assert_eq!((p1, p2), (11, 22));
+    CLONE_PAIR.with(|pair| pair.set((p1, p2)));
 
     READS.with(|reads| reads.borrow_mut().push(data));
     let cx = JSContext::from_ptr(NonNull::new(cx).unwrap());
@@ -254,6 +259,7 @@ fn buffer_lifecycle(engine: &JSEngine) {
         assert!(write_value(cx, value, empty, &mut (*source).data_));
         let length = GetLengthOfJSStructuredCloneData(&mut (*source).data_);
         assert!(length > 0);
+        let source_length = length;
 
         let mut bytes = vec![0u8; length];
         CopyJSStructuredCloneData(&mut (*source).data_, bytes.as_mut_ptr());
@@ -266,10 +272,8 @@ fn buffer_lifecycle(engine: &JSEngine) {
             bytes.len(),
             &mut (*destination).data_
         ));
-        assert_eq!(
-            GetLengthOfJSStructuredCloneData(&mut (*destination).data_),
-            length
-        );
+        let copied_length = GetLengthOfJSStructuredCloneData(&mut (*destination).data_);
+        assert_eq!(copied_length, length, "copied bytes must preserve the clone length");
         let output = read_value(cx, &(*destination).data_).expect("reading copied bytes");
         assert!(output.is_object());
         let answer = crate::support::get_property(cx, output, c"answer");
@@ -277,12 +281,28 @@ fn buffer_lifecycle(engine: &JSEngine) {
             crate::support::observe(cx, answer),
             crate::support::Value::Number(42.0)
         );
+        let answer = 42.0;
+        rooted!(&in(cx) let list = crate::support::get_property(cx, output, c"list"));
+        let list = list.to_object();
+        let list_len = if !list.is_null() {
+            let mut len = 0;
+            assert!(js::rust::wrappers2::GetArrayLength(cx, safe_handle(&list), &mut len));
+            len
+        } else { 0 };
+        assert_eq!(list_len, 3, "serialized array must retain all elements");
         DeleteJSAutoStructuredCloneBuffer(destination);
-    });
-
-    record(
-        "clone.buffer_lifecycle",
-        &Observation::ok(Observed::Boolean(true)),
+        record(
+            "clone.buffer_lifecycle",
+            &Observation::new(vec![
+                ("source_length_positive", Observed::Boolean(source_length > 0)),
+                (
+                    "copied_length_matches",
+                    Observed::Boolean(copied_length == source_length),
+                ),
+                ("output_is_object", Observed::Boolean(true)),
+                ("answer", Observed::Number(answer)),
+                ("list_length", Observed::Number(list_len as f64)),
+            ]),
         &[
             "CopyJSStructuredCloneData",
             "DeleteJSAutoStructuredCloneBuffer",
@@ -292,14 +312,17 @@ fn buffer_lifecycle(engine: &JSEngine) {
             "JS_WriteStructuredClone",
             "NewJSAutoStructuredCloneBuffer",
             "WriteBytesToJSStructuredCloneData",
-        ],
-    );
+            ],
+        );
+    });
 }
 
 fn callback_roundtrip(engine: &JSEngine) {
     WRITES.with(|writes| writes.borrow_mut().clear());
     READS.with(|reads| reads.borrow_mut().clear());
     SCOPES.with(|scopes| scopes.borrow_mut().clear());
+    CLONE_BYTES.with(|bytes| bytes.borrow_mut().clear());
+    CLONE_PAIR.with(|pair| pair.set((0, 0)));
 
     with_global(engine, |cx, global| unsafe {
         let host = new_host(cx, 7);
@@ -332,18 +355,28 @@ fn callback_roundtrip(engine: &JSEngine) {
         let first = crate::support::get_property(cx, output, c"0");
         let second = crate::support::get_property(cx, output, c"1");
         assert!(first.is_object() && second.is_object());
-    });
-
-    assert_eq!(WRITES.with(|writes| writes.borrow().clone()), vec![7, 7]);
-    assert_eq!(READS.with(|reads| reads.borrow().clone()), vec![7, 7]);
-    assert_eq!(
-        SCOPES.with(|scopes| scopes.borrow().clone()),
-        vec![SCOPE, SCOPE]
-    );
-
-    record(
-        "clone.callback_roundtrip",
-        &Observation::ok(Observed::Boolean(true)),
+        let first_id = host_id(first.to_object());
+        let second_id = host_id(second.to_object());
+        let callback_bytes = String::from_utf8(CLONE_BYTES.with(|bytes| bytes.borrow().clone()))
+            .expect("callback bytes are UTF-8");
+        assert_eq!(callback_bytes, "payload!");
+        let callback_pair = CLONE_PAIR.with(Cell::get);
+        assert_eq!(callback_pair, (11, 22));
+        record(
+            "clone.callback_roundtrip",
+            &Observation::new(vec![
+                ("writes", Observed::String(format!("{:?}", WRITES.with(|writes| writes.borrow().clone())))),
+                ("reads", Observed::String(format!("{:?}", READS.with(|reads| reads.borrow().clone())))),
+                ("scopes", Observed::String(format!("{:?}", SCOPES.with(|scopes| scopes.borrow().clone())))),
+                ("host_ids", Observed::String(format!("{:?}", (first_id, second_id)))),
+                ("first_is_object", Observed::Boolean(first.is_object())),
+                ("second_is_object", Observed::Boolean(second.is_object())),
+                ("callback_bytes", Observed::String(callback_bytes)),
+                (
+                    "callback_pair",
+                    Observed::String(format!("{},{}", callback_pair.0, callback_pair.1)),
+                ),
+            ]),
         &[
             "JS_GetStructuredCloneScope",
             "JS_NewGlobalObject",
@@ -360,11 +393,189 @@ fn callback_roundtrip(engine: &JSEngine) {
             "JS_WriteUint32PairUnchecked",
             "NewJSAutoStructuredCloneBuffer",
             "DeleteJSAutoStructuredCloneBuffer",
+            ],
+        );
+    });
+}
+
+
+mod edge_clone_more_contract {
+use crate::support::{Observation, Value, eval, record_case, set_global};
+use std::ptr;
+
+use js::context::JSContext;
+use js::conversions::jsstr_to_string;
+use js::glue::{
+    CopyJSStructuredCloneData, DeleteJSAutoStructuredCloneBuffer,
+    GetLengthOfJSStructuredCloneData, GetUint8ArrayLengthAndData, NewJSAutoStructuredCloneBuffer,
+    WriteBytesToJSStructuredCloneData,
+};
+use js::jsapi::js::StringIsArrayIndex;
+use js::jsapi::mozilla::Range;
+use js::jsapi::{
+    AtomToLinearString, CloneDataPolicy, GetArrayBufferByteLength, GetArrayBufferData,
+    GetArrayBufferLengthAndData, GetFunctionNativeReserved, GetLinearStringCharAt,
+    GetLinearStringLength, GetStaticPrototype, IsArrayBufferObject, IsCallable, IsConstructor,
+    IsDetachedArrayBufferObject, JS_ClearPendingException, JS_DeprecatedStringHasLatin1Chars,
+    JS_GetArrayBufferViewByteLength, JS_GetArrayBufferViewByteOffset, JS_GetArrayBufferViewType,
+    JS_GetFunctionArity, JS_GetFunctionObject, JS_GetStringLength, JS_GetTypedArrayByteLength,
+    JS_GetTypedArrayLength, JS_IsArrayBufferViewObject, JS_IsExceptionPending, JS_IsGlobalObject,
+    JS_IsTypedArrayObject, JS_STRUCTURED_CLONE_VERSION, JSStructuredCloneData, JSObject,
+    SetFunctionNativeReserved, StructuredCloneScope, UnwrapArrayBuffer, UnwrapInt32Array,
+    UnwrapUint32Array, UnwrapUint8Array, jsid,
+};
+use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::rooted;
+use js::rust::wrappers2::{
+    ArrayBufferClone, ArrayBufferCopyData, Construct1, CopyArrayBuffer, DefineFunctionWithReserved,
+    DequeueNextRegularMicroTask, DetachArrayBuffer, EnqueueMicroTask, FromPropertyDescriptor,
+    GetArrayLength, GetCurrentRealmOrNull, GetFunctionRealm, GetObjectProto,
+    GetRealmErrorPrototype, GetRealmFunctionPrototype, GetRealmIteratorPrototype,
+    GetRealmObjectPrototype, GetRegularMicroTaskCount, HasAnyMicroTasks,
+    HasDefinedArrayBufferDetachKey, HasRegularMicroTasks, IsArgumentsObject, IsArrayObject,
+    JS_AtomizeAndPinString, JS_AtomizeStringN, JS_CompareStrings, JS_ConcatStrings,
+    JS_DefineProperty, JS_DefineProperty2, JS_DefineUCProperty2, JS_DequeueNextMicroTask,
+    JS_ForwardGetPropertyTo, JS_ForwardSetPropertyTo, JS_FreezeObject,
+    JS_GetArrayBufferViewBuffer, JS_GetEmptyString, JS_GetFunctionDisplayId, JS_GetFunctionId,
+    JS_GetLatin1StringCharsAndLength, JS_GetStringCharAt, JS_GetTwoByteStringCharsAndLength,
+    JS_InitializePropertiesFromCompatibleNativeObject, JS_IsIdentifier,
+    JS_LinkConstructorAndPrototype, JS_NewDataView, JS_NewDependentString,
+    JS_NewFloat32ArrayWithBuffer, JS_NewFloat64ArrayWithBuffer, JS_NewInt16ArrayWithBuffer,
+    JS_NewInt32Array, JS_NewInt32ArrayWithBuffer, JS_NewInt8ArrayWithBuffer,
+    JS_NewObjectWithoutMetadata, JS_NewPlainObject, JS_NewStringCopyN, JS_NewStringCopyUTF8N,
+    JS_NewUCStringCopyN, JS_NewUint16ArrayWithBuffer, JS_NewUint32Array,
+    JS_NewUint32ArrayWithBuffer, JS_NewUint8Array, JS_NewUint8ArrayWithBuffer,
+    JS_NewUint8ClampedArrayWithBuffer, JS_ReadStructuredClone, JS_SetImmutablePrototype,
+    JS_TypeOfValue, JS_ValueToFunction, JS_ValueToId, JS_ValueToSource,
+    JS_WriteStructuredClone, NewArrayBuffer, NewArrayBufferWithContents, NewArrayObject,
+    NewArrayObject1, NewExternalArrayBuffer, NewFunctionWithReserved, PeekNextMicroTask,
+    PrependMicroTask, RUST_JSID_IS_VOID, RunJSMicroTask, SameValue, SetArrayLength,
+    SetDataPropertyDescriptor, SetPropertyIgnoringNamedGetter, StealArrayBufferContents,
+    ToBooleanSlow, ToInt32Slow, ToInt64Slow, ToNumberSlow, ToStringSlow, ToUint16Slow,
+    ToUint32Slow, ToUint64Slow,
+};
+use js::rust::JSEngine;
+
+fn structured_clone(engine: &JSEngine) {
+    record_case(
+        engine,
+        "edge.structured_clone",
+        &[
+            "NewJSAutoStructuredCloneBuffer", "DeleteJSAutoStructuredCloneBuffer",
+            "CopyJSStructuredCloneData", "GetLengthOfJSStructuredCloneData",
+            "JS_WriteStructuredClone", "JS_ReadStructuredClone",
+            "WriteBytesToJSStructuredCloneData",
         ],
+        |cx, global| unsafe {
+            let scope = StructuredCloneScope::DifferentProcess;
+            let policy = CloneDataPolicy {
+                allowIntraClusterClonableSharedObjects_: false,
+                allowSharedMemoryObjects_: false,
+            };
+            let source = NewJSAutoStructuredCloneBuffer(scope, ptr::null());
+            assert!(!source.is_null());
+            rooted!(&in(cx) let value = eval(cx, global, "({a:1, b:[2,3], s:'clone'})"));
+            rooted!(&in(cx) let transfer = UndefinedValue());
+            let write_ok = JS_WriteStructuredClone(
+                cx,
+                value.handle(),
+                &mut (*source).data_,
+                scope,
+                &policy,
+                ptr::null(),
+                ptr::null_mut(),
+                transfer.handle(),
+            );
+            assert!(write_ok, "JS_WriteStructuredClone must serialize the object");
+            let written_len = GetLengthOfJSStructuredCloneData(&mut (*source).data_);
+            assert!(written_len > 0, "a written clone must have non-zero length");
+            let mut bytes = vec![0u8; written_len];
+            CopyJSStructuredCloneData(&mut (*source).data_, bytes.as_mut_ptr());
+            assert_eq!(bytes.len(), written_len);
+
+            let destination = NewJSAutoStructuredCloneBuffer(scope, ptr::null());
+            assert!(!destination.is_null());
+            let copy_ok = WriteBytesToJSStructuredCloneData(
+                bytes.as_ptr(),
+                bytes.len(),
+                &mut (*destination).data_,
+            );
+            assert!(copy_ok, "WriteBytesToJSStructuredCloneData must accept copied bytes");
+            let copied_len = GetLengthOfJSStructuredCloneData(&mut (*destination).data_);
+            assert_eq!(
+                copied_len, written_len,
+                "WriteBytesToJSStructuredCloneData must preserve the serialized length"
+            );
+            rooted!(&in(cx) let mut read_back = UndefinedValue());
+            let read_ok = JS_ReadStructuredClone(
+                cx,
+                &(*destination).data_,
+                JS_STRUCTURED_CLONE_VERSION,
+                scope,
+                read_back.handle_mut(),
+                &policy,
+                ptr::null(),
+                ptr::null_mut(),
+            );
+            assert!(read_ok, "JS_ReadStructuredClone must deserialize the copied bytes");
+            let roundtrip = if read_back.get().is_object() {
+                set_global(cx, global, c"roundtrip", read_back.get());
+                let text = eval(
+                    cx,
+                    global,
+                    "`${roundtrip.a}|${roundtrip.b.join(',')}|${roundtrip.s}`",
+                );
+                let text = string_of(cx, text);
+                Value::String(text)
+            } else {
+                Value::Null
+            };
+            assert_eq!(
+                roundtrip,
+                Value::String("1|2,3|clone".to_owned()),
+                "structured clone must preserve object fields and nested arrays"
+            );
+
+            DeleteJSAutoStructuredCloneBuffer(source);
+            DeleteJSAutoStructuredCloneBuffer(destination);
+
+            Observation::new(vec![
+                ("write_ok", Value::Boolean(write_ok)),
+                ("bytes_match", Value::Boolean(bytes.len() == written_len)),
+                ("copy_ok", Value::Boolean(copy_ok)),
+                ("copied_len_positive", Value::Boolean(copied_len > 0)),
+                ("read_ok", Value::Boolean(read_ok)),
+                ("roundtrip", roundtrip),
+            ])
+        },
     );
+}
+fn range<T>(ptr: *mut T, len: usize) -> Range<T> {
+    unsafe {
+        let mut range: Range<T> = std::mem::zeroed();
+        range.mStart.mPtr = ptr;
+        range.mEnd.mPtr = ptr.add(len);
+        range
+    }
+}
+
+fn string_of(cx: &mut JSContext, value: JSVal) -> String {
+    assert!(value.is_string());
+    unsafe {
+        jsstr_to_string(
+            cx,
+            std::ptr::NonNull::new(value.to_string()).expect("non-null string"),
+        )
+    }
 }
 
 pub fn run(engine: &JSEngine) {
+    structured_clone(engine);
+}
+
+}
+pub fn run(engine: &JSEngine) {
+    edge_clone_more_contract::run(engine);
     crate::support::isolate_case("clone.buffer_lifecycle", || buffer_lifecycle(engine));
     crate::support::isolate_case("clone.callback_roundtrip", || callback_roundtrip(engine));
 }

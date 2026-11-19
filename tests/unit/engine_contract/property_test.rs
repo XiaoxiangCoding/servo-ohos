@@ -270,6 +270,8 @@ pub fn run(engine: &JSEngine) {
                 object_value.handle().into(),
                 ATTRS,
             ));
+            let id_object_answer = eval_observe(cx, _global, "o.id_object_value.answer");
+            assert_eq!(id_object_answer, Observed::Number(41.0));
             rooted!(&in(cx) let id6 = id_for(cx, _global, "'id_string_value'"));
             assert!(JS_DefinePropertyById6(
                 cx,
@@ -304,6 +306,52 @@ pub fn run(engine: &JSEngine) {
                 &mut found,
             ));
             assert!(found);
+
+            // The positive lookups above cannot distinguish a real lookup from one that always
+            // answers true, so each family also checks an absent name.
+            let mut missing = true;
+            assert!(JS_HasProperty(
+                cx,
+                object.handle(),
+                c"missing_value".as_ptr(),
+                &mut missing,
+            ));
+            assert!(!missing);
+            rooted!(&in(cx) let missing_name_value = eval(cx, _global, "'missing_value'"));
+            rooted!(&in(cx) let mut missing_id = jsid::default());
+            assert!(JS_ValueToId(
+                cx,
+                missing_name_value.handle().into(),
+                missing_id.handle_mut().into()
+            ));
+            assert!(JS_HasPropertyById(
+                cx,
+                object.handle(),
+                missing_id.handle().into(),
+                &mut missing,
+            ));
+            assert!(!missing);
+            assert!(JS_HasOwnProperty(
+                cx,
+                object.handle(),
+                c"missing_value".as_ptr(),
+                &mut missing,
+            ));
+            assert!(!missing);
+            assert!(JS_HasOwnPropertyById(
+                cx,
+                object.handle(),
+                missing_id.handle().into(),
+                &mut missing,
+            ));
+            assert!(!missing);
+            assert!(JS_AlreadyHasOwnPropertyById(
+                cx,
+                object.handle(),
+                missing_id.handle().into(),
+                &mut missing,
+            ));
+            assert!(!missing);
             assert!(JS_HasPropertyById(
                 cx,
                 object.handle(),
@@ -332,7 +380,6 @@ pub fn run(engine: &JSEngine) {
                 &mut found,
             ));
             assert!(found);
-
             rooted!(&in(cx) let set_id = id_for(cx, _global, "'by_id_set'"));
             rooted!(&in(cx) let twenty_one = Int32Value(21));
             assert!(JS_SetPropertyById(
@@ -430,6 +477,53 @@ pub fn run(engine: &JSEngine) {
             assert!(!is_none);
             let double_descriptor_value = observe(cx, desc.get().value_);
 
+            let missing_name = c"missing_value".as_ptr();
+            let mut missing_desc = true;
+            assert!(JS_GetOwnPropertyDescriptor(
+                cx,
+                object.handle(),
+                missing_name,
+                desc.handle_mut().into(),
+                &mut missing_desc,
+            ));
+            assert!(missing_desc);
+            rooted!(&in(cx) let missing_name_value = eval(cx, _global, "'missing_value'"));
+            rooted!(&in(cx) let mut missing_id = jsid::default());
+            assert!(JS_ValueToId(
+                cx,
+                missing_name_value.handle().into(),
+                missing_id.handle_mut().into()
+            ));
+            let mut missing_desc = true;
+            assert!(JS_GetOwnPropertyDescriptorById(
+                cx,
+                object.handle(),
+                missing_id.handle().into(),
+                desc.handle_mut().into(),
+                &mut missing_desc,
+            ));
+            assert!(missing_desc);
+            let mut missing_desc = true;
+            assert!(JS_GetPropertyDescriptor(
+                cx,
+                object.handle(),
+                missing_name,
+                desc.handle_mut().into(),
+                holder_obj.handle_mut().into(),
+                &mut missing_desc,
+            ));
+            assert!(missing_desc);
+            let mut missing_desc = true;
+            assert!(JS_GetPropertyDescriptorById(
+                cx,
+                object.handle(),
+                missing_id.handle().into(),
+                desc.handle_mut().into(),
+                holder_obj.handle_mut().into(),
+                &mut missing_desc,
+            ));
+            assert!(missing_desc);
+
             rooted!(&in(cx) let mut prototype: *mut js::jsapi::JSObject = ptr::null_mut());
             assert!(JS_GetPrototype(
                 cx,
@@ -437,6 +531,15 @@ pub fn run(engine: &JSEngine) {
                 prototype.handle_mut().into()
             ));
             assert!(!prototype.get().is_null());
+            assert_ne!(prototype.get(), proto.get());
+            let prototype_before_set = prototype.get();
+            rooted!(&in(cx) let plain_for_proto = JS_NewPlainObject(cx));
+            assert!(JS_GetPrototype(
+                cx,
+                plain_for_proto.handle().into(),
+                prototype.handle_mut().into()
+            ));
+            assert_eq!(prototype.get(), prototype_before_set);
             assert!(JS_SetPrototype(
                 cx,
                 object.handle().into(),
@@ -459,6 +562,9 @@ pub fn run(engine: &JSEngine) {
             ));
             let boxed_number_is_object = !boxed.get().is_null();
             assert!(boxed_number_is_object);
+            set_global(cx, _global, c"boxed", ObjectValue(boxed.get()));
+            let boxed_value = eval_observe(cx, _global, "globalThis.boxed.valueOf()");
+            assert_eq!(boxed_value, Observed::Number(3.0));
 
             let constructor = eval(cx, _global, "(function C(v) { this.v = v; })");
             rooted!(&in(cx) let constructor = constructor);
@@ -476,6 +582,8 @@ pub fn run(engine: &JSEngine) {
             set_global(cx, _global, c"constructed", ObjectValue(constructed.get()));
             let constructed_instanceof_object =
                 eval_observe(cx, _global, "globalThis.constructed instanceof Object");
+            let constructed_value = eval_observe(cx, _global, "globalThis.constructed.v");
+            assert_eq!(constructed_value, Observed::Number(31.0));
 
             rooted!(&in(cx) let mut rval = UndefinedValue());
             assert!(JS_CallFunctionName(
@@ -486,49 +594,63 @@ pub fn run(engine: &JSEngine) {
                 rval.handle_mut().into(),
             ));
             let native_fun_result = observe(cx, rval.get());
+            assert_eq!(native_fun_result, Observed::Number(7.0));
 
             let object_value = ObjectValue(object.get());
+            let object_value_answer = eval_observe(cx, _global, "o.object_value.answer");
+            assert_eq!(object_value_answer, Observed::Number(41.0));
+            let string_value = observe_property(cx, object_value, c"string_value");
+            assert_eq!(string_value, Observed::String("native string".to_owned()));
+            let int_value = observe_property(cx, object_value, c"int_value");
+            assert_eq!(int_value, Observed::Number(-7.0));
+            let uint_value = observe_property(cx, object_value, c"uint_value");
+            assert_eq!(uint_value, Observed::Number(u32::MAX as f64));
+            let double_value = observe_property(cx, object_value, c"double_value");
+            assert_eq!(double_value, Observed::Number(1.5));
+            let unicode = eval_observe(cx, _global, "o.ünicode");
+            assert_eq!(unicode, Observed::Number(12.0));
+            let desc_id = observe_property(cx, object_value, c"desc_id");
+            assert_eq!(desc_id, Observed::Number(99.0));
+            let id_string_value = observe_property(cx, object_value, c"id_string_value");
+            assert_eq!(
+                id_string_value,
+                Observed::String("native string".to_owned())
+            );
+            let by_id_set_after_delete =
+                observe_property(cx, object_value, c"by_id_set");
+            assert_eq!(by_id_set_after_delete, Observed::Undefined);
+            let by_id_fun_after_delete =
+                observe_property(cx, object_value, c"by_id_fun");
+            assert_eq!(by_id_fun_after_delete, Observed::Undefined);
+            let element_0 = observe_property(cx, object_value, c"0");
+            assert_eq!(element_0, Observed::Number(5.0));
+            let uc_property_set = observe_property(cx, object_value, c"uc_set");
+            assert_eq!(uc_property_set, Observed::Number(22.0));
             Observation::new(vec![
                 ("object_accessor", object_accessor),
                 ("seen_after_set", seen_after_set),
+                ("id_object_answer", id_object_answer),
                 ("id_accessor", id_accessor),
                 ("uc_property_get", uc_get),
-                (
-                    "int_value",
-                    observe_property(cx, object_value, c"int_value"),
-                ),
-                (
-                    "uint_value",
-                    observe_property(cx, object_value, c"uint_value"),
-                ),
-                (
-                    "double_value",
-                    observe_property(cx, object_value, c"double_value"),
-                ),
-                ("unicode", eval_observe(cx, _global, "o.ünicode")),
-                ("desc_id", observe_property(cx, object_value, c"desc_id")),
-                (
-                    "id_string_value",
-                    observe_property(cx, object_value, c"id_string_value"),
-                ),
-                (
-                    "by_id_set_after_delete",
-                    observe_property(cx, object_value, c"by_id_set"),
-                ),
+                ("object_value_answer", object_value_answer),
+                ("string_value", string_value),
+                ("int_value", int_value),
+                ("uint_value", uint_value),
+                ("double_value", double_value),
+                ("unicode", unicode),
+                ("desc_id", desc_id),
+                ("id_string_value", id_string_value),
+                ("by_id_set_after_delete", by_id_set_after_delete),
                 ("native_fun_result", native_fun_result),
-                (
-                    "by_id_fun_after_delete",
-                    observe_property(cx, object_value, c"by_id_fun"),
-                ),
-                ("element_0", observe_property(cx, object_value, c"0")),
-                (
-                    "uc_property_set",
-                    observe_property(cx, object_value, c"uc_set"),
-                ),
+                ("by_id_fun_after_delete", by_id_fun_after_delete),
+                ("element_0", element_0),
+                ("uc_property_set", uc_property_set),
                 (
                     "constructed_instanceof_object",
                     constructed_instanceof_object,
                 ),
+                ("constructed_value", constructed_value),
+                ("boxed_value", boxed_value),
                 ("int_descriptor_value", int_descriptor_value),
                 (
                     "int_descriptor_writable",

@@ -23,15 +23,16 @@ fn ran() -> Observation {
 /// the global was one. Servo calls it from the debugger global scope to hand `debugger.js` the
 /// same `Debugger` entry point on both engines.
 fn global_object(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, global| unsafe {
+    let debugger_type = with_global(engine, |cx, global| unsafe {
         assert!(
             js::rust::wrappers2::JS_DefineDebuggerObject(cx, global),
             "JS_DefineDebuggerObject failed"
         );
         let value = eval(cx, global, "typeof Debugger");
         assert_eq!(observe(cx, value), Value::String("function".to_owned()));
+        observe(cx, value)
     });
-    ran()
+    Observation::new(vec![("debugger_type", debugger_type)])
 }
 
 /// `JS_FireOnNewGlobalObject` delivers the hook that a `DontFireOnNewGlobalHook` global skipped

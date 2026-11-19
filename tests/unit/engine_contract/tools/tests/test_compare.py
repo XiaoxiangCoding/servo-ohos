@@ -212,6 +212,66 @@ class CompareTest(unittest.TestCase):
         self.assertIn("mismatch: case.one", output.getvalue())
         self.assertNotIn("stale known QuickJS defect: case.one", output.getvalue())
 
+    def test_rejects_a_new_step_failure_hidden_by_a_case_level_entry(self):
+        sm = self.observation("spidermonkey-contract-results.jsonl", fields={"value": True})
+        qjs = self.observation(
+            "quickjs-contract-results.jsonl",
+            fields={
+                "panic": "assertion `left == right` failed",
+                "step_failures": [
+                    {"step": "old_step", "panic": "assertion `left == right` failed"},
+                    {"step": "new_step", "panic": "assertion failed: new divergence"},
+                ],
+            },
+        )
+        differences = self.write(
+            "quickjs-difference-allowlist.toml",
+            DIFFERENCES_HEADER
+            .replace('fields = ["fields"]', 'fields = ["fields"]\nsteps = ["old_step"]')
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = compare.main(["compare.py", sm, qjs, differences])
+        self.assertEqual(result, 1, output.getvalue())
+        self.assertIn("mismatch: case.one", output.getvalue())
+
+    def test_releases_an_entry_that_names_every_failed_step(self):
+        sm = self.observation("spidermonkey-contract-results.jsonl", fields={"value": True})
+        qjs = self.observation(
+            "quickjs-contract-results.jsonl",
+            fields={
+                "panic": "assertion failed",
+                "step_failures": [{"step": "one", "panic": "assertion failed"}],
+            },
+        )
+        differences = self.write(
+            "quickjs-difference-allowlist.toml",
+            DIFFERENCES_HEADER
+            .replace('fields = ["fields"]', 'fields = ["fields"]\nsteps = ["one"]')
+            + 'panic = "assertion failed"\n'
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            result = compare.main(["compare.py", sm, qjs, differences])
+        self.assertEqual(result, 0, output.getvalue())
+
+    def test_rejects_an_empty_steps_list(self):
+        sm = self.coverage("spidermonkey-contract-results.jsonl", {"value": True})
+        qjs = self.coverage("quickjs-contract-results.jsonl", {"value": False})
+        differences = self.write(
+            "quickjs-difference-allowlist.toml",
+            DIFFERENCES_HEADER
+            .replace('fields = ["fields"]', 'fields = ["fields"]\nsteps = []')
+            + 'status = "accepted"\n'
+            + 'severity = "P3"\n',
+        )
+        with self.assertRaisesRegex(SystemExit, "must list non-empty step names"):
+            compare.main(["compare.py", sm, qjs, differences])
+
     def inventory(self, cases):
         path = os.path.join(self.temporary.name, "cases.json")
         with open(path, "w", encoding="utf-8") as file:

@@ -18,8 +18,8 @@ use js::jsval::Int32Value;
 use js::rooted;
 use js::rust::JSEngine;
 use js::rust::wrappers2::{
-    JS_GC, JS_GetProperty, JS_NewEnumerateStandardClasses, JS_NewObject, JS_NewPlainObject,
-    JS_ResolveStandardClass, RUST_INTERNED_STRING_TO_JSID,
+    JS_GC, JS_GetProperty, JS_GetPropertyById, JS_IdToValue, JS_NewEnumerateStandardClasses,
+    JS_NewObject, JS_NewPlainObject, JS_ResolveStandardClass, RUST_INTERNED_STRING_TO_JSID,
 };
 
 use crate::support::{Observation, Value, Value as Observed, eval, observe, record, with_global};
@@ -45,13 +45,43 @@ unsafe extern "C" fn want_to_measure(_: *mut jsapi::JSObject) -> bool {
     false
 }
 
+thread_local! {
+    static ROOTED_FINALIZED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+unsafe extern "C" fn finalize_rooted(_cx: *mut jsapi::GCContext, _obj: *mut jsapi::JSObject) {
+    ROOTED_FINALIZED.with(|count| count.set(count.get() + 1));
+}
+
+static ROOTED_CLASS_OPS: JSClassOps = JSClassOps {
+    addProperty: None,
+    delProperty: None,
+    enumerate: None,
+    newEnumerate: None,
+    resolve: None,
+    mayResolve: None,
+    finalize: Some(finalize_rooted),
+    call: None,
+    construct: None,
+    trace: None,
+};
+
+static ROOTED_CLASS: JSClass = JSClass {
+    name: c"ContractRawRoot".as_ptr(),
+    flags: jsapi::JSCLASS_FOREGROUND_FINALIZE,
+    cOps: &ROOTED_CLASS_OPS,
+    spec: ptr::null(),
+    ext: ptr::null(),
+    oOps: ptr::null(),
+};
+
 fn gc_state(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
-        assert_eq!(
-            jsapi::JS_GetParentRuntime(cx.raw_cx()),
-            jsapi::JS_GetRuntime(cx.raw_cx())
-        );
-        assert_eq!(jsapi::RuntimeHeapState(), HeapState::Idle);
+    let fields = with_global(engine, |cx, _global| unsafe {
+        let parent_is_runtime =
+            jsapi::JS_GetParentRuntime(cx.raw_cx()) == jsapi::JS_GetRuntime(cx.raw_cx());
+        assert!(parent_is_runtime);
+        let idle_before = jsapi::RuntimeHeapState() == HeapState::Idle;
+        assert!(idle_before);
 
         let before = jsapi::GetGCHeapUsage(cx.raw_cx());
         rooted!(&in(cx) let unused = JS_NewPlainObject(cx));
@@ -63,7 +93,8 @@ fn gc_state(engine: &JSEngine) {
         );
 
         jsapi::NonIncrementalGC(cx.raw_cx(), GCOptions::Normal, GCReason::API);
-        assert_eq!(jsapi::RuntimeHeapState(), HeapState::Idle);
+        let idle_after_full = jsapi::RuntimeHeapState() == HeapState::Idle;
+        assert!(idle_after_full);
 
         let budget = SliceBudget {
             counter: jsapi::SliceBudget_UnlimitedCounter,
@@ -75,24 +106,43 @@ fn gc_state(engine: &JSEngine) {
             keepGoing: false,
         };
         jsapi::StartIncrementalGC(cx.raw_cx(), GCOptions::Normal, GCReason::API, &budget);
-        assert_eq!(jsapi::RuntimeHeapState(), HeapState::Idle);
+        let idle_after_incremental = jsapi::RuntimeHeapState() == HeapState::Idle;
+        assert!(idle_after_incremental);
 
         jsapi::SetLowMemoryState(cx.raw_cx(), true);
         jsapi::SetLowMemoryState(cx.raw_cx(), false);
-        assert_eq!(jsapi::RuntimeHeapState(), HeapState::Idle);
+        let idle_after_low_memory = jsapi::RuntimeHeapState() == HeapState::Idle;
+        assert!(idle_after_low_memory);
 
-        assert_eq!(
-            std::ffi::CStr::from_ptr(jsapi::GCTraceKindToAscii(TraceKind::Object)).to_str(),
-            Ok("JS Object")
-        );
-        assert_eq!(
-            std::ffi::CStr::from_ptr(jsapi::GCTraceKindToAscii(TraceKind::Script)).to_str(),
-            Ok("JS Script")
-        );
+        let object_kind = std::ffi::CStr::from_ptr(jsapi::GCTraceKindToAscii(TraceKind::Object))
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(object_kind, "JS Object");
+        let script_kind = std::ffi::CStr::from_ptr(jsapi::GCTraceKindToAscii(TraceKind::Script))
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(script_kind, "JS Script");
+        let string_kind = std::ffi::CStr::from_ptr(jsapi::GCTraceKindToAscii(TraceKind::String))
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(string_kind, "JS String");
+
+        vec![
+            ("parent_is_runtime", Value::Boolean(parent_is_runtime)),
+            ("idle_before", Value::Boolean(idle_before)),
+            ("idle_after_full", Value::Boolean(idle_after_full)),
+            ("idle_after_incremental", Value::Boolean(idle_after_incremental)),
+            ("idle_after_low_memory", Value::Boolean(idle_after_low_memory)),
+            ("heap_usage_non_decreasing", Value::Boolean(after >= before)),
+            ("heap_usage_nonzero", Value::Boolean(after > 0)),
+            ("object_trace_kind", Value::String(object_kind)),
+            ("script_trace_kind", Value::String(script_kind)),
+            ("string_trace_kind", Value::String(string_kind)),
+        ]
     });
     record(
         "misc.gc_state",
-        &Observation::ok(Observed::Boolean(true)),
+        &Observation::new(fields),
         &[
             "GCTraceKindToAscii",
             "GetGCHeapUsage",
@@ -109,21 +159,78 @@ fn gc_state(engine: &JSEngine) {
 }
 
 fn roots_options_and_memory(engine: &JSEngine) {
-    with_global(engine, |cx, _global| unsafe {
+    let fields = with_global(engine, |cx, _global| unsafe {
         let options: *mut ContextOptions = jsapi::ContextOptionsRef(cx.raw_cx());
         assert!(!options.is_null());
-        assert_eq!(options, jsapi::ContextOptionsRef(cx.raw_cx()));
+        let stable_options = options == jsapi::ContextOptionsRef(cx.raw_cx());
+        assert!(stable_options);
         let wasm = (*options).wasm_();
         (*options).set_wasm_(!wasm);
-        assert_eq!((*options).wasm_(), !wasm);
+        let wasm_flipped = (*options).wasm_() == !wasm;
+        assert!(wasm_flipped);
         (*options).set_wasm_(wasm);
+        let wasm_restored = (*options).wasm_() == wasm;
+        assert!(wasm_restored);
+
         let mut raw = Int32Value(9);
         assert!(jsapi::AddRawValueRoot(
             cx.raw_cx(),
             &mut raw,
             c"contract-root".as_ptr(),
         ));
+        let raw_value_preserved = raw.to_int32() == 9;
+        assert!(raw_value_preserved);
         jsapi::RemoveRawValueRoot(cx.raw_cx(), &mut raw);
+
+        // Root a real object at an unrooted location, collect, and read it back. The raw value
+        // is the only owner of the object here (no RootedGuard), so an AddRawValueRoot no-op
+        // leaves the object collectible and fails this check.
+        ROOTED_FINALIZED.with(|count| count.set(0));
+        let rooted_object = JS_NewObject(cx, &ROOTED_CLASS);
+        assert!(!rooted_object.is_null());
+        let marker = Int32Value(123);
+        let object_handle = js::rust::Handle::from_marked_location(&rooted_object);
+        let marker_handle = js::rust::Handle::from_marked_location(&marker);
+        assert!(js::rust::wrappers2::JS_SetProperty(
+            cx,
+            object_handle,
+            c"marker".as_ptr(),
+            marker_handle,
+        ));
+        let mut raw_object = js::jsval::ObjectValue(rooted_object);
+        assert!(jsapi::AddRawValueRoot(
+            cx.raw_cx(),
+            &mut raw_object,
+            c"contract-object-root".as_ptr(),
+        ));
+        JS_GC(cx, GCReason::API);
+        let rooted_marker = {
+            let raw_rooted_object = raw_object.to_object();
+            rooted!(&in(cx) let raw_rooted_object = raw_rooted_object);
+            rooted!(&in(cx) let mut marker_value = Int32Value(0));
+            assert!(js::rust::wrappers2::JS_GetProperty(
+                cx,
+                raw_rooted_object.handle(),
+                c"marker".as_ptr(),
+                marker_value.handle_mut(),
+            ));
+            marker_value.get().to_int32()
+        };
+        assert_eq!(rooted_marker, 123);
+        crate::support::observe_field(
+            "raw_rooted_marker",
+            Value::Number(rooted_marker as f64),
+        );
+        let rooted_finalized = ROOTED_FINALIZED.with(std::cell::Cell::get);
+        assert_eq!(rooted_finalized, 0);
+        jsapi::RemoveRawValueRoot(cx.raw_cx(), &mut raw_object);
+        JS_GC(cx, GCReason::API);
+        let finalized_after_remove = ROOTED_FINALIZED.with(std::cell::Cell::get);
+        assert_eq!(
+            finalized_after_remove, 1,
+            "RemoveRawValueRoot did not release the object"
+        );
+
         rooted!(&in(cx) let object = JS_NewPlainObject(cx));
         assert!(!object.get().is_null());
         jsapi::AddAssociatedMemory(object.get(), 64, MemoryUse::DOMBinding);
@@ -133,34 +240,73 @@ fn roots_options_and_memory(engine: &JSEngine) {
         // installed before CollectServoSizes enumerates objects.
         js::glue::InitializeMemoryReporter(Some(want_to_measure));
         let mut sizes: ServoSizes = std::mem::zeroed();
-        assert!(jsapi::AddServoSizeOf(
+        let add_sizes_ok = jsapi::AddServoSizeOf(
             cx.raw_cx(),
             Some(size_of),
             ptr::null_mut(),
             &mut sizes,
-        ));
+        );
+        assert!(add_sizes_ok);
         let mut collected: ServoSizes = std::mem::zeroed();
-        assert!(js::glue::CollectServoSizes(
+        let collect_ok = js::glue::CollectServoSizes(
             cx.raw_cx(),
             &mut collected,
             Some(object_size),
-        ));
+        );
+        assert!(collect_ok);
+        assert!(collected.gcHeapUsed > 0);
 
         let mut visitor = ObjectPrivateVisitor {
             vtable_: ptr::null(),
             getISupports_: Some(has_private),
         };
         let mut with_visitor: ServoSizes = std::mem::zeroed();
-        assert!(jsapi::AddServoSizeOf(
+        let add_with_visitor_ok = jsapi::AddServoSizeOf(
             cx.raw_cx(),
             Some(size_of),
             &mut visitor,
             &mut with_visitor,
-        ));
+        );
+        assert!(add_with_visitor_ok);
+        assert!(sizes.gcHeapUsed > 0);
+        assert!(with_visitor.gcHeapUsed > 0);
+
+        vec![
+            ("options_stable", Value::Boolean(stable_options)),
+            ("wasm_initial", Value::Boolean(wasm)),
+            ("wasm_flipped", Value::Boolean(wasm_flipped)),
+            ("wasm_restored", Value::Boolean(wasm_restored)),
+            ("raw_root_value", Value::Number(raw.to_int32() as f64)),
+            ("raw_value_preserved", Value::Boolean(raw_value_preserved)),
+            ("rooted_marker", Value::Number(rooted_marker as f64)),
+            ("rooted_finalized", Value::Number(rooted_finalized as f64)),
+            (
+                "finalized_after_remove",
+                Value::Number(finalized_after_remove as f64),
+            ),
+            ("add_servo_sizes", Value::Boolean(add_sizes_ok)),
+            ("collect_servo_sizes", Value::Boolean(collect_ok)),
+            (
+                "add_servo_sizes_with_visitor",
+                Value::Boolean(add_with_visitor_ok),
+            ),
+            (
+                "collected_gc_heap_nonzero",
+                Value::Boolean(collected.gcHeapUsed > 0),
+            ),
+            (
+                "sizeof_gc_heap_nonzero",
+                Value::Boolean(sizes.gcHeapUsed > 0),
+            ),
+            (
+                "visitor_gc_heap_nonzero",
+                Value::Boolean(with_visitor.gcHeapUsed > 0),
+            ),
+        ]
     });
     record(
         "misc.roots_options_memory",
-        &Observation::ok(Observed::Boolean(true)),
+        &Observation::new(fields),
         &[
             "AddAssociatedMemory",
             "AddRawValueRoot",
@@ -271,6 +417,13 @@ fn gc_callbacks(engine: &JSEngine) -> Observation {
             )
         });
 
+    // The callbacks are deliberately exercised on a reference engine too: a no-op registration
+    // leaves all four counts at zero, so these assertions fail instead of recording a silent
+    // "ran" fingerprint. QuickJS's known no-op behavior is covered by the allowlist.
+    assert!(gc_callback_calls.parse::<u32>().unwrap_or(0) > 0);
+    assert!(!slice_callback_calls.starts_with("0:"));
+    assert!(extra_root_traces.starts_with("true:") && !extra_root_traces.ends_with(":0"));
+    assert_ne!(gc_parameter, "0");
     Observation::new(vec![
         ("gc_callback_calls", Value::String(gc_callback_calls)),
         ("slice_callback_calls", Value::String(slice_callback_calls)),
@@ -318,74 +471,138 @@ static LAZY_CLASS_OPS: JSClassOps = JSClassOps {
     trace: None,
 };
 
-fn standard_classes(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, global| unsafe {
-        let mut ids = js::rust::IdVector::new(cx);
-        assert!(JS_NewEnumerateStandardClasses(
-            cx,
-            global,
-            ids.handle_mut(),
-            false
-        ));
-        assert!(
-            !ids.is_empty(),
-            "standard class enumeration returned no names"
-        );
-
-        let atom = jsapi::JS_AtomizeStringN(cx.raw_cx(), c"Array".as_ptr(), 5);
-        assert!(!atom.is_null(), "atomizing Array");
-        rooted!(&in(cx) let mut id = jsid::default());
-        RUST_INTERNED_STRING_TO_JSID(cx, atom, id.handle_mut());
-
-        let mut resolved = false;
-        assert!(JS_ResolveStandardClass(
-            cx,
-            global,
-            id.handle(),
-            &mut resolved
-        ));
-        assert!(resolved, "JS_ResolveStandardClass did not resolve Array");
-
-        rooted!(&in(cx) let mut value = js::jsval::UndefinedValue());
-        assert!(JS_GetProperty(
-            cx,
-            global,
-            c"Array".as_ptr(),
-            value.handle_mut()
-        ));
-        assert!(
-            !value.get().is_undefined(),
-            "Array stayed undefined after resolution"
-        );
-
-        let class = JSClass {
-            name: c"ContractLazyClass".as_ptr(),
-            flags: 0,
-            cOps: &LAZY_CLASS_OPS,
-            spec: ptr::null(),
-            ext: ptr::null(),
-            oOps: ptr::null(),
-        };
-        let lazy = JS_NewObject(cx, &class);
-        assert!(!lazy.is_null(), "creating the lazy object");
-        rooted!(&in(cx) let lazy = lazy);
-        crate::support::set_global(
-            cx,
-            global,
-            c"lazyObject",
-            js::jsval::ObjectValue(lazy.get()),
-        );
-
-        MAY_RESOLVED.with(|count| count.set(0));
-        let stringified = eval(cx, global, "JSON.stringify(lazyObject)");
-        assert_eq!(observe(cx, stringified), Value::String("{}".to_owned()));
-        assert!(
-            MAY_RESOLVED.with(std::cell::Cell::get) > 0,
-            "the mayResolve hook did not run during the pure toJSON lookup"
-        );
+fn standard_classes(engine: &JSEngine) {
+    let apis = &[
+        "JS_AtomizeStringN",
+        "JS_GetProperty",
+        "JS_MayResolveStandardClass",
+        "JS_NewEnumerateStandardClasses",
+        "JS_ResolveStandardClass",
+        "RUST_INTERNED_STRING_TO_JSID",
+    ];
+    let mut steps = crate::support::Steps::new("misc.standard_classes", apis);
+    steps.step("enumerate", || {
+        with_global(engine, |cx, global| unsafe {
+            let mut ids = js::rust::IdVector::new(cx);
+            assert!(JS_NewEnumerateStandardClasses(
+                cx,
+                global,
+                ids.handle_mut(),
+                false
+            ));
+            assert!(
+                !ids.is_empty(),
+                "standard class enumeration returned no names"
+            );
+            crate::support::observe_field(
+                "enumerate_count_nonzero",
+                Value::Boolean(!ids.is_empty()),
+            );
+        })
     });
+    steps.step("interned_string_to_id", || {
+        with_global(engine, |cx, global| unsafe {
+            let atom = jsapi::JS_AtomizeStringN(cx.raw_cx(), c"Array".as_ptr(), 5);
+            assert!(!atom.is_null(), "atomizing Array");
+            rooted!(&in(cx) let mut id = jsid::default());
+            RUST_INTERNED_STRING_TO_JSID(cx, atom, id.handle_mut());
+            assert!(id.get().is_string());
 
-    Observation::new(vec![("ran", Value::Boolean(true))])
+            rooted!(&in(cx) let mut value = js::jsval::UndefinedValue());
+            assert!(JS_IdToValue(cx, id.get(), value.handle_mut()));
+            let string = js::conversions::jsstr_to_string(
+                cx,
+                std::ptr::NonNull::new(value.get().to_string()).unwrap(),
+            );
+            assert_eq!(string, "Array");
+
+            let property = JS_GetPropertyById(cx, global, id.handle(), value.handle_mut());
+            assert!(property);
+            assert!(
+                !value.get().is_undefined(),
+                "the interned id did not address the global Array property"
+            );
+            crate::support::observe_field("interned_id_text", Value::String(string));
+        })
+    });
+    steps.step("atomize_and_resolve", || {
+        with_global(engine, |cx, global| unsafe {
+            let atom = jsapi::JS_AtomizeStringN(cx.raw_cx(), c"Array".as_ptr(), 5);
+            assert!(!atom.is_null(), "atomizing Array");
+            rooted!(&in(cx) let mut id = jsid::default());
+            RUST_INTERNED_STRING_TO_JSID(cx, atom, id.handle_mut());
+
+            let mut resolved = false;
+            assert!(JS_ResolveStandardClass(
+                cx,
+                global,
+                id.handle(),
+                &mut resolved
+            ));
+            assert!(resolved, "JS_ResolveStandardClass did not resolve Array");
+            crate::support::observe_field("resolved_array", Value::Boolean(resolved));
+        })
+    });
+    steps.step("get_property", || {
+        with_global(engine, |cx, global| unsafe {
+            // The global has not resolved `Array` lazily in this fresh realm, so this checks the
+            // property reader itself rather than the standard-class resolver.
+            rooted!(&in(cx) let mut value = js::jsval::UndefinedValue());
+            assert!(JS_GetProperty(
+                cx,
+                global,
+                c"Array".as_ptr(),
+                value.handle_mut()
+            ));
+            assert!(
+                !value.get().is_undefined(),
+                "Array stayed undefined in a fresh global"
+            );
+            assert!(eval(cx, global, "Array.isArray([])").to_boolean());
+            crate::support::observe_field(
+                "array_is_array",
+                crate::support::eval_observe(cx, global, "Array.isArray([])"),
+            );
+        })
+    });
+    steps.step("may_resolve", || {
+        with_global(engine, |cx, global| unsafe {
+            let class = JSClass {
+                name: c"ContractLazyClass".as_ptr(),
+                flags: 0,
+                cOps: &LAZY_CLASS_OPS,
+                spec: ptr::null(),
+                ext: ptr::null(),
+                oOps: ptr::null(),
+            };
+            let lazy = JS_NewObject(cx, &class);
+            assert!(!lazy.is_null(), "creating the lazy object");
+            rooted!(&in(cx) let lazy = lazy);
+            crate::support::set_global(
+                cx,
+                global,
+                c"lazyObject",
+                js::jsval::ObjectValue(lazy.get()),
+            );
+
+            MAY_RESOLVED.with(|count| count.set(0));
+            let stringified = eval(cx, global, "JSON.stringify(lazyObject)");
+            assert_eq!(observe(cx, stringified), Value::String("{}".to_owned()));
+            assert!(
+                MAY_RESOLVED.with(std::cell::Cell::get) > 0,
+                "the mayResolve hook did not run during the pure toJSON lookup"
+            );
+            crate::support::observe_field(
+                "may_resolve_count",
+                Value::Number(MAY_RESOLVED.with(std::cell::Cell::get) as f64),
+            );
+            crate::support::observe_field(
+                "stringified_lazy",
+                observe(cx, stringified),
+            );
+        })
+    });
+    steps.finish()
 }
 
 // ---------------------------------------------------------------------------
@@ -450,12 +667,13 @@ fn process_lifecycle(_engine: &JSEngine) -> Observation {
 /// by value as an opaque array, so its contents cannot be read back either. QuickJS returns `true`
 /// unconditionally and builds its standard library natively.
 fn self_hosted_code(engine: &JSEngine) -> Observation {
-    with_global(engine, |cx, global| {
+    let result = with_global(engine, |cx, global| {
         let value = eval(cx, global, "[].map(x => x + 1).length === 0");
         assert_eq!(observe(cx, value), Value::Boolean(true));
+        crate::support::eval_observe(cx, global, "'abc'.toUpperCase() + ':' + [1, 2, 3].map(x => x * 2).join('-')")
     });
 
-    Observation::new(vec![("ran", Value::Boolean(true))])
+    Observation::new(vec![("self_hosted_result", result)])
 }
 
 // ---------------------------------------------------------------------------
@@ -500,18 +718,7 @@ pub fn run(engine: &JSEngine) {
         ],
         || gc_callbacks(engine),
     );
-    crate::support::run_case(
-        "misc.standard_classes",
-        &[
-            "JS_AtomizeStringN",
-            "JS_GetProperty",
-            "JS_MayResolveStandardClass",
-            "JS_NewEnumerateStandardClasses",
-            "JS_ResolveStandardClass",
-            "RUST_INTERNED_STRING_TO_JSID",
-        ],
-        || standard_classes(engine),
-    );
+    crate::support::isolate_case("misc.standard_classes", || standard_classes(engine));
     crate::support::run_case(
         "misc.engine_options",
         &[

@@ -123,7 +123,220 @@ fn compartments(engine: &JSEngine) -> Observation {
     Observation::new(vec![("system", Value::Number(flags.system as f64))])
 }
 
+
+mod edge_realm_deep_contract {
+fn record_case_result(case: &str, observation: Observation, apis: &[&str]) {
+    crate::support::record(case, &observation, apis);
+}
+
+thread_local! {
+    static DEEP_TRACE_CALLS: Cell<u32> = const { Cell::new(0) };
+}
+
+unsafe extern "C" fn trace_global(trc: *mut jsapi::JSTracer, global: *mut JSObject) {
+    let nested = DEEP_TRACE_CALLS.with(|calls| {
+        let count = calls.get();
+        calls.set(count + 1);
+        count > 0
+    });
+    if !nested {
+        jsapi::JS_GlobalObjectTraceHook(trc, global);
+    }
+}
+
+fn realm_entry_identity_and_private(engine: &JSEngine) {
+    let mut runtime = Runtime::new(engine.handle());
+    let cx = runtime.cx();
+    unsafe {
+        let options = jsapi::JS_NewRealmOptions();
+        assert!(!options.is_null());
+        (*options).creationOptions_.traceGlobal_ = Some(trace_global);
+        DEEP_TRACE_CALLS.with(|calls| calls.set(0));
+        rooted!(&in(cx) let global = JS_NewGlobalObject(
+            cx,
+            &SIMPLE_GLOBAL_CLASS,
+            ptr::null_mut(),
+            jsapi::OnNewGlobalHookOption::FireOnNewGlobalHook,
+            options,
+        ));
+        let global_ptr = global.get();
+        assert!(!global_ptr.is_null());
+
+        let current_before = jsapi::CurrentGlobalOrNull(cx.raw_cx());
+        let realm = jsapi::GetObjectRealmOrNull(global_ptr);
+        assert!(!realm.is_null());
+        let realm_global_roundtrip = jsapi::GetRealmGlobalOrNull(realm) == global_ptr;
+        let non_ccw_global = jsapi::GetNonCCWObjectGlobal(global_ptr) == global_ptr;
+
+        let previous = jsapi::EnterRealm(cx.raw_cx(), global_ptr);
+        let entered_previous_null = previous.is_null();
+        let current_after_enter = jsapi::CurrentGlobalOrNull(cx.raw_cx()) == global_ptr;
+        let current_global_pointer = jsapi::CurrentGlobal(cx.raw_cx());
+        let current_global_nonnull = !current_global_pointer.is_null() && !(*current_global_pointer).is_null();
+        assert_eq!(entered_previous_null, true, "a realm was already entered");
+        assert_eq!(
+            current_after_enter, true,
+            "CurrentGlobalOrNull did not return the entered global"
+        );
+        assert_eq!(
+            current_global_nonnull, true,
+            "CurrentGlobal did not return the entered global"
+        );
+
+        let private = 0x1234_u32 as usize as *mut c_void;
+        jsapi::SetRealmPrivate(realm, private);
+        let private_roundtrip = jsapi::GetRealmPrivate(realm) == private;
+        jsapi::SetRealmPrivate(realm, ptr::null_mut());
+        let private_cleared = jsapi::GetRealmPrivate(realm).is_null();
+        assert_eq!(private_roundtrip, true, "realm private did not round trip");
+        assert_eq!(private_cleared, true, "realm private was not cleared");
+
+        js::rust::wrappers2::JS_GC(cx, jsapi::GCReason::API);
+        let trace_calls = DEEP_TRACE_CALLS.with(Cell::get);
+        let trace_state = if trace_calls > 0 { "called" } else { "not_called" };
+        assert_ne!(trace_state, "not_called", "the global trace hook did not run");
+
+        jsapi::LeaveRealm(cx.raw_cx(), previous);
+        let current_after_leave = jsapi::CurrentGlobalOrNull(cx.raw_cx()).is_null();
+        assert_eq!(current_after_leave, true, "LeaveRealm did not leave the realm");
+        jsapi::DeleteRealmOptions(options);
+
+        record_case_result(
+            "edge.realm.entry_identity_and_private",
+            Observation::new(vec![
+                (
+                    "current_before",
+                    Value::String(if current_before.is_null() {
+                        "none".to_owned()
+                    } else {
+                        "entered".to_owned()
+                    }),
+                ),
+                (
+                    "entered_previous",
+                    Value::String(if entered_previous_null {
+                        "none".to_owned()
+                    } else {
+                        "previous_realm".to_owned()
+                    }),
+                ),
+                (
+                    "current_after_enter",
+                    Value::String(if current_after_enter {
+                        "entered_global".to_owned()
+                    } else {
+                        format!("{current_global_pointer:p}")
+                    }),
+                ),
+                (
+                    "realm_global_roundtrip",
+                    Value::String(if realm_global_roundtrip {
+                        "same_global".to_owned()
+                    } else {
+                        "different_global".to_owned()
+                    }),
+                ),
+                (
+                    "non_ccw_global",
+                    Value::String(if non_ccw_global {
+                        "same_global".to_owned()
+                    } else {
+                        "different_global".to_owned()
+                    }),
+                ),
+                ("private_marker", Value::Number(0x1234_u32 as f64)),
+                (
+                    "private_after_clear",
+                    Value::String(if private_cleared {
+                        "cleared".to_owned()
+                    } else {
+                        "retained".to_owned()
+                    }),
+                ),
+                ("trace_hook", Value::String(trace_state.to_owned())),
+                (
+                    "current_after_leave",
+                    Value::String(if current_after_leave {
+                        "none".to_owned()
+                    } else {
+                        "entered".to_owned()
+                    }),
+                ),
+            ]),
+            &[
+                "CurrentGlobal",
+                "CurrentGlobalOrNull",
+                "DeleteRealmOptions",
+                "EnterRealm",
+                "GetNonCCWObjectGlobal",
+                "GetObjectRealmOrNull",
+                "GetRealmGlobalOrNull",
+                "GetRealmPrivate",
+                "JS_GlobalObjectTraceHook",
+                "JS_NewRealmOptions",
+                "LeaveRealm",
+                "SetRealmPrivate",
+            ],
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Script compilation, environment chains and script private values.
+// ---------------------------------------------------------------------------
+
+use std::cell::{Cell, RefCell};
+use std::ffi::{c_char, c_void, CStr};
+use std::ops::ControlFlow;
+use std::ptr::{self, NonNull};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use js::context::JSContext;
+use js::conversions::jsstr_to_string;
+use js::glue::{CallJitMethodOp, RUST_FUNCTION_VALUE_TO_JITINFO};
+use js::jsapi::{
+    self, CallArgs, CompilationType, ESClass, Handle, HandleString, HandleValue,
+    IsWeakMapObject, JSFunction, JSFunctionSpec, JSJitInfo, JS_GetArrayBufferViewType,
+    JS_GetFunctionObject, JS_GetTypedArrayByteLength, JS_GetTypedArrayLength,
+    JSJitMethodCallArgs, JSNativeWrapper, JSObject, JSPropertySpec, JSPropertySpec_Accessor,
+    JSPropertySpec_AccessorsOrValue, JSPropertySpec_AccessorsOrValue_Accessors,
+    JSPropertySpec_Kind, JSPropertySpec_Name, JSPROP_ENUMERATE, JSString, JSSecurityCallbacks,
+    PromiseRejectionHandlingState, PromiseState, PromiseUserInputEventHandlingState,
+    RuntimeCode, Value as JsValue, jsid,
+};
+use js::jsval::{Int32Value, JSVal, ObjectValue, StringValue, UndefinedValue};
+use js::rooted;
+use js::rust::wrappers2::{
+    AddPromiseReactions, Call, CallOriginalPromiseReject, CallOriginalPromiseResolve, Compile,
+    Compile1, CompileFunction, Evaluate, Evaluate2, GetBuiltinClass, GetJobQueue,
+    GetPromiseIsHandled, GetPromiseState,
+    GetRealmKeyObject, JS_DefineFunctions, JS_DefineProperties, JS_DefinePropertyById2,
+    JS_ExecuteScript, JS_GetScriptPrivate,
+    JS_NewFloat16ArrayFromArray, JS_NewFloat16ArrayWithBuffer, JS_NewFloat32Array,
+    JS_NewBigInt64ArrayWithBuffer, JS_NewBigUint64ArrayWithBuffer, JS_NewUint32ArrayWithBuffer,
+    JS_NewInt32ArrayWithBuffer, JS_RequestInterruptCallback, JS_SetSecurityCallbacks,
+    JS_AddInterruptCallback, JS_ExecuteScript1, NewPromiseObject, RejectPromise, ResolvePromise,
+    SetAnyPromiseIsHandled,
+    SetPromiseRejectionTrackerCallback, SetPromiseUserInputEventHandlingState,
+    GetWellKnownSymbol, RUST_SYMBOL_TO_JSID, int_to_jsid, NewExternalArrayBuffer,
+    JS_NewGlobalObject,
+};
+use js::rust::{
+    CompileOptionsWrapper, EnvironmentChain, JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS,
+    evaluate_script, for_of, transform_str_to_source_text,
+    transform_u16_to_source_text,
+};
+use js::rust::{HandleObject, IdVector, RootedObjectVectorWrapper};
+
+use crate::support::{Observation, Value, eval, record_case, set_global};
+
 pub fn run(engine: &JSEngine) {
+    realm_entry_identity_and_private(engine);
+}
+
+}
+pub fn run(engine: &JSEngine) {
+    edge_realm_deep_contract::run(engine);
     crate::support::run_case(
         "realm.compartments",
         &[
@@ -200,10 +413,16 @@ pub fn run(engine: &JSEngine) {
 
         record(
             "realm.enter_exit_and_private",
-            &Observation::new(vec![(
-                "global_trace_hook_calls",
-                Value::Boolean(trace_hook_calls > 0),
-            )]),
+            &Observation::new(vec![
+                (
+                    "global_trace_hook_calls",
+                    Value::Number(trace_hook_calls as f64),
+                ),
+                ("entered_previous_null", Value::Boolean(true)),
+                ("current_global_after_enter", Value::Boolean(true)),
+                ("realm_global_roundtrip", Value::Boolean(true)),
+                ("private_cleared", Value::Boolean(true)),
+            ]),
             &[
                 "CurrentGlobal",
                 "CurrentGlobalOrNull",
