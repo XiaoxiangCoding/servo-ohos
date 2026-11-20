@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """Mechanical steps of a mozjs upgrade.
 
 `prepare-mozjs-upgrade` in run.sh calls this after scanning the interface surface. It validates the
