@@ -473,8 +473,12 @@ pub fn run(engine: &JSEngine) {
             // A non-configurable property cannot be deleted; the operation reports failure and
             // the property remains visible.
             let mut delete_result = ObjectOpResult::default();
-            let delete_attempt =
-                JS_DeleteProperty(cx, object.handle(), c"int_value".as_ptr(), &mut delete_result);
+            let delete_attempt = JS_DeleteProperty(
+                cx,
+                object.handle(),
+                c"int_value".as_ptr(),
+                &mut delete_result,
+            );
             assert!(delete_attempt, "a failed delete must not throw");
             assert!(
                 !delete_result.ok(),
@@ -664,11 +668,9 @@ pub fn run(engine: &JSEngine) {
                 id_string_value,
                 Observed::String("native string".to_owned())
             );
-            let by_id_set_after_delete =
-                observe_property(cx, object_value, c"by_id_set");
+            let by_id_set_after_delete = observe_property(cx, object_value, c"by_id_set");
             assert_eq!(by_id_set_after_delete, Observed::Undefined);
-            let by_id_fun_after_delete =
-                observe_property(cx, object_value, c"by_id_fun");
+            let by_id_fun_after_delete = observe_property(cx, object_value, c"by_id_fun");
             assert_eq!(by_id_fun_after_delete, Observed::Undefined);
             let element_0 = observe_property(cx, object_value, c"0");
             assert_eq!(element_0, Observed::Number(5.0));
@@ -700,10 +702,7 @@ pub fn run(engine: &JSEngine) {
                 ("constructed_value", constructed_value),
                 ("boxed_value", boxed_value),
                 ("int_descriptor_value", int_descriptor_value),
-                (
-                    "int_value_after_failed_write",
-                    int_value_after_failed_write,
-                ),
+                ("int_value_after_failed_write", int_value_after_failed_write),
                 (
                     "int_value_after_failed_delete",
                     int_value_after_failed_delete,

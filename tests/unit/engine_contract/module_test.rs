@@ -212,7 +212,8 @@ unsafe extern "C" fn finish_dynamic_load(
     DYNAMIC_PROMISE.with(|slot| *slot.borrow_mut() = Some(Heap::boxed(promise)));
     DYNAMIC_MODULE.with(|slot| *slot.borrow_mut() = Some(Heap::boxed(module)));
     let result = Handle::from_marked_location(&module);
-    let finished = jsapi::FinishLoadingDynamicImportedModule(cx, referrer, request, payload, result);
+    let finished =
+        jsapi::FinishLoadingDynamicImportedModule(cx, referrer, request, payload, result);
     DYNAMIC_FINISHED.with(|done| done.set(finished));
     finished
 }
@@ -306,7 +307,10 @@ fn json_and_synthetic(engine: &JSEngine) {
             let bad =
                 CompileJsonModule1(cx, options.ptr, &mut transform_str_to_source_text("{ nope"));
             let bad_json_compile_failed = bad.is_null();
-            assert!(bad_json_compile_failed, "CompileJsonModule1 must reject invalid JSON");
+            assert!(
+                bad_json_compile_failed,
+                "CompileJsonModule1 must reject invalid JSON"
+            );
             crate::support::assert_exception_named(cx, "SyntaxError");
 
             rooted!(&in(cx) let default = Int32Value(7));
@@ -335,10 +339,7 @@ fn json_and_synthetic(engine: &JSEngine) {
                     "bad_json_compile_failed",
                     Observed::Boolean(bad_json_compile_failed),
                 ),
-                (
-                    "bad_json_has_pending_exception",
-                    Observed::Boolean(true),
-                ),
+                ("bad_json_has_pending_exception", Observed::Boolean(true)),
                 ("synthetic_default", synthetic_default),
             ])
         },

@@ -25,22 +25,20 @@ use js::jsapi::{
     GetFirstGlobalInCompartment, GetObjectRealmOrNull, GetRealmPrincipals, IsWindowProxy,
     IsWindowSlow, JS_DropPrincipals, JS_GetOwnPropertyDescriptorById, JS_HasOwnPropertyById,
     JS_HoldPrincipals, JS_InitDestroyPrincipalsCallback, JS_InitReadPrincipalsCallback,
-    JS_IsDeadWrapper, JS_NewGlobalObject,
-    JS_TransplantObject, JS_WrapObject, JS_WrapValue, JSContext as RawJSContext, JSObject,
-    JSPROP_ENUMERATE, JSPrincipals, OnNewGlobalHookOption, PropertyDescriptor, Realm,
-    RealmBehaviorsRef, RealmBehaviorsRef1, RealmCreationOptionsRef, RealmCreationOptionsRef1,
-    SetDOMCallbacks, SetDOMProxyInformation, SetRealmPrincipals, SetWindowProxy,
-    SetWindowProxyClass, ToWindowIfWindowProxy, ToWindowProxyIfWindowSlow, UncheckedUnwrap,
-    UnwrapOneCheckedStatic,
+    JS_IsDeadWrapper, JS_NewGlobalObject, JS_TransplantObject, JS_WrapObject, JS_WrapValue,
+    JSContext as RawJSContext, JSObject, JSPROP_ENUMERATE, JSPrincipals, OnNewGlobalHookOption,
+    PropertyDescriptor, Realm, RealmBehaviorsRef, RealmBehaviorsRef1, RealmCreationOptionsRef,
+    RealmCreationOptionsRef1, SetDOMCallbacks, SetDOMProxyInformation, SetRealmPrincipals,
+    SetWindowProxy, SetWindowProxyClass, ToWindowIfWindowProxy, ToWindowProxyIfWindowSlow,
+    UncheckedUnwrap, UnwrapOneCheckedStatic,
 };
 use js::jsval::{Int32Value, ObjectValue, PrivateValue, StringValue, UndefinedValue};
 use js::realm::AutoRealm;
 use js::rooted;
 use js::rust::wrappers2::{
-    CheckedUnwrapDynamic, InvokeGetOwnPropertyDescriptor, InvokeHasOwn,
-    IterateRealmsInCompartment, JS_NewDeadWrapper, JS_NewPlainObject,
-    JS_NewStringCopyN, JS_ValueToId, NewProxyObject, SetPreserveWrapperCallbacks,
-    UnwrapObjectDynamic, UnwrapOneCheckedDynamic, WrapperNew,
+    CheckedUnwrapDynamic, InvokeGetOwnPropertyDescriptor, InvokeHasOwn, IterateRealmsInCompartment,
+    JS_NewDeadWrapper, JS_NewPlainObject, JS_NewStringCopyN, JS_ValueToId, NewProxyObject,
+    SetPreserveWrapperCallbacks, UnwrapObjectDynamic, UnwrapOneCheckedDynamic, WrapperNew,
 };
 use js::rust::{JSEngine, RealmOptions, Runtime, SIMPLE_GLOBAL_CLASS};
 
@@ -390,10 +388,7 @@ fn window_proxy(engine: &JSEngine) {
         assert_eq!(ToWindowProxyIfWindowSlow(g1.get()), window_proxy_object);
         assert_eq!(ToWindowProxyIfWindowSlow(g2.get()), g2.get());
         Observation::new(vec![
-            (
-                "proxy_kind",
-                Value::String("window-proxy".into()),
-            ),
+            ("proxy_kind", Value::String("window-proxy".into())),
             (
                 "is_window_proxy",
                 Value::Boolean(IsWindowProxy(window_proxy_object)),
@@ -407,14 +402,8 @@ fn window_proxy(engine: &JSEngine) {
                 "to_window_proxy",
                 Value::Boolean(ToWindowProxyIfWindowSlow(g1.get()) == window_proxy_object),
             ),
-            (
-                "wrap_object",
-                Value::Boolean(wrap_object_identity),
-            ),
-            (
-                "wrap_value",
-                Value::Boolean(wrap_value_identity),
-            ),
+            ("wrap_object", Value::Boolean(wrap_object_identity)),
+            ("wrap_value", Value::Boolean(wrap_value_identity)),
         ])
     };
     record(
@@ -578,10 +567,7 @@ fn principals(engine: &JSEngine) {
         assert!(!realm.is_null());
         // The `*Ref` entries take the realm pointer and the `*Ref1` entries read the current realm
         // of a context: both must resolve to the same fields of that realm.
-        assert_eq!(
-            RealmBehaviorsRef(realm),
-            RealmBehaviorsRef1(cx.raw_cx())
-        );
+        assert_eq!(RealmBehaviorsRef(realm), RealmBehaviorsRef1(cx.raw_cx()));
         let behaviors_same_realm = RealmBehaviorsRef(realm) == RealmBehaviorsRef1(cx.raw_cx());
         assert_eq!(
             RealmCreationOptionsRef(realm),
@@ -599,10 +585,7 @@ fn principals(engine: &JSEngine) {
         SetRealmPrincipals(realm, ptr::null_mut());
         assert!(GetRealmPrincipals(realm).is_null());
         Observation::new(vec![
-            (
-                "principal_private",
-                Value::String(format!("{}", 0x51)),
-            ),
+            ("principal_private", Value::String(format!("{}", 0x51))),
             ("private_roundtrip", Value::Boolean(private_roundtrip)),
             ("realm_roundtrip", Value::Boolean(realm_roundtrip)),
             ("refcount_release", Value::Boolean(true)),
@@ -610,7 +593,10 @@ fn principals(engine: &JSEngine) {
                 "destroy_callback",
                 Value::Boolean(DESTROYED.with(Cell::get) == 0),
             ),
-            ("realm_refs", Value::Boolean(behaviors_same_realm && creation_same_realm)),
+            (
+                "realm_refs",
+                Value::Boolean(behaviors_same_realm && creation_same_realm),
+            ),
         ])
     });
     assert_eq!(DESTROYED.with(Cell::get), 1);
@@ -748,10 +734,7 @@ fn dom_proxy(engine: &JSEngine) {
         Observation::new(vec![
             ("set_info", Value::Boolean(true)),
             ("callbacks_roundtrip", Value::Boolean(true)),
-            (
-                "descriptor",
-                Value::Number(descriptor_value as f64),
-            ),
+            ("descriptor", Value::Number(descriptor_value as f64)),
             ("has_own", Value::Boolean(found)),
         ])
     });

@@ -131,8 +131,14 @@ fn gc_state(engine: &JSEngine) {
             ("parent_is_runtime", Value::Boolean(parent_is_runtime)),
             ("idle_before", Value::Boolean(idle_before)),
             ("idle_after_full", Value::Boolean(idle_after_full)),
-            ("idle_after_incremental", Value::Boolean(idle_after_incremental)),
-            ("idle_after_low_memory", Value::Boolean(idle_after_low_memory)),
+            (
+                "idle_after_incremental",
+                Value::Boolean(idle_after_incremental),
+            ),
+            (
+                "idle_after_low_memory",
+                Value::Boolean(idle_after_low_memory),
+            ),
             ("heap_usage_non_decreasing", Value::Boolean(after >= before)),
             ("heap_usage_nonzero", Value::Boolean(after > 0)),
             ("object_trace_kind", Value::String(object_kind)),
@@ -217,10 +223,7 @@ fn roots_options_and_memory(engine: &JSEngine) {
             marker_value.get().to_int32()
         };
         assert_eq!(rooted_marker, 123);
-        crate::support::observe_field(
-            "raw_rooted_marker",
-            Value::Number(rooted_marker as f64),
-        );
+        crate::support::observe_field("raw_rooted_marker", Value::Number(rooted_marker as f64));
         let rooted_finalized = ROOTED_FINALIZED.with(std::cell::Cell::get);
         assert_eq!(rooted_finalized, 0);
         jsapi::RemoveRawValueRoot(cx.raw_cx(), &mut raw_object);
@@ -240,19 +243,12 @@ fn roots_options_and_memory(engine: &JSEngine) {
         // installed before CollectServoSizes enumerates objects.
         js::glue::InitializeMemoryReporter(Some(want_to_measure));
         let mut sizes: ServoSizes = std::mem::zeroed();
-        let add_sizes_ok = jsapi::AddServoSizeOf(
-            cx.raw_cx(),
-            Some(size_of),
-            ptr::null_mut(),
-            &mut sizes,
-        );
+        let add_sizes_ok =
+            jsapi::AddServoSizeOf(cx.raw_cx(), Some(size_of), ptr::null_mut(), &mut sizes);
         assert!(add_sizes_ok);
         let mut collected: ServoSizes = std::mem::zeroed();
-        let collect_ok = js::glue::CollectServoSizes(
-            cx.raw_cx(),
-            &mut collected,
-            Some(object_size),
-        );
+        let collect_ok =
+            js::glue::CollectServoSizes(cx.raw_cx(), &mut collected, Some(object_size));
         assert!(collect_ok);
         assert!(collected.gcHeapUsed > 0);
 
@@ -261,12 +257,8 @@ fn roots_options_and_memory(engine: &JSEngine) {
             getISupports_: Some(has_private),
         };
         let mut with_visitor: ServoSizes = std::mem::zeroed();
-        let add_with_visitor_ok = jsapi::AddServoSizeOf(
-            cx.raw_cx(),
-            Some(size_of),
-            &mut visitor,
-            &mut with_visitor,
-        );
+        let add_with_visitor_ok =
+            jsapi::AddServoSizeOf(cx.raw_cx(), Some(size_of), &mut visitor, &mut with_visitor);
         assert!(add_with_visitor_ok);
         assert!(sizes.gcHeapUsed > 0);
         assert!(with_visitor.gcHeapUsed > 0);
@@ -597,10 +589,7 @@ fn standard_classes(engine: &JSEngine) {
                 "may_resolve_count",
                 Value::Number(MAY_RESOLVED.with(std::cell::Cell::get) as f64),
             );
-            crate::support::observe_field(
-                "stringified_lazy",
-                observe(cx, stringified),
-            );
+            crate::support::observe_field("stringified_lazy", observe(cx, stringified));
         })
     });
     steps.finish()
@@ -671,7 +660,11 @@ fn self_hosted_code(engine: &JSEngine) -> Observation {
     let result = with_global(engine, |cx, global| {
         let value = eval(cx, global, "[].map(x => x + 1).length === 0");
         assert_eq!(observe(cx, value), Value::Boolean(true));
-        crate::support::eval_observe(cx, global, "'abc'.toUpperCase() + ':' + [1, 2, 3].map(x => x * 2).join('-')")
+        crate::support::eval_observe(
+            cx,
+            global,
+            "'abc'.toUpperCase() + ':' + [1, 2, 3].map(x => x * 2).join('-')",
+        )
     });
 
     Observation::new(vec![("self_hosted_result", result)])

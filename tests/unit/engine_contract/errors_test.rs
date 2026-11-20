@@ -155,8 +155,13 @@ fn dump_stack(cx: &mut JSContext, global: SafeHandleObject) -> String {
         ));
     }
     capture_stdout(|| {
-        eval_in(cx, global, c"dump-stack.js", "function outer() { dumpTheStack(); }\nouter();")
-            .expect("dump stack script");
+        eval_in(
+            cx,
+            global,
+            c"dump-stack.js",
+            "function outer() { dumpTheStack(); }\nouter();",
+        )
+        .expect("dump stack script");
     })
 }
 
@@ -176,7 +181,8 @@ fn capture_stdout_large() -> String {
     let body = "x".repeat(200 * 1024);
     capture_stdout(|| {
         let mut out = std::io::stdout();
-        out.write_all(body.as_bytes()).expect("writing a large dump");
+        out.write_all(body.as_bytes())
+            .expect("writing a large dump");
         out.write_all(b"\n").expect("finishing the large dump");
     })
 }
@@ -637,10 +643,24 @@ foo();";
         ("callers", Observed::String(format!("{callers:?}"))),
         ("caller_privates", Observed::String(format!("{privates:?}"))),
         ("lines", Observed::String(format!("{lines:?}"))),
-        ("names", Observed::String("baz,stack.js,bar,stack.js,foo,stack.js,,stack.js".to_owned())),
-        ("spidermonkey_stack", Observed::String("baz@stack.js:5:7\nbar@stack.js:7:5\nfoo@stack.js:9:3\n@stack.js:12:1\n".to_owned())),
-        ("v8_stack_first", Observed::String("    at baz (stack.js:5:7)".to_owned())),
-        ("max_frames_stack", Observed::String("baz@stack.js:5:7\nbar@stack.js:7:5\n".to_owned())),
+        (
+            "names",
+            Observed::String("baz,stack.js,bar,stack.js,foo,stack.js,,stack.js".to_owned()),
+        ),
+        (
+            "spidermonkey_stack",
+            Observed::String(
+                "baz@stack.js:5:7\nbar@stack.js:7:5\nfoo@stack.js:9:3\n@stack.js:12:1\n".to_owned(),
+            ),
+        ),
+        (
+            "v8_stack_first",
+            Observed::String("    at baz (stack.js:5:7)".to_owned()),
+        ),
+        (
+            "max_frames_stack",
+            Observed::String("baz@stack.js:5:7\nbar@stack.js:7:5\n".to_owned()),
+        ),
     ]
 }
 
@@ -746,7 +766,7 @@ unsafe extern "C" fn capture_current_stack_probe(
             } else {
                 format!("{result:?}")
             }
-        }
+        },
         Err(error) => error,
     };
     set_stack_step_result(&value);
@@ -778,7 +798,7 @@ unsafe extern "C" fn build_stack_string_probe(
             } else {
                 "BuildStackString returned null".to_owned()
             }
-        }
+        },
         Err(error) => error,
     };
     set_stack_step_result(&value);
@@ -809,7 +829,7 @@ unsafe extern "C" fn get_saved_frame_line_probe(
             } else {
                 format!("{result:?}")
             }
-        }
+        },
         Err(error) => error,
     };
     set_stack_step_result(&value);
@@ -840,7 +860,7 @@ unsafe extern "C" fn get_saved_frame_column_probe(
             } else {
                 format!("{result:?}")
             }
-        }
+        },
         Err(error) => error,
     };
     set_stack_step_result(&value);
@@ -1012,8 +1032,15 @@ pub fn run(engine: &JSEngine) {
         let output = capture_stdout_large();
         assert_eq!(output.len(), 200 * 1024 + 1, "large dump was truncated");
     });
-    let mut fields = ERRORS_OBSERVATION.with(|observation| std::mem::take(&mut *observation.borrow_mut()));
-    fields.push(("dump_contains_outer", Observed::Boolean(dump_output.borrow().contains("outer"))));
-    fields.push(("dump_contains_source", Observed::Boolean(dump_output.borrow().contains("dump-stack.js"))));
+    let mut fields =
+        ERRORS_OBSERVATION.with(|observation| std::mem::take(&mut *observation.borrow_mut()));
+    fields.push((
+        "dump_contains_outer",
+        Observed::Boolean(dump_output.borrow().contains("outer")),
+    ));
+    fields.push((
+        "dump_contains_source",
+        Observed::Boolean(dump_output.borrow().contains("dump-stack.js")),
+    ));
     steps.finish_with_fields(fields);
 }

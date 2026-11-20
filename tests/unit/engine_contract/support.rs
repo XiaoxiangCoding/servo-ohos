@@ -35,8 +35,9 @@ use js::rust::{
 /// [`observe_field`] with the value they already asserted, and [`Steps::finish`] records those
 /// fields instead of the sentinel.
 mod observed_fields {
-    use super::Value;
     use std::cell::RefCell;
+
+    use super::Value;
 
     thread_local! {
         static FIELDS: RefCell<Vec<(&'static str, Value)>> = const { RefCell::new(Vec::new()) };
@@ -165,9 +166,9 @@ impl Observation {
                 serde_json::Value::Array(
                     self.step_failures
                         .iter()
-                        .map(|(name, message)| {
-                            serde_json::json!({ "step": name, "panic": message })
-                        })
+                        .map(
+                            |(name, message)| serde_json::json!({ "step": name, "panic": message }),
+                        )
                         .collect(),
                 ),
             );
@@ -791,11 +792,14 @@ fn collect_cases(selection: &str) -> Vec<String> {
         .ok()
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .and_then(|document| {
-            document.get("cases").and_then(|value| value.as_array()).map(|list| {
-                list.iter()
-                    .filter_map(|value| value.as_str().map(str::to_owned))
-                    .collect()
-            })
+            document
+                .get("cases")
+                .and_then(|value| value.as_array())
+                .map(|list| {
+                    list.iter()
+                        .filter_map(|value| value.as_str().map(str::to_owned))
+                        .collect()
+                })
         })
         .unwrap_or_default();
     let _ = std::fs::remove_dir_all(&dir);
@@ -822,7 +826,6 @@ struct IsolatedRecord {
     crashed: bool,
     failed: bool,
 }
-
 
 fn run_one_isolated_case(case: &str, engine: &str, results: &str) -> IsolatedRecord {
     let dir = Path::new(results)

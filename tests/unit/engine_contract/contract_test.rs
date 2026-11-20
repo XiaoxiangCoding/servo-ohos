@@ -77,14 +77,8 @@ fn call_cases(engine: &JSEngine) {
                 );
                 Observation::new(vec![
                     ("exception_name", Value::String(name)),
-                    (
-                        "pending_before_clear",
-                        Value::Boolean(pending_before_clear),
-                    ),
-                    (
-                        "pending_after_clear",
-                        Value::Boolean(pending_after_clear),
-                    ),
+                    ("pending_before_clear", Value::Boolean(pending_before_clear)),
+                    ("pending_after_clear", Value::Boolean(pending_after_clear)),
                 ])
             },
         );

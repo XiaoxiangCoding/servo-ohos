@@ -68,7 +68,10 @@ pub fn run(_engine: &JSEngine) {
         fields.extend([
             ("context_non_null", Value::Boolean(true)),
             ("runtime_non_null", Value::Boolean(runtime_non_null)),
-            ("initial_private_null", Value::Boolean(initial_private.is_null())),
+            (
+                "initial_private_null",
+                Value::Boolean(initial_private.is_null()),
+            ),
             ("reporter_installed", Value::Boolean(reporter_installed)),
             ("reporter_slot", Value::String(reporter_slot)),
             (
@@ -83,9 +86,15 @@ pub fn run(_engine: &JSEngine) {
         let cx = jsapi::JS_NewContext(1 << 20, ptr::null_mut());
         assert!(!cx.is_null(), "second JS_NewContext returned null");
         let second_private = jsapi::JS_GetContextPrivate(cx);
-        assert!(second_private.is_null(), "second context private is not null");
+        assert!(
+            second_private.is_null(),
+            "second context private is not null"
+        );
         let second_runtime = jsapi::JS_GetRuntime(cx);
-        assert!(!second_runtime.is_null(), "second JS_GetRuntime returned null");
+        assert!(
+            !second_runtime.is_null(),
+            "second JS_GetRuntime returned null"
+        );
         let previous = jsapi::JS_GetGCParameter(cx, JSGCParamKey::JSGC_MAX_BYTES);
         let target = previous.saturating_sub(1);
         jsapi::JS_SetGCParameter(cx, JSGCParamKey::JSGC_MAX_BYTES, target);
@@ -110,7 +119,10 @@ pub fn run(_engine: &JSEngine) {
             ("gc_parameter_previous", Value::Number(previous as f64)),
             ("gc_parameter_target", Value::Number(target as f64)),
             ("gc_parameter_applied", Value::Number(applied_value as f64)),
-            ("gc_parameter_restored", Value::Number(restored_value as f64)),
+            (
+                "gc_parameter_restored",
+                Value::Number(restored_value as f64),
+            ),
             ("gc_parameter_applied_ok", Value::Boolean(applied)),
             ("gc_parameter_restored_ok", Value::Boolean(restored)),
         ]);

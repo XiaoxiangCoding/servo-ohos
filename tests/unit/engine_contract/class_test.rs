@@ -138,10 +138,7 @@ fn reserved_slots_and_tracing(engine: &JSEngine) {
         TRACED.with(|count| count.set(0));
         JS_GC(cx, GCReason::API);
         trace_count = TRACED.with(Cell::get);
-        assert!(
-            trace_count > 0,
-            "class trace hook did not run during JS_GC"
-        );
+        assert!(trace_count > 0, "class trace hook did not run during JS_GC");
         JS_GetReservedSlot(object.get(), SLOT, &mut slot);
         slot_pointer_after_gc = slot.to_private() == raw.cast::<c_void>();
         assert!(slot_pointer_after_gc);
@@ -156,7 +153,10 @@ fn reserved_slots_and_tracing(engine: &JSEngine) {
     record(
         "class.reserved_slots_trace",
         &Observation::new(vec![
-            ("slot_pointer_after_gc", Value::Boolean(slot_pointer_after_gc)),
+            (
+                "slot_pointer_after_gc",
+                Value::Boolean(slot_pointer_after_gc),
+            ),
             ("slot_cleared", Value::Boolean(slot_cleared)),
             ("trace_count", Value::Number(trace_count as f64)),
         ]),
@@ -239,7 +239,10 @@ fn write_barriers(engine: &JSEngine) {
         let next_value = ObjectValue(object);
         jsapi::HeapValueWriteBarriers(value_slot.get_unsafe(), &prev_value, &next_value);
         barrier_calls_stable += (value_slot.get() == ObjectValue(object)) as u32;
-        assert_eq!(barrier_calls_stable, 6, "write barriers must leave their slots unchanged");
+        assert_eq!(
+            barrier_calls_stable, 6,
+            "write barriers must leave their slots unchanged"
+        );
 
         // Keep the slots rooted across a GC so the recorded edges are traced while alive. GC may
         // move the referents, so only check that each slot still holds a live value.
@@ -270,7 +273,10 @@ fn write_barriers(engine: &JSEngine) {
                 "slot_kinds_live_after_gc",
                 Value::Number(slot_kinds_live as f64),
             ),
-            ("barrier_calls_stable", Value::Number(barrier_calls_stable as f64)),
+            (
+                "barrier_calls_stable",
+                Value::Number(barrier_calls_stable as f64),
+            ),
         ]),
         &[
             "Compile1",
@@ -392,10 +398,10 @@ fn raw_edges(cx: &mut js::context::JSContext) -> Box<RawEdges> {
         let array_object = JS_NewObject(cx, &TRACED_CHILD_CLASS);
         let getter_object = JS_NewObject(cx, &TRACED_CHILD_CLASS);
         assert!(
-            !object.is_null()
-                && !value_object.is_null()
-                && !array_object.is_null()
-                && !getter_object.is_null(),
+            !object.is_null() &&
+                !value_object.is_null() &&
+                !array_object.is_null() &&
+                !getter_object.is_null(),
             "creating traced children"
         );
         let mut descriptor: jsapi::PropertyDescriptor = std::mem::zeroed();

@@ -27,8 +27,6 @@ use js::rust::{
 
 use crate::support::{Value as Observed, observe_field};
 
-
-
 fn with_global(engine: &JSEngine, f: impl FnOnce(&mut js::context::JSContext, SafeHandleObject)) {
     let mut runtime = Runtime::new(engine.handle());
     let cx = runtime.cx();
@@ -80,14 +78,20 @@ fn offthread_success(engine: &JSEngine) {
         assert!(!script.is_null());
         let instantiated_result = execute(cx, script).unwrap().to_int32();
         assert_eq!(instantiated_result, 42);
-        observe_field("offthread_result", Observed::Number(instantiated_result as f64));
+        observe_field(
+            "offthread_result",
+            Observed::Number(instantiated_result as f64),
+        );
 
         rooted!(&in(cx) let script = script);
         rooted!(&in(cx) let mut rval = UndefinedValue());
         assert!(JS_ExecuteScript(cx, script.handle(), rval.handle_mut()));
         let executed_result = rval.get().to_int32();
         assert_eq!(executed_result, 42);
-        observe_field("offthread_executed", Observed::Number(executed_result as f64));
+        observe_field(
+            "offthread_executed",
+            Observed::Number(executed_result as f64),
+        );
 
         jsapi::StencilAddRef(*stencil);
         jsapi::StencilRelease(*stencil);
@@ -108,9 +112,15 @@ fn offthread_failure(engine: &JSEngine) {
             ..
         } = result;
         assert!(stencil.is_none());
-        observe_field("failed_stencil_absent", Observed::Boolean(stencil.is_none()));
+        observe_field(
+            "failed_stencil_absent",
+            Observed::Boolean(stencil.is_none()),
+        );
         assert!(HadFrontendErrors(*fc));
-        observe_field("failed_had_errors", Observed::Boolean(HadFrontendErrors(*fc)));
+        observe_field(
+            "failed_had_errors",
+            Observed::Boolean(HadFrontendErrors(*fc)),
+        );
         assert!(ConvertFrontendErrorsToRuntimeErrors(
             cx,
             *fc,
@@ -132,9 +142,15 @@ fn explicit_stencil(engine: &JSEngine) {
         CompileGlobalScriptToStencil_C(*fc, owning.read_only(), &mut source, stencil.as_mut_ptr());
         let stencil = stencil.assume_init();
         assert!(!HadFrontendErrors(*fc));
-        observe_field("explicit_had_errors", Observed::Boolean(HadFrontendErrors(*fc)));
+        observe_field(
+            "explicit_had_errors",
+            Observed::Boolean(HadFrontendErrors(*fc)),
+        );
         assert!(!stencil.mRawPtr.is_null());
-        observe_field("explicit_stencil_non_null", Observed::Boolean(!stencil.mRawPtr.is_null()));
+        observe_field(
+            "explicit_stencil_non_null",
+            Observed::Boolean(!stencil.mRawPtr.is_null()),
+        );
         jsapi::StencilAddRef(stencil.mRawPtr);
         jsapi::StencilRelease(stencil.mRawPtr);
         jsapi::StencilRelease(stencil.mRawPtr);
